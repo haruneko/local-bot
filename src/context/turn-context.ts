@@ -117,8 +117,8 @@ export function withAction(
   let recallDelivery = ctx.recallDelivery;
   if (
     action.attempted &&
-    action.kind === "recall" &&
-    action.status === "succeeded"
+    action.status === "succeeded" &&
+    action.facts?.kind === "recall"
   ) {
     recallDelivery = "omit";
   }

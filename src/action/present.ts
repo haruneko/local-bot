@@ -26,6 +26,14 @@ export function formatActionSummary(facts: ActionFacts): string {
     }
     case "recall":
       return facts.bullets.map((b) => `- ${b}`).join("\n");
+    case "forget": {
+      const preview = truncateBody(facts.body, 120);
+      return `LanceDB から記憶を忘れた: ${preview}`;
+    }
+    case "research":
+      return `${facts.tool}: ${truncateBody(facts.body, 500)}`;
+    case "express":
+      return `${facts.tool} に発信: ${truncateBody(facts.body, 500)}`;
   }
 }
 
@@ -59,6 +67,24 @@ export function formatActionFactContent(action: ActionOutcome): string {
         "記憶（LanceDB）を検索した。ヒットした内容:",
         facts.bullets.map((b) => `- ${b}`).join("\n"),
       ].join("\n");
+    case "forget":
+      return ["記憶（LanceDB）から忘れた内容:", facts.body].join("\n");
+    case "research":
+      return [
+        `探索ツール（${facts.tool}）の結果:`,
+        facts.title ? `件名: ${facts.title}` : "",
+        facts.body,
+      ]
+        .filter(Boolean)
+        .join("\n");
+    case "express":
+      return [
+        `発信ツール（${facts.tool}）で送った内容:`,
+        facts.title ? `件名: ${facts.title}` : "",
+        facts.body,
+      ]
+        .filter(Boolean)
+        .join("\n");
   }
 }
 

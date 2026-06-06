@@ -91,7 +91,7 @@ describe("renderIntrospectionPrompt", () => {
   it("T-I03: succeeded action shows factual summary", () => {
     const prompt = introCtx(false, null, {
       attempted: true,
-      kind: "memo_write",
+      kind: "memory",
       intent: "今日の予定をメモに",
       status: "succeeded",
       facts: { kind: "memo_write", filename: "予定.md", body: "買い物と会議" },
@@ -99,7 +99,7 @@ describe("renderIntrospectionPrompt", () => {
     });
     expect(prompt).toContain("【行動】");
     expect(prompt).toContain("（返答はしなかった）");
-    expect(prompt).toContain("メモを書く");
+    expect(prompt).toContain("記憶");
     expect(prompt).toContain("今日の予定をメモに");
     expect(prompt).toContain("結果: できた");
     expect(prompt).toContain("内容:");
@@ -110,7 +110,7 @@ describe("renderIntrospectionPrompt", () => {
   it("uses monologue speech even when REPLY is false", () => {
     const prompt = introCtx(false, "CONCEPT.md を読んだ。次は続きを", {
       attempted: true,
-      kind: "memo_read",
+      kind: "memory",
       intent: "読む",
       status: "succeeded",
       facts: { kind: "memo_read", filename: "CONCEPT.md", body: "設計書" },
@@ -123,7 +123,7 @@ describe("renderIntrospectionPrompt", () => {
   it("T-I04: failed action shows error detail", () => {
     const prompt = introCtx(true, "ごめんね", {
       attempted: true,
-      kind: "remember",
+      kind: "memory",
       intent: "誕生日を覚える",
       status: "failed",
       summary:

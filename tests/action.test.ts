@@ -3,6 +3,7 @@ import { runAction } from "../src/roles/action.js";
 import { FakeLlmClient } from "../src/llm/fake.js";
 import { InMemoryEpisodeStore } from "../src/memory/episode.js";
 import { NONE_ACTION } from "../src/action/types.js";
+import { memoryCatalogTools } from "../src/tools/catalog.js";
 import {
   createTurnContext,
   withJudge,
@@ -12,7 +13,11 @@ const dialogue = {
   resolveUserDisplayName: () => "太郎",
 };
 
-function actionInput(action: typeof NONE_ACTION | { kind: "remember"; intent: string }) {
+function actionInput(
+  action:
+    | typeof NONE_ACTION
+    | { kind: "memory"; intent: string },
+) {
   const ctx = withJudge(
     createTurnContext({
       turnId: "turn-1",
@@ -28,6 +33,7 @@ function actionInput(action: typeof NONE_ACTION | { kind: "remember"; intent: st
     ctx,
     episodes: new InMemoryEpisodeStore(),
     episodeRecallTopK: 3,
+    toolCatalog: memoryCatalogTools(),
   };
 }
 
@@ -39,17 +45,23 @@ describe("runAction dispatch", () => {
     expect(llm.calls).toHaveLength(0);
   });
 
-  it("remember appends episode with source remember", async () => {
+  it("memory→remember appends episode with source remember", async () => {
+    const subagentPick = JSON.stringify({
+      done: false,
+      tool: "remember",
+      arguments: {},
+    });
     const bodyJson = JSON.stringify({ body: "太郎はコーヒーが好き" });
-    const llm = new FakeLlmClient([bodyJson]);
-    const input = actionInput({ kind: "remember", intent: "好みを覚える" });
+    const llm = new FakeLlmClient([subagentPick, bodyJson]);
+    const input = actionInput({ kind: "memory", intent: "好みを覚える" });
     const outcome = await runAction(llm, input);
     expect(outcome.attempted).toBe(true);
     if (outcome.attempted) {
       expect(outcome.status).toBe("succeeded");
+      expect(outcome.kind).toBe("memory");
     }
-    expect(llm.calls[0].messages[1].content).toContain("基準日時:");
-    expect(llm.calls[0].messages[1].content).toContain(
+    expect(llm.calls[1].messages[1].content).toContain("基準日時:");
+    expect(llm.calls[1].messages[1].content).toContain(
       input.ctx.currentDateTime,
     );
     const all = input.episodes.getAll();
@@ -59,7 +71,6 @@ describe("runAction dispatch", () => {
     expect(all[0].metadata.turnId).toBe("turn-1-remember");
     if (outcome.attempted) {
       expect(outcome.summary).toContain("LanceDB");
-      expect(outcome.summary).toContain("太郎はコーヒーが好き");
       expect(outcome.facts).toEqual({
         kind: "remember",
         body: "太郎はコーヒーが好き",

@@ -97,6 +97,22 @@ export async function readNoteContent(filename: string): Promise<string | null> 
   }
 }
 
+export const NOTE_PREVIEW_LENGTH = 200;
+
+export type NotePreview = {
+  filename: string;
+  preview: string;
+};
+
+export function truncateNotePreview(
+  text: string,
+  max = NOTE_PREVIEW_LENGTH,
+): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max)}…`;
+}
+
 export async function listNoteFilenames(): Promise<string[]> {
   try {
     const entries = await readdir(NOTES_DIR, { withFileTypes: true });
@@ -107,4 +123,28 @@ export async function listNoteFilenames(): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+export async function listNotePreviews(
+  maxPreviewLength = NOTE_PREVIEW_LENGTH,
+): Promise<NotePreview[]> {
+  const files = await listNoteFilenames();
+  const previews: NotePreview[] = [];
+  for (const filename of files) {
+    const content = await readNoteContent(filename);
+    previews.push({
+      filename,
+      preview: content
+        ? truncateNotePreview(content, maxPreviewLength)
+        : "（空）",
+    });
+  }
+  return previews;
+}
+
+export function formatNotePreviewIndex(previews: NotePreview[]): string {
+  if (previews.length === 0) return "（メモファイルはまだない）";
+  return previews
+    .map((p) => `${p.filename} — ${p.preview}`)
+    .join("\n");
 }

@@ -33,9 +33,9 @@ describe("parseJudgeJson", () => {
     }
   });
 
-  it("T-J01c: parses memo_write action", () => {
+  it("T-J01c: parses memory action", () => {
     const raw = JSON.stringify({
-      ACTION: { kind: "memo_write", intent: "買い物リスト" },
+      ACTION: { kind: "memory", intent: "買い物リストをメモに書く" },
       REPLY: true,
       NEXT_STATE: "対話",
     });
@@ -43,8 +43,8 @@ describe("parseJudgeJson", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.ACTION).toEqual({
-        kind: "memo_write",
-        intent: "買い物リスト",
+        kind: "memory",
+        intent: "買い物リストをメモに書く",
       });
     }
   });

@@ -14,14 +14,8 @@ describe("role prompts", () => {
     expect(LANGUAGE_SYSTEM_PREFIX).not.toMatch(/あなたは.*担当/);
   });
 
-  it("JUDGE_SYSTEM lists all five ACTION kinds", () => {
-    for (const kind of [
-      "none",
-      "remember",
-      "recall",
-      "memo_write",
-      "memo_read",
-    ]) {
+  it("JUDGE_SYSTEM lists all category ACTION kinds", () => {
+    for (const kind of ["none", "memory", "research", "express"]) {
       expect(JUDGE_SYSTEM).toContain(kind);
     }
   });

@@ -49,13 +49,13 @@ describe("episode persist gate", () => {
 
   it("persists heartbeat with successful action", () => {
     let ctx = withJudge(baseCtx({ type: "heartbeat" }), {
-      ACTION: { kind: "memo_write", intent: "整理" },
+      ACTION: { kind: "memory", intent: "整理" },
       REPLY: false,
       NEXT_STATE: "静穏",
     });
     ctx = withAction(ctx, {
       attempted: true,
-      kind: "memo_write",
+      kind: "memory",
       intent: "整理",
       status: "succeeded",
       facts: { kind: "memo_write", filename: "a.md", body: "ok" },
@@ -88,7 +88,7 @@ describe("episode persist gate", () => {
     });
     ctx = withAction(ctx, {
       attempted: true,
-      kind: "memo_read",
+      kind: "memory",
       intent: "読む",
       status: "succeeded",
       facts: { kind: "memo_read", filename: "a.md", body: "ok" },

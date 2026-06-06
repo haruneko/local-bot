@@ -114,7 +114,7 @@ describe("dialogue format", () => {
         }),
         {
           attempted: true,
-          kind: "memo_write",
+          kind: "memory",
           intent: "状況を書く",
           status: "succeeded",
           facts: { kind: "memo_write", filename: "状況.md", body: "眠くなった" },

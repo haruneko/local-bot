@@ -6,6 +6,7 @@ import {
   resolveRecallDistanceThresholds,
   type AppSettings,
 } from "../config/settings.js";
+import { loadMcpConfig, resolveExpressDryRun } from "../config/mcp.js";
 import { createUserResolver, loadUsers } from "../config/users.js";
 import { TurnOrchestrator } from "../orchestrator/turn.js";
 import { WorkingMemory } from "../memory/working.js";
@@ -24,6 +25,11 @@ import {
   saveSession,
 } from "../state/persist.js";
 import type { AgentState, ConversationTurn } from "../types.js";
+import { McpToolClient } from "../mcp/client.js";
+import { FakeMcpToolProvider } from "../mcp/fake.js";
+import type { McpToolProvider } from "../mcp/types.js";
+import { buildToolCatalog, type CatalogTool } from "../tools/catalog.js";
+import type { RunActionInput } from "../action/context.js";
 
 export type AppContext = {
   settings: AppSettings;
@@ -38,16 +44,34 @@ export type BootstrapOptions = {
   verbose?: boolean;
   /** 省略時 data/state.json。false で永続化しない */
   statePath?: string | false;
+  mcp?: McpToolProvider;
 };
 
 function resolveOllamaHost(settings: AppSettings): string {
   return process.env.OLLAMA_HOST ?? settings.ollamaHost;
 }
 
+async function resolveMcpProvider(
+  override?: McpToolProvider,
+): Promise<McpToolProvider> {
+  if (override) return override;
+  const config = await loadMcpConfig();
+  const client = await McpToolClient.connect(config);
+  const tools = await client.listTools();
+  if (tools.length > 0) return client;
+  await client.close();
+  return new FakeMcpToolProvider();
+}
+
 export async function createApp(
   options: BootstrapOptions = {},
 ): Promise<AppContext> {
   const settings = await loadSettings();
+  const mcpConfig = await loadMcpConfig();
+  const expressDryRun = resolveExpressDryRun(mcpConfig);
+  const mcp = await resolveMcpProvider(options.mcp);
+  const toolCatalog: CatalogTool[] = await buildToolCatalog(mcp);
+
   const host = resolveOllamaHost(settings);
   const verboseLogger = options.verbose ? createVerboseLogger() : null;
   const think = resolveOllamaThink(settings);
@@ -89,6 +113,12 @@ export async function createApp(
       }) => saveSession(statePath, next)
     : undefined;
 
+  const actionDeps = {
+    mcp,
+    toolCatalog,
+    expressDryRun,
+  };
+
   const orchestrator = new TurnOrchestrator(session.state, {
     llm,
     episodes,
@@ -99,7 +129,14 @@ export async function createApp(
     timeZone: settings.timeZone ?? "Asia/Tokyo",
     getPersona: async () => personaText,
     dialogue: { resolveUserDisplayName },
-    runAction: (input) => runAction(llm, input),
+    runAction: (input: RunActionInput) =>
+      runAction(llm, {
+        ...input,
+        mcp: input.mcp ?? mcp,
+        toolCatalog: input.toolCatalog ?? toolCatalog,
+        expressDryRun: input.expressDryRun ?? expressDryRun,
+      }),
+    actionDeps,
     onSessionPersist: persistSession,
     verbose: verboseLogger ?? undefined,
   });
@@ -116,6 +153,8 @@ export async function createApp(
     statePath: statePath ?? "(in-memory)",
     initialState: session.state,
     workingMemoryTurnsLoaded: session.workingMemory.length,
+    expressDryRun,
+    toolCatalogSize: toolCatalog.length,
   });
 
   return {

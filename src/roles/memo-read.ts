@@ -13,14 +13,19 @@ import {
   memoReadPickOutputSchema,
 } from "../prompts/schemas.js";
 import type { LlmClient } from "../llm/types.js";
-import { listNoteFilenames, readNoteContent } from "../tools/notes.js";
+import {
+  formatNotePreviewIndex,
+  listNotePreviews,
+  readNoteContent,
+} from "../tools/notes.js";
 
 export async function runMemoRead(
   llm: LlmClient,
   input: RunActionInput,
 ): Promise<ActionOutcome> {
   const action = input.ctx.judge!.ACTION;
-  const files = await listNoteFilenames();
+  const previews = await listNotePreviews();
+  const files = previews.map((p) => p.filename);
 
   if (files.length === 0) {
     return actionFailed(action, "読むメモがない", {
@@ -43,8 +48,8 @@ export async function runMemoRead(
           content: [
             `意図: ${action.intent}`,
             "",
-            "メモ一覧:",
-            files.join(", "),
+            "メモ一覧（ファイル名 — 冒頭抜粋）:",
+            formatNotePreviewIndex(previews),
           ].join("\n"),
         },
       ],

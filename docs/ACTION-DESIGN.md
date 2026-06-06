@@ -1,9 +1,74 @@
-# 抽象 ACTION 設計（v0.4）
+# 抽象 ACTION 設計（v0.5）
 
-ステータス: **v0.4 実装済み**  
-方針: ジャッジは「できることの種類」だけ選ぶ。各 **サブモジュール**が言語野くんと同型に LLM で頑張る。
+ステータス: **v0.5 実装済み**  
+方針: ジャッジは **抽象3カテゴリ**だけ選ぶ。各 **カテゴリサブエージェント**がツールを選び実行する。
 
-**二系統**: 記憶（LanceDB）とメモ（ファイル）を、**読む／書く／覚える／思い出す**で対称に分ける。
+## カテゴリ（意図軸）
+
+| kind | 日本語 | 意味 |
+|------|--------|------|
+| `none` | 何もしない | 行動不要 |
+| `memory` | 記憶 | 自分の永続状態だけを変える（LanceDB・notes） |
+| `research` | 探索 | 外から情報を取り込む（MCP: web・予定照会・センサー） |
+| `express` | 発信 | 外の世界を変える/他者に見える（MCP: SNS・予定登録） |
+
+思索はアクションではない。記憶操作（`recall` / `distill`）として `memory` に吸収する。
+
+## レイヤモデル（用語の整理）
+
+「層」を 2 つの意味で使い分ける。混同しないこと。
+
+### A. 認知の3層（ターン全体のパイプライン）
+
+エージェント1ターンの流れは **入力 → 判断 → 行動/出力** の3層。
+
+```
+[入力層] プリプロセス
+  センサー・永続記憶・作業記憶から揮発コンテキスト（TurnContext）を組み上げる
+       ↓
+[判断層] ジャッジ
+  none | memory | research | express + intent / REPLY / NEXT_STATE を決める
+       ↓
+[行動・出力層] サブエージェント → 出力
+  - 行動: カテゴリサブエージェントがツールを実行（下記 B の2段）
+  - 出力(Reply): 言語野が発話を生成（共有言語機能）
+  - 出力(Memory): 内省を生成し LanceDB へ書き込み
+```
+
+入力層がこのアーキテクチャの起点。ジャッジ以降のどのロールも、入力層が作った同一の `TurnContext` を参照する（事実の一元化）。
+
+```mermaid
+flowchart TD
+    Input["入力層: プリプロセス<br/>(センサー/記憶/作業記憶 → TurnContext)"] --> Judge["判断層: ジャッジ<br/>(カテゴリ + intent + REPLY + NEXT_STATE)"]
+    Judge --> Action["行動・出力層: サブエージェント"]
+    Action --> Reply["出力(Reply): 言語野 → 発話"]
+    Action --> Memory["出力(Memory): 内省 → LanceDB"]
+```
+
+### B. アクション意思決定の深さ（行動・出力層の内部 = 2段）
+
+行動・出力層の中の **アクション部分**だけを見ると、意思決定は2段。
+
+```
+ジャッジ（段1）: カテゴリ none | memory | research | express を選ぶ
+    ↓
+カテゴリサブエージェント（段2）: ツールカタログから具体ツール+引数を選ぶ
+    ↓
+実行: in-process（記憶）または MCP（探索・発信）
+```
+
+「2段ディスパッチ」は B の話、「3層アーキテクチャ」は A の話。これらは矛盾せず、A の行動・出力層の内側に B が収まる。
+
+## 記憶サブエージェントのツール
+
+| tool | 説明 |
+|------|------|
+| `remember` | LanceDB にファクト追記 |
+| `recall` | LanceDB から意識的に掘り出す |
+| `forget` | LanceDB からソフト削除 |
+| `memo_write` | `data/notes/` に書く |
+| `memo_read` | `data/notes/` を読む（冒頭抜粋インデックスで pick） |
+| `distill` | 意味記憶蒸留（スタブ・未実装） |
 
 ### 記憶 vs メモの鮮明さ
 
@@ -13,159 +78,35 @@
 | LLM | 想起・`recall` で要約・圧縮してよい | **既存本文の要約・改変はしない** |
 | 重さ | 距離・提示濃さでぼかす | ファイルはそのまま全部渡す |
 
-非採用: `router.ts` ヒューリスティック、tool JSON 行動くん、Planner 中間層。
+## 探索・発信（MCP）
 
----
+- 設定: [config/mcp.json](../config/mcp.json)
+- クライアント: `src/mcp/client.ts`（`@modelcontextprotocol/sdk`）
+- MCP サーバ未接続時: `FakeMcpToolProvider` のスタブツール（`web_search`, `browse_url`, `calendar_read`, `post_tweet`, `calendar_write`）
+- 発信: `expressDryRun`（既定 `true`）。`EXPRESS_DRY_RUN=false` で実投稿
 
-## 1. ジャッジのカタログ（5種）
+### 発信と言語機能
 
-ジャッジが選べるのはこの一覧だけ。
+発信サブエージェントは共有 **言語機能**（`src/roles/language-faculty.ts`）で文面を生成し、同一ターンで投稿する。ユーザー向け言語野と persona を共有し、声の分裂を防ぐ。
 
-| kind | 日本語（プロンプト表示） | いつ選ぶか |
-|------|--------------------------|------------|
-| `none` | 何もしない | 行動不要 |
-| `remember` | 覚えておく | 会話の事実・好み・約束を**記憶に**残したい |
-| `recall` | 思い出す | **記憶から**もう少し掘り出したい |
-| `memo_write` | メモを書く | **共有メモファイルに**新しく書き残したい |
-| `memo_read` | メモを読む | **既存のメモファイルを**確認したい |
+## ActionFacts
 
-### ジャッジ向けの目安
-
-| ユーザーっぽい言い方 | kind |
-|----------------------|------|
-| 覚えて、忘れないで | `remember` |
-| 前に話したこと、思い出して | `recall`（記憶） |
-| メモに書いて、リストに残して | `memo_write` |
-| メモを見て、さっきのメモ読んで | `memo_read` |
-
-取り違えても致命傷ではないが、**読む系は `recall` と `memo_read` を分ける**と意図が通りやすい。
-
-### スキーマ
-
-```json
-{
-  "ACTION": { "kind": "memo_read", "intent": "買い物リストのメモ" },
-  "REPLY": true,
-  "NEXT_STATE": "対話"
-}
-```
-
-- `ACTION` は常に object。`kind: "none"` のとき `intent: ""`。
-- それ以外は `intent` 必須。
-
-ジャッジプロンプト:
-
-> 選べる ACTION: none, remember（覚えておく）, recall（思い出す）, memo_write（メモを書く）, memo_read（メモを読む）。
-
----
-
-## 2. 行動くん = ディスパッチ
+記憶系は従来どおり typed facts。探索・発信は汎用 facts:
 
 ```typescript
-switch (kind) {
-  case "none": return notAttempted;
-  case "remember": return runRemember(llm, intent, ctx);
-  case "recall": return runRecall(llm, intent, ctx);
-  case "memo_write": return runMemoWrite(llm, intent, ctx);
-  case "memo_read": return runMemoRead(llm, intent, ctx);
-}
+{ kind: "research" | "express"; tool: string; title: string; body: string }
 ```
 
-行動くん自身は LLM を呼ばない。
+## ターンの流れ
 
----
-
-## 3. サブモジュール一覧
-
-| kind | サブモジュール | 機械処理 | LLM の仕事 |
-|------|----------------|----------|------------|
-| `remember` | 覚えるくん | LanceDB append | ファクト文を考える |
-| `recall` | 思い出すくん | LanceDB vector search | 候補を LLM で bullet 要約 |
-| `memo_write` | メモを書くくん | `data/notes/` に write | 新規本文・ファイル名を考える |
-| `memo_read` | メモを読むくん | list / read ファイル | どのファイルか選ぶ（本文は改変しない） |
-
----
-
-## 4. 思い出すくん — `recall`
-
-- **記憶（LanceDB）だけ**。メモファイルは見ない（それは `memo_read`）。
-- プリプロセスの自動想起とは別: ジャッジが「今、意識的に」思い出すとき。
-
-処理: `embed(intent)` → top-k → LLM が意図に沿って `facts.bullets` に要約（パース失敗時のみ機械フォールバック）
-
----
-
-## 5. 覚えるくん — `remember`
-
-- LanceDB に `source: "remember"` でファクト追記。
-- 内省（`source: "introspection"`）と役割分離。同ターン両方あり得る。
-
-処理: LLM がファクト文 → 機械 append
-
----
-
-## 6. メモを書くくん — `memo_write`
-
-- 共有メモ `data/notes/*.md`。
-- LLM: `{ content, filename? }` → 機械 write（path 安全処理のみ）
-
-`summary`: 「〇〇.md にメモを書いた」
-
----
-
-## 7. メモを読むくん — `memo_read`
-
-- `intent` からどのメモかを LLM が決める（一覧をプロンプトに渡す）。
-- 機械: `list_notes` → 該当 file `read` → **全文を `facts.body` に載せる（要約しない）**
-
-メモは重くても全部覚えている扱い。言語野が口頭で短く言うのはセリフの問題であり、ここでは本文をいじらない。
-
-「メモを読んで」と言われたときに `recall` を選ばないよう、ジャッジが `memo_read` を選ぶのが正道。
-
----
-
-## 8. プリプロセスとの関係
-
-| 機能 | 誰 | 何 |
-|------|-----|-----|
-| 自動想起 | プリプロセス（機械） | 毎ターン、作業台用に LanceDB top-k |
-| `recall` | 思い出すくん | ジャッジ指示時、記憶を深掘り |
-| `memo_read` | メモを読むくん | ジャッジ指示時、ファイルを読む |
-
-三つは共存。役割が違う。
-
----
-
-## 9. ごっちゃについて
-
-- **書き込み**: `remember` と `memo_write` は保存先が違うだけ。両方同時はジャッジが2回選ばない限り起きない。
-- **読み出し**: `recall`（記憶）と `memo_read`（ファイル）を分けたので、v0.3 より混線しにくい。
-- それでも 8B が `recall` / `memo_read` を逆にしたら、次ターンで直せる程度の問題。
-
----
-
-## 10. ターンの流れ
+認知の3層（上記レイヤモデル A）を1行で表すと:
 
 ```
-プリプロセス（自動想起）→ ジャッジ → 行動（5種のいずれか）→ 言語野 → 内省 → 内省を LanceDB
+[入力] プリプロセス → [判断] ジャッジ → [行動/出力] サブエージェント → 言語野 → 内省 → LanceDB
 ```
 
-`remember` は手順「行動」で既に LanceDB に書く。内省は別行。
+`recall` 行動成功時は `recallDelivery: omit`（`facts.kind === "recall"` で判定）。
 
----
+## 複雑化の吸収（反ネスト原則）
 
-## 11. 実装順
-
-1. 型・ジャッジ schema（5 kind）
-2. ディスパッチ + `roles/remember`, `recall`, `memo-write`, `memo-read`
-3. `router.ts` 削除、旧 action 置換
-4. プロンプト・テスト
-
----
-
-## 12. kind 名について
-
-コード上は `memo_write` / `memo_read`（英語・enum 向き）。  
-ジャッジプロンプトとログでは **メモを書く / メモを読む** と日本語表示。
-
-`jot` は v0.3 から改名（書くだけだったのを、読むと対にした）。
+優先順: 複合ツール → サブエージェント内多段ループ（最大5ステップ）→ カテゴリ分割 → （最終手段）ネスト

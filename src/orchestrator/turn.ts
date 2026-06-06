@@ -57,6 +57,11 @@ export type TurnDeps = {
   getPersona: () => Promise<string>;
   dialogue: DialogueFormatOptions;
   runAction?: (input: RunActionInput) => Promise<import("../types.js").ActionOutcome>;
+  actionDeps?: {
+    mcp?: import("../mcp/types.js").McpToolProvider;
+    toolCatalog?: readonly import("../tools/catalog.js").CatalogTool[];
+    expressDryRun?: boolean;
+  };
   onSessionPersist?: (session: {
     state: AgentState;
     workingMemory: readonly ConversationTurn[];
@@ -181,6 +186,9 @@ export class TurnOrchestrator {
         ctx,
         episodes: this.deps.episodes,
         episodeRecallTopK: this.deps.episodeRecallTopK,
+        mcp: this.deps.actionDeps?.mcp,
+        toolCatalog: this.deps.actionDeps?.toolCatalog,
+        expressDryRun: this.deps.actionDeps?.expressDryRun,
       };
       ctx = withAction(
         ctx,

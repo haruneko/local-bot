@@ -48,3 +48,12 @@ export const recallActionJsonSchema = zodToJsonSchema(recallActionOutputSchema, 
   name: "RecallActionOutput",
   ...jsonSchemaOptions,
 });
+
+export const forgetPickOutputSchema = z.object({
+  turnId: z.string().nullable(),
+  summary: z.string(),
+});
+export const forgetPickJsonSchema = zodToJsonSchema(forgetPickOutputSchema, {
+  name: "ForgetPickOutput",
+  ...jsonSchemaOptions,
+});

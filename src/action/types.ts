@@ -1,9 +1,8 @@
 export const ACTION_KINDS = [
   "none",
-  "remember",
-  "recall",
-  "memo_write",
-  "memo_read",
+  "memory",
+  "research",
+  "express",
 ] as const;
 
 export type ActionKind = (typeof ACTION_KINDS)[number];
@@ -29,13 +28,11 @@ export function actionLabelJa(kind: ActionKind): string {
   switch (kind) {
     case "none":
       return "何もしない";
-    case "remember":
-      return "覚えておく";
-    case "recall":
-      return "思い出す";
-    case "memo_write":
-      return "メモを書く";
-    case "memo_read":
-      return "メモを読む";
+    case "memory":
+      return "記憶";
+    case "research":
+      return "探索";
+    case "express":
+      return "発信";
   }
 }

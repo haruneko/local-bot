@@ -140,7 +140,7 @@ describe("TurnOrchestrator", () => {
 
   it("heartbeat ACTION success with REPLY false still runs language monologue", async () => {
     const judgeJson = JSON.stringify({
-      ACTION: { kind: "memo_read", intent: "CONCEPT.md を読む" },
+      ACTION: { kind: "memory", intent: "CONCEPT.md を読む" },
       REPLY: false,
       NEXT_STATE: "対話",
     });
@@ -166,10 +166,15 @@ describe("TurnOrchestrator", () => {
       },
       runAction: async () => ({
         attempted: true,
-        kind: "memo_read",
+        kind: "memory",
         intent: "CONCEPT.md を読む",
         status: "succeeded",
-        summary: "メモ（CONCEPT.md）を読んだ。書かれていた内容:\n設計書",
+        facts: {
+          kind: "memo_read",
+          filename: "CONCEPT.md",
+          body: "設計書",
+        },
+        summary: "data/notes/CONCEPT.md を読んだ:\n設計書",
       }),
     });
 

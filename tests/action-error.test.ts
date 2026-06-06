@@ -8,7 +8,7 @@ import { tryParseJsonWithSchema } from "../src/action/parse-json.js";
 describe("action errors", () => {
   it("actionFailed embeds code and detail in summary", () => {
     const outcome = actionFailed(
-      { kind: "memo_write", intent: "test" },
+      { kind: "memory", intent: "test" },
       "メモの内容を決められなかった",
       {
         code: ACTION_ERROR_CODES.LLM_PARSE,

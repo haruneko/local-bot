@@ -10,7 +10,7 @@ describe("formatActionForLanguage", () => {
   it("memo_read uses neutral factual template", () => {
     const text = formatActionForLanguage({
       attempted: true,
-      kind: "memo_read",
+      kind: "memory",
       intent: "確認",
       status: "succeeded",
       facts: { kind: "memo_read", filename: "状況.md", body: "眠くなった" },
@@ -24,7 +24,7 @@ describe("formatActionForLanguage", () => {
   it("memo_write uses neutral factual template", () => {
     const text = formatActionForLanguage({
       attempted: true,
-      kind: "memo_write",
+      kind: "memory",
       intent: "状況",
       status: "succeeded",
       facts: { kind: "memo_write", filename: "状況.md", body: "本文です" },
@@ -40,7 +40,7 @@ describe("formatActionForIntrospection", () => {
   it("success memo_write includes body under 内容", () => {
     const block = formatActionForIntrospection({
       attempted: true,
-      kind: "memo_write",
+      kind: "memory",
       intent: "状況",
       status: "succeeded",
       facts: { kind: "memo_write", filename: "状況.md", body: "眠い" },
@@ -55,7 +55,7 @@ describe("formatActionForIntrospection", () => {
   it("failure includes code and message only, not LLM detail", () => {
     const block = formatActionForIntrospection({
       attempted: true,
-      kind: "memo_write",
+      kind: "memory",
       intent: "x",
       status: "failed",
       summary:
@@ -76,7 +76,7 @@ describe("formatActionForIntrospection", () => {
   it("formatActionFactContent for memo_read", () => {
     const facts = formatActionFactContent({
       attempted: true,
-      kind: "memo_read",
+      kind: "memory",
       intent: "確認",
       status: "succeeded",
       facts: { kind: "memo_read", filename: "a.md", body: "本文" },
@@ -108,5 +108,23 @@ describe("formatActionSummary", () => {
     });
     expect(s).toContain("data/notes/a.md を読んだ:");
     expect(s).toContain("本文テスト");
+  });
+
+  it("research facts format for language", () => {
+    const text = formatActionForLanguage({
+      attempted: true,
+      kind: "research",
+      intent: "天気",
+      status: "succeeded",
+      facts: {
+        kind: "research",
+        tool: "web_search",
+        title: "天気",
+        body: "晴れ",
+      },
+      summary: "web_search: 晴れ",
+    });
+    expect(text).toContain("web_search");
+    expect(text).toContain("晴れ");
   });
 });

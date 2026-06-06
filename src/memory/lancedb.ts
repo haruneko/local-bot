@@ -23,6 +23,7 @@ type EpisodeRow = {
   source: string;
   reply: boolean;
   turnId: string;
+  deleted: boolean;
 };
 
 export class LanceEpisodeStore implements EpisodeStore {
@@ -48,6 +49,7 @@ export class LanceEpisodeStore implements EpisodeStore {
     const names = await conn.tableNames();
     if (names.includes(TABLE_NAME)) {
       this.table = await conn.openTable(TABLE_NAME);
+      await this.ensureDeletedColumn();
       return;
     }
     const vector = await this.embedder.embed("init");
@@ -64,9 +66,19 @@ export class LanceEpisodeStore implements EpisodeStore {
         source: "",
         reply: false,
         turnId: "__seed__",
+        deleted: false,
       },
     ]);
     await this.table.delete('id = "__seed__"');
+  }
+
+  private async ensureDeletedColumn(): Promise<void> {
+    const table = await this.ensureTable();
+    const schema = await table.schema();
+    const fields = schema.fields.map((f) => f.name);
+    if (!fields.includes("deleted")) {
+      await table.addColumns([{ name: "deleted", valueSql: "false" }]);
+    }
   }
 
   async append(record: EpisodeRecord): Promise<void> {
@@ -85,6 +97,7 @@ export class LanceEpisodeStore implements EpisodeStore {
       source: record.metadata.source,
       reply: record.metadata.reply,
       turnId: record.metadata.turnId,
+      deleted: false,
     };
     await table.add([row]);
   }
@@ -95,13 +108,34 @@ export class LanceEpisodeStore implements EpisodeStore {
     if (count === 0) return [];
 
     const vector = await this.embedder.embed(queryText || ".");
-    const results = await table.vectorSearch(vector).limit(topK).toArray();
+    const results = await table
+      .vectorSearch(vector)
+      .limit(topK * 2)
+      .toArray();
     return (results as (EpisodeRow & { _distance?: number })[])
-      .filter((r) => r.body?.trim())
+      .filter((r) => r.body?.trim() && !r.deleted)
+      .slice(0, topK)
       .map((r) => ({
+        turnId: r.turnId,
         body: r.body,
         distance: r._distance ?? Number.POSITIVE_INFINITY,
       }));
+  }
+
+  async softDelete(turnId: string): Promise<boolean> {
+    const table = await this.ensureTable();
+    const escaped = turnId.replace(/'/g, "''");
+    const rows = await table
+      .query()
+      .where(`turnId = '${escaped}'`)
+      .limit(1)
+      .toArray();
+    if (rows.length === 0) return false;
+    await table.update({
+      where: `turnId = '${escaped}'`,
+      valuesSql: { deleted: "true" },
+    });
+    return true;
   }
 
   private async ensureTable(): Promise<lancedb.Table> {

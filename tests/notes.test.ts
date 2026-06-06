@@ -4,6 +4,8 @@ import {
   normalizeReadArgs,
   defaultNoteFilename,
   slugifyFilename,
+  truncateNotePreview,
+  formatNotePreviewIndex,
 } from "../src/tools/notes.js";
 
 describe("note args", () => {
@@ -31,5 +33,19 @@ describe("note args", () => {
     expect(defaultNoteFilename(new Date("2026-06-03"))).toBe(
       "note-2026-06-03.md",
     );
+  });
+
+  it("truncateNotePreview adds ellipsis when over limit", () => {
+    const long = "あ".repeat(250);
+    expect(truncateNotePreview(long, 200)).toBe(`${"あ".repeat(200)}…`);
+  });
+
+  it("formatNotePreviewIndex joins filename and preview", () => {
+    const index = formatNotePreviewIndex([
+      { filename: "a.md", preview: "買い物リスト" },
+      { filename: "b.md", preview: "設計メモ" },
+    ]);
+    expect(index).toContain("a.md — 買い物リスト");
+    expect(index).toContain("b.md — 設計メモ");
   });
 });

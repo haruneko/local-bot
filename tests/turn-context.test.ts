@@ -57,7 +57,7 @@ describe("TurnContext", () => {
       }),
       {
         attempted: true,
-        kind: "recall",
+        kind: "memory",
         intent: "印象",
         status: "succeeded",
         facts: { kind: "recall", bullets: ["髪を切りたい"] },
@@ -167,7 +167,7 @@ describe("TurnContext", () => {
       }),
       {
         attempted: true,
-        kind: "recall",
+        kind: "memory",
         intent: "印象",
         status: "succeeded",
         facts: { kind: "recall", bullets: ["髪を切りたい"] },

@@ -19,7 +19,7 @@ CONCEPT.md の思想は変えず、実装判断だけをここに固定する。
 
 - Ollama `format` に JSON Schema（Zod → `zodToJsonSchema`）
 - `ACTION`: 常に object `{ kind, intent }`。`kind: "none"` のとき `intent: ""`
-- 選べる kind: `none`, `remember`, `recall`, `memo_write`, `memo_read`（ACTION-DESIGN.md 参照）
+- 選べる kind: `none`, `memory`, `research`, `express`（ACTION-DESIGN.md 参照）。具体ツールはサブエージェントが選ぶ
 - `NEXT_STATE`: バリデーションなし。そのまま State に代入し、未知値はログのみ
 
 ## 内省くんの入力（CONCEPT からの拡張）
@@ -30,11 +30,22 @@ CONCEPT.md の思想は変えず、実装判断だけをここに固定する。
 - それ以外 → 「やろうとしたこと」「できた / できなかった」を自然言語で渡す（ツール名・スタックトレース・LLM 生応答は不可）
 - `REPLY=false` → 発話は `（返答はしなかった）`（`ctx.reply` 経由、一人称なし）
 
-## 行動くん
+## レイヤモデル（用語固定）
 
-- 行動くんは **5 種ディスパッチ**（`none`, `remember`, `recall`, `memo_write`, `memo_read`）。自身は LLM を呼ばない
-- 各サブモジュールが LLM + 機械処理（LanceDB append / vector search / `data/notes/` I/O）を担当
-- メモ I/O は in-process レジストリ経由（将来 MCP サーバに差し替え可能な形）
+- **認知の3層**: 入力（プリプロセス）→ 判断（ジャッジ）→ 行動/出力（サブエージェント → 言語野/Reply・内省/Memory）。入力層が起点で、全ロールが同一 `TurnContext` を参照する
+- **アクション意思決定の2段**: 行動・出力層の内部で、ジャッジ（カテゴリ）→ サブエージェント（具体ツール）の2段ディスパッチ
+- 「3層」と「2段」は別レベル。2段は3層の行動・出力層の内側に収まる。詳細は [ACTION-DESIGN.md](./ACTION-DESIGN.md)
+
+## 行動くん（v0.5）
+
+- ジャッジは **3カテゴリ**（`memory`, `research`, `express`）+ `none` のみ選ぶ
+- 行動くんはカテゴリ別 **サブエージェント**へディスパッチ。サブエージェントがツールを選び LLM + 機械処理/MCP を実行
+- 記憶ツール: `remember`, `recall`, `forget`, `memo_write`, `memo_read`, `distill`（スタブ）
+- `forget`: LanceDB ソフト削除（`deleted` 列）。物理削除しない
+- 探索・発信: MCP（`config/mcp.json`）。未接続時は Fake スタブツール
+- 発信文面: 共有言語機能（`language-faculty.ts`）で persona 一元生成
+- 発信安全: `expressDryRun` 既定 `true`（`EXPRESS_DRY_RUN` で上書き可）
+- メモ I/O は in-process。探索・発信は MCP アダプタ経由
 
 ## 記憶とメモの扱い（一貫性）
 

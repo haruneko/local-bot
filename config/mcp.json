@@ -1,0 +1,21 @@
+{
+  "expressDryRun": true,
+  "servers": [
+    {
+      "name": "research-stubs",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "node",
+      "args": ["scripts/mcp-research-stub.mjs"],
+      "categories": ["research"]
+    },
+    {
+      "name": "express-stubs",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "node",
+      "args": ["scripts/mcp-express-stub.mjs"],
+      "categories": ["express"]
+    }
+  ]
+}
