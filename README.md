@@ -241,4 +241,4 @@ config/                  # 実行時設定
 
 ## ライセンス
 
-`private: true` の個人プロジェクト想定。リポジトリ公開時は LICENSE を追加してください。
+[MIT](LICENSE)
