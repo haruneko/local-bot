@@ -8,6 +8,7 @@
     "dev": "tsx src/cli/main.ts",
     "start": "tsx src/cli/main.ts",
     "heartbeat": "tsx src/cli/heartbeat.ts",
+    "dream": "tsx src/cli/dream.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke": "tsx scripts/smoke-ollama.ts"

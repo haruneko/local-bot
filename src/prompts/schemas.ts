@@ -57,3 +57,16 @@ export const forgetPickJsonSchema = zodToJsonSchema(forgetPickOutputSchema, {
   name: "ForgetPickOutput",
   ...jsonSchemaOptions,
 });
+
+export const dreamDistillFactSchema = z.object({
+  body: z.string().min(1),
+  tags: z.array(z.string()).optional(),
+});
+
+export const dreamDistillOutputSchema = z.object({
+  facts: z.array(dreamDistillFactSchema),
+});
+export const dreamDistillJsonSchema = zodToJsonSchema(dreamDistillOutputSchema, {
+  name: "DreamDistillOutput",
+  ...jsonSchemaOptions,
+});

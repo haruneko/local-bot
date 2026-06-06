@@ -70,7 +70,7 @@ export async function runMemorySubagent(
   if (toolName === "distill") {
     return actionSucceeded(
       action,
-      "意味記憶への蒸留（distill）は未実装。将来の夢による蒸留で実装予定。",
+      "意味記憶への蒸留は `npm run dream` で実行する。distill アクションからの起動は未対応。",
     );
   }
 

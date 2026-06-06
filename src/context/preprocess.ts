@@ -30,6 +30,14 @@ export async function fitTurnContext(
     ),
   ]);
 
+  const semanticFacts =
+    draft.semanticFacts.length > 3
+      ? draft.semanticFacts
+          .slice()
+          .sort((a, b) => b.relevance - a.relevance)
+          .slice(0, 3)
+      : draft.semanticFacts;
+
   const shrunk: TurnContext = {
     ...draft,
     priorDialogueChannel,
@@ -37,6 +45,7 @@ export async function fitTurnContext(
       ? [{ presented: recalledText, relevance: 1, presentation: "summarize" as const }]
       : [],
     recallDelivery: recalledText ? "summarize" : draft.recallDelivery,
+    semanticFacts,
   };
 
   if (exceedsTokenBudget(serializeMemoryForBudget(shrunk), tokenBudget)) {

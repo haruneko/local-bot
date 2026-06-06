@@ -15,7 +15,13 @@ export type EpisodeRecallHit = {
 
 export interface EpisodeStore {
   append(record: EpisodeRecord): Promise<void>;
-  recall(queryText: string, topK: number): Promise<EpisodeRecallHit[]>;
+  recall(
+    queryText: string,
+    topK: number,
+    excludeTurnIds?: ReadonlySet<string>,
+  ): Promise<EpisodeRecallHit[]>;
+  /** timestamp 昇順で列挙（sinceIso 以降のみ。省略時は全件） */
+  listSince(sinceIso?: string, limit?: number): Promise<EpisodeRecord[]>;
   /** ソフト削除。該当 turnId があれば true */
   softDelete(turnId: string): Promise<boolean>;
 }
@@ -31,9 +37,17 @@ export class InMemoryEpisodeStore implements EpisodeStore {
     this.records.push(record);
   }
 
-  async recall(_queryText: string, topK: number): Promise<EpisodeRecallHit[]> {
-    return this.records
+  async recall(
+    _queryText: string,
+    topK: number,
+    excludeTurnIds?: ReadonlySet<string>,
+  ): Promise<EpisodeRecallHit[]> {
+    const eligible = this.records
       .filter((r) => !this.deletedTurnIds.has(r.metadata.turnId))
+      .filter(
+        (r) => !excludeTurnIds?.size || !excludeTurnIds.has(r.metadata.turnId),
+      );
+    return eligible
       .slice(-topK)
       .reverse()
       .map((r, i) => ({
@@ -41,6 +55,17 @@ export class InMemoryEpisodeStore implements EpisodeStore {
         body: r.body,
         distance: IN_MEMORY_FAKE_DISTANCES[i] ?? 1.5,
       }));
+  }
+
+  async listSince(sinceIso?: string, limit?: number): Promise<EpisodeRecord[]> {
+    const sinceMs = sinceIso ? Date.parse(sinceIso) : Number.NEGATIVE_INFINITY;
+    const filtered = this.records.filter((r) => {
+      if (this.deletedTurnIds.has(r.metadata.turnId)) return false;
+      if (!r.body.trim()) return false;
+      return Date.parse(r.metadata.timestamp) > sinceMs;
+    });
+    const capped = limit ? filtered.slice(0, limit) : filtered;
+    return capped.map((r) => ({ ...r }));
   }
 
   async softDelete(turnId: string): Promise<boolean> {

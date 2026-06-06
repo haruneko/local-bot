@@ -14,10 +14,13 @@ import { presentRecallEpisodes } from "../recall/llm-present.js";
 import { fitTurnContext } from "../context/preprocess.js";
 import { buildContextClock } from "../sensor/datetime.js";
 import type { EpisodeStore } from "../memory/episode.js";
+import type { SemanticStore } from "../memory/semantic.js";
+import { presentSemanticFacts } from "../recall/semantic-present.js";
 import { WorkingMemory } from "../memory/working.js";
 import type { LlmClient } from "../llm/types.js";
 import { runJudge } from "../roles/judge.js";
 import { runLanguage as runLanguageRole } from "../roles/language.js";
+import { updateInnerState } from "../roles/inner-state.js";
 import { runIntrospection } from "../roles/introspection.js";
 import { applyNextState } from "../state/log.js";
 import {
@@ -49,9 +52,14 @@ export type TurnResult = {
 export type TurnDeps = {
   llm: LlmClient;
   episodes: EpisodeStore;
+  semantic: SemanticStore;
   workingMemory: WorkingMemory;
   episodeRecallTopK: number;
+  semanticRecallTopK: number;
+  semanticRecallMaxDistance: number;
+  recencyExclusionTurns: number;
   recallDistanceThresholds: RecallDistanceThresholds;
+  initialInnerState?: string;
   contextTokenBudget: number;
   timeZone?: string;
   getPersona: () => Promise<string>;
@@ -65,17 +73,38 @@ export type TurnDeps = {
   onSessionPersist?: (session: {
     state: AgentState;
     workingMemory: readonly ConversationTurn[];
+    innerState: string;
   }) => Promise<void>;
   verbose?: VerboseLogger;
 };
 
 export class TurnOrchestrator {
   private turnContext: TurnContext | null = null;
+  private innerState: string;
+  private readonly recentEpisodeTurnIds: string[] = [];
 
   constructor(
     private state: AgentState,
     private readonly deps: TurnDeps,
-  ) {}
+  ) {
+    this.innerState = deps.initialInnerState ?? "";
+  }
+
+  getInnerState(): string {
+    return this.innerState;
+  }
+
+  private excludeTurnIds(): ReadonlySet<string> {
+    return new Set(this.recentEpisodeTurnIds);
+  }
+
+  private pushRecentEpisodeTurnId(turnId: string): void {
+    this.recentEpisodeTurnIds.push(turnId);
+    const max = this.deps.recencyExclusionTurns;
+    while (this.recentEpisodeTurnIds.length > max) {
+      this.recentEpisodeTurnIds.shift();
+    }
+  }
 
   getState(): AgentState {
     return this.state;
@@ -90,6 +119,7 @@ export class TurnOrchestrator {
     void this.deps.onSessionPersist?.({
       state: this.state,
       workingMemory: this.deps.workingMemory.getRecent(),
+      innerState: this.innerState,
     });
   }
 
@@ -123,11 +153,15 @@ export class TurnOrchestrator {
       this.deps.workingMemory.lastUserContent(),
     );
     const recallStart = Date.now();
+    const excludeTurnIds = this.excludeTurnIds();
     const recallHits = await this.deps.episodes.recall(
       recallQuery,
       this.deps.episodeRecallTopK,
+      excludeTurnIds,
     );
-    v?.recall(recallQuery, recallHits, Date.now() - recallStart);
+    v?.recall(recallQuery, recallHits, Date.now() - recallStart, {
+      excludedTurnIds: [...excludeTurnIds],
+    });
 
     const recentTurns = this.deps.workingMemory.getRecent();
     const turnNow = new Date();
@@ -150,6 +184,17 @@ export class TurnOrchestrator {
     );
     v?.recallFilter(recallHits, recalled, Date.now() - filterStart);
 
+    const semanticStart = Date.now();
+    const semanticHits = await this.deps.semantic.recall(
+      recallQuery,
+      this.deps.semanticRecallTopK,
+    );
+    const semanticFacts = presentSemanticFacts(
+      semanticHits,
+      this.deps.semanticRecallMaxDistance,
+    );
+    v?.semanticRecall(recallQuery, semanticHits, semanticFacts, Date.now() - semanticStart);
+
     let ctx = createTurnContext({
       turnId,
       state: startState,
@@ -157,6 +202,8 @@ export class TurnOrchestrator {
       dialogue: this.deps.dialogue,
       recentTurns,
       recalledEpisodes: recalled,
+      semanticFacts,
+      innerState: this.innerState,
       now: turnNow,
       timeZone: this.deps.timeZone,
     });
@@ -239,6 +286,17 @@ export class TurnOrchestrator {
       const introStart = Date.now();
       introspection = await runIntrospection(this.deps.llm, ctx);
       v?.introspectionBody(introspection, Date.now() - introStart);
+
+      const prevInner = this.innerState;
+      const innerStart = Date.now();
+      this.innerState = await updateInnerState(this.deps.llm, {
+        prevInnerState: prevInner,
+        introspection,
+        speech: ctx.speech ?? null,
+        action: ctx.action,
+        currentDateTime: ctx.currentDateTime,
+      });
+      v?.innerStateUpdate(prevInner, this.innerState, Date.now() - innerStart);
     } else {
       v?.introspectionSkipped("idle heartbeat — ACTION/REPLY なし");
     }
@@ -261,6 +319,7 @@ export class TurnOrchestrator {
         body: introspection,
         metadata,
       });
+      this.pushRecentEpisodeTurnId(turnId);
       v?.episodeSaved(metadata);
     } else {
       v?.episodeSkipped("idle heartbeat");
@@ -271,6 +330,7 @@ export class TurnOrchestrator {
     await this.deps.onSessionPersist?.({
       state: this.state,
       workingMemory: this.deps.workingMemory.getRecent(),
+      innerState: this.innerState,
     });
     v?.stateTransition(prevState, this.state);
 

@@ -2,6 +2,7 @@
   "workingMemoryTurns": 20,
   "contextTokenBudget": 6000,
   "episodeRecallTopK": 3,
+  "recencyExclusionTurns": 4,
   "recallDistance": {
     "fullMax": 0.55,
     "summarizeMax": 0.72,

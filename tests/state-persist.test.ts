@@ -12,6 +12,7 @@ describe("session persist", () => {
       expect(await loadSession(file)).toEqual({
         state: "対話",
         workingMemory: [],
+        innerState: "",
       });
 
       await saveSession(file, {
@@ -20,6 +21,7 @@ describe("session persist", () => {
           { role: "user", speakerId: "u1", content: "買い物の話" },
           { role: "assistant", content: "了解" },
         ],
+        innerState: "少し落ち着いた気分",
       });
 
       expect(await loadSession(file)).toEqual({
@@ -28,6 +30,7 @@ describe("session persist", () => {
           { role: "user", speakerId: "u1", content: "買い物の話" },
           { role: "assistant", content: "了解" },
         ],
+        innerState: "少し落ち着いた気分",
       });
 
       const raw = JSON.parse(await readFile(file, "utf8")) as {
@@ -57,6 +60,7 @@ describe("session persist", () => {
       expect(await loadSession(file)).toEqual({
         state: "静穏",
         workingMemory: [],
+        innerState: "",
       });
     } finally {
       await rm(dir, { recursive: true, force: true });

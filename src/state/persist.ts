@@ -7,6 +7,8 @@ export const DEFAULT_AGENT_STATE: AgentState = "対話";
 export type PersistedSession = {
   state: AgentState;
   workingMemory: ConversationTurn[];
+  /** 持ち越す内心（空 = 起きたて） */
+  innerState: string;
   updatedAt: string;
 };
 
@@ -38,7 +40,7 @@ function parseWorkingMemory(raw: unknown): ConversationTurn[] {
 export async function loadSession(
   filePath: string,
   fallbackState: AgentState = DEFAULT_AGENT_STATE,
-): Promise<Pick<PersistedSession, "state" | "workingMemory">> {
+): Promise<Pick<PersistedSession, "state" | "workingMemory" | "innerState">> {
   try {
     const raw = await readFile(filePath, "utf8");
     const parsed = JSON.parse(raw) as Partial<PersistedSession>;
@@ -46,9 +48,12 @@ export async function loadSession(
       typeof parsed.state === "string" && parsed.state.trim()
         ? parsed.state.trim()
         : fallbackState;
+    const innerState =
+      typeof parsed.innerState === "string" ? parsed.innerState : "";
     return {
       state,
       workingMemory: parseWorkingMemory(parsed.workingMemory),
+      innerState,
     };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
@@ -56,7 +61,7 @@ export async function loadSession(
       console.warn("[session] load failed, using defaults", err);
     }
   }
-  return { state: fallbackState, workingMemory: [] };
+  return { state: fallbackState, workingMemory: [], innerState: "" };
 }
 
 /** @deprecated loadSession を使う */
@@ -72,12 +77,14 @@ export async function saveSession(
   session: {
     state: AgentState;
     workingMemory: readonly ConversationTurn[];
+    innerState?: string;
   },
 ): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
   const payload: PersistedSession = {
     state: session.state,
     workingMemory: [...session.workingMemory],
+    innerState: session.innerState ?? "",
     updatedAt: new Date().toISOString(),
   };
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
@@ -89,5 +96,9 @@ export async function saveAgentState(
   state: AgentState,
 ): Promise<void> {
   const existing = await loadSession(filePath, state);
-  await saveSession(filePath, { state, workingMemory: existing.workingMemory });
+  await saveSession(filePath, {
+    state,
+    workingMemory: existing.workingMemory,
+    innerState: existing.innerState,
+  });
 }

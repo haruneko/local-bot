@@ -11,6 +11,8 @@ import type {
 } from "../types.js";
 import type { EpisodeMetadata } from "../types.js";
 import type { EpisodeRecallHit } from "../memory/episode.js";
+import type { SemanticRecallHit } from "../memory/semantic.js";
+import type { SemanticFactView } from "../recall/semantic-present.js";
 import { estimateTokens } from "./tokens.js";
 
 export interface VerboseLogger {
@@ -55,15 +57,49 @@ export class VerboseLoggerImpl implements VerboseLogger {
     this.json("working_memory", turns);
   }
 
-  recall(query: string, hits: EpisodeRecallHit[], ms: number): void {
+  recall(
+    query: string,
+    hits: EpisodeRecallHit[],
+    ms: number,
+    extra?: { excludedTurnIds?: string[] },
+  ): void {
     this.json("episode_recall", {
       query: query || "(empty)",
       count: hits.length,
+      excludedTurnIds: extra?.excludedTurnIds ?? [],
       ms,
       hits: hits.map((h) => ({
         distance: h.distance,
         bodyPreview: h.body.slice(0, 120),
       })),
+    });
+  }
+
+  innerStateUpdate(prev: string, next: string, ms: number): void {
+    this.json("inner_state", {
+      ms,
+      prev: prev.trim() || "(empty)",
+      next: next.trim() || "(empty)",
+    });
+  }
+
+  semanticRecall(
+    query: string,
+    hits: SemanticRecallHit[],
+    presented: SemanticFactView[],
+    ms: number,
+  ): void {
+    this.json("semantic_recall", {
+      query: query || "(empty)",
+      hitCount: hits.length,
+      keptCount: presented.length,
+      ms,
+      hits: hits.map((h) => ({
+        distance: h.distance,
+        confidence: h.confidence,
+        bodyPreview: h.body.slice(0, 120),
+      })),
+      presented: presented.map((f) => f.body),
     });
   }
 
@@ -225,6 +261,7 @@ export function detectLlmRole(messages: ChatMessage[]): string {
   if (sys.includes("キャラクタールールに従い")) return "language";
   if (sys.includes("エピソード記憶の断片")) return "recall.present";
   if (sys.includes("記憶（LanceDB）の検索結果")) return "recall.action";
+  if (sys.includes("前の内心")) return "inner_state";
   if (sys.includes("内省")) return "introspection";
   if (sys.includes("要約機")) return "preprocess.summarize";
   return "unknown";

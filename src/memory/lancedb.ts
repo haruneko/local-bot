@@ -102,18 +102,54 @@ export class LanceEpisodeStore implements EpisodeStore {
     await table.add([row]);
   }
 
-  async recall(queryText: string, topK: number): Promise<EpisodeRecallHit[]> {
+  async listSince(sinceIso?: string, limit?: number): Promise<EpisodeRecord[]> {
+    const table = await this.ensureTable();
+    const rows = (await table
+      .query()
+      .where("deleted = false")
+      .toArray()) as EpisodeRow[];
+    const sinceMs = sinceIso ? Date.parse(sinceIso) : Number.NEGATIVE_INFINITY;
+    const filtered = rows
+      .filter((r) => r.body?.trim() && Date.parse(r.timestamp) > sinceMs)
+      .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+    const capped = limit ? filtered.slice(0, limit) : filtered;
+    return capped.map((r) => ({
+      body: r.body,
+      metadata: {
+        timestamp: r.timestamp,
+        participants: JSON.parse(r.participants) as string[],
+        tags: JSON.parse(r.tags) as string[],
+        state: r.state,
+        action: r.action,
+        source: r.source as EpisodeRecord["metadata"]["source"],
+        reply: r.reply,
+        turnId: r.turnId,
+      },
+    }));
+  }
+
+  async recall(
+    queryText: string,
+    topK: number,
+    excludeTurnIds?: ReadonlySet<string>,
+  ): Promise<EpisodeRecallHit[]> {
     const table = await this.ensureTable();
     const count = await table.countRows();
     if (count === 0) return [];
 
+    const excludeSize = excludeTurnIds?.size ?? 0;
     const vector = await this.embedder.embed(queryText || ".");
     const results = await table
       .vectorSearch(vector)
-      .limit(topK * 2)
+      .limit(Math.max(topK + excludeSize, 1) * 2)
       .toArray();
     return (results as (EpisodeRow & { _distance?: number })[])
-      .filter((r) => r.body?.trim() && !r.deleted)
+      .filter(
+        (r) =>
+          r.body?.trim() &&
+          !r.deleted &&
+          (!excludeTurnIds?.size || !excludeTurnIds.has(r.turnId)),
+      )
       .slice(0, topK)
       .map((r) => ({
         turnId: r.turnId,

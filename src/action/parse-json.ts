@@ -18,6 +18,14 @@ export function extractJsonText(raw: string): string {
   return trimmed;
 }
 
+/** LLM がよく壊す JSON 構文を軽く修復する */
+export function repairCommonJsonErrors(text: string): string {
+  return text
+    .replace(/,\s*=/g, ", ")
+    .replace(/,\s*}/g, "}")
+    .replace(/,\s*]/g, "]");
+}
+
 export type ParseJsonFailure = {
   reason: "empty" | "json_syntax" | "schema";
   rawPreview: string;
@@ -33,7 +41,15 @@ export function tryParseJsonWithSchema<T>(
     return { ok: false, failure: { reason: "empty", rawPreview: "" } };
   }
 
-  const candidates = [...new Set([trimmed, extractJsonText(raw)])];
+  const extracted = extractJsonText(raw);
+  const candidates = [
+    ...new Set([
+      trimmed,
+      extracted,
+      repairCommonJsonErrors(trimmed),
+      repairCommonJsonErrors(extracted),
+    ]),
+  ].filter(Boolean);
   let lastSyntaxMessage: string | undefined;
 
   for (const text of candidates) {

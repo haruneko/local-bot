@@ -2,8 +2,12 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   loadSettings,
+  resolveDreamMinEpisodes,
   resolveOllamaThink,
   resolveRecallDistanceThresholds,
+  resolveRecencyExclusionTurns,
+  resolveSemanticRecallMaxDistance,
+  resolveSemanticRecallTopK,
   type AppSettings,
 } from "../config/settings.js";
 import { loadMcpConfig, resolveExpressDryRun } from "../config/mcp.js";
@@ -12,6 +16,9 @@ import { TurnOrchestrator } from "../orchestrator/turn.js";
 import { WorkingMemory } from "../memory/working.js";
 import { LanceEpisodeStore } from "../memory/lancedb.js";
 import { InMemoryEpisodeStore } from "../memory/episode.js";
+import { InMemorySemanticStore } from "../memory/semantic.js";
+import { LanceSemanticStore } from "../memory/semantic-lancedb.js";
+import type { SemanticStore } from "../memory/semantic.js";
 import { OllamaEmbedClient, OllamaLlmClient } from "../llm/ollama.js";
 import { withVerboseLlm } from "../llm/logging.js";
 import { runAction } from "../roles/action.js";
@@ -36,6 +43,9 @@ export type AppContext = {
   orchestrator: TurnOrchestrator;
   speakerId: string;
   verbose: VerboseLogger;
+  llm: LlmClient;
+  episodes: EpisodeStore;
+  semantic: SemanticStore;
 };
 
 export type BootstrapOptions = {
@@ -85,12 +95,15 @@ export async function createApp(
   }
 
   let episodes: EpisodeStore;
+  let semantic: SemanticStore;
   if (options.memory === "memory") {
     episodes = new InMemoryEpisodeStore();
+    semantic = new InMemorySemanticStore();
   } else {
     const embedder = new OllamaEmbedClient(host, settings.embedModel);
     const dbPath = path.join(process.cwd(), "data", "lancedb");
     episodes = await LanceEpisodeStore.open(dbPath, embedder);
+    semantic = await LanceSemanticStore.open(dbPath, embedder);
   }
 
   const personaPath = path.join(process.cwd(), "persona", "character.md");
@@ -101,7 +114,11 @@ export async function createApp(
     options.statePath === false ? null : (options.statePath ?? defaultStatePath());
   const session = statePath
     ? await loadSession(statePath)
-    : { state: "対話" as AgentState, workingMemory: [] as const };
+    : {
+        state: "対話" as AgentState,
+        workingMemory: [] as const,
+        innerState: "",
+      };
   const wm = new WorkingMemory(
     settings.workingMemoryTurns,
     session.workingMemory,
@@ -110,6 +127,7 @@ export async function createApp(
     ? async (next: {
         state: AgentState;
         workingMemory: readonly ConversationTurn[];
+        innerState: string;
       }) => saveSession(statePath, next)
     : undefined;
 
@@ -122,9 +140,14 @@ export async function createApp(
   const orchestrator = new TurnOrchestrator(session.state, {
     llm,
     episodes,
+    semantic,
     workingMemory: wm,
     episodeRecallTopK: settings.episodeRecallTopK,
+    semanticRecallTopK: resolveSemanticRecallTopK(settings),
+    semanticRecallMaxDistance: resolveSemanticRecallMaxDistance(settings),
+    recencyExclusionTurns: resolveRecencyExclusionTurns(settings),
     recallDistanceThresholds: resolveRecallDistanceThresholds(settings),
+    initialInnerState: session.innerState,
     contextTokenBudget: settings.contextTokenBudget,
     timeZone: settings.timeZone ?? "Asia/Tokyo",
     getPersona: async () => personaText,
@@ -150,9 +173,13 @@ export async function createApp(
     workingMemoryTurns: settings.workingMemoryTurns,
     contextTokenBudget: settings.contextTokenBudget,
     episodeRecallTopK: settings.episodeRecallTopK,
+    semanticRecallTopK: resolveSemanticRecallTopK(settings),
+    dreamMinEpisodes: resolveDreamMinEpisodes(settings),
     statePath: statePath ?? "(in-memory)",
     initialState: session.state,
     workingMemoryTurnsLoaded: session.workingMemory.length,
+    initialInnerState: session.innerState || "(empty)",
+    recencyExclusionTurns: resolveRecencyExclusionTurns(settings),
     expressDryRun,
     toolCatalogSize: toolCatalog.length,
   });
@@ -162,5 +189,8 @@ export async function createApp(
     orchestrator,
     speakerId: options.speakerId ?? "user_001",
     verbose: verboseLogger ?? { enabled: false },
+    llm,
+    episodes,
+    semantic,
   };
 }

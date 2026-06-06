@@ -1,9 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { TurnOrchestrator } from "../src/orchestrator/turn.js";
 import { InMemoryEpisodeStore } from "../src/memory/episode.js";
+import {
+  InMemorySemanticStore,
+  pseudoVector,
+} from "../src/memory/semantic.js";
 import { WorkingMemory } from "../src/memory/working.js";
 import { FakeLlmClient } from "../src/llm/fake.js";
 import { DEFAULT_RECALL_DISTANCE_THRESHOLDS } from "../src/recall/distance.js";
+import type { TurnDeps } from "../src/orchestrator/turn.js";
+
+function baseTurnDeps(
+  overrides: Partial<TurnDeps> & Pick<TurnDeps, "llm" | "workingMemory">,
+): TurnDeps {
+  return {
+    episodes: new InMemoryEpisodeStore(),
+    semantic: new InMemorySemanticStore(),
+    episodeRecallTopK: 3,
+    semanticRecallTopK: 5,
+    semanticRecallMaxDistance: 0.75,
+    recencyExclusionTurns: 4,
+    recallDistanceThresholds: DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+    contextTokenBudget: 6000,
+    getPersona: async () => "",
+    dialogue: { resolveUserDisplayName: () => "太郎" },
+    ...overrides,
+  };
+}
 
 describe("TurnOrchestrator", () => {
   it("T-T01: clears turn context after turn", async () => {
@@ -16,20 +39,18 @@ describe("TurnOrchestrator", () => {
       judgeJson,
       "ボットの返答です",
       "内省テキストです",
+      "少し嬉しい気分",
     ]);
     const episodes = new InMemoryEpisodeStore();
-    const orch = new TurnOrchestrator("対話", {
-      llm,
-      episodes,
-      workingMemory: new WorkingMemory(20),
-      episodeRecallTopK: 3,
-      recallDistanceThresholds: DEFAULT_RECALL_DISTANCE_THRESHOLDS,
-      contextTokenBudget: 6000,
-      getPersona: async () => "test persona",
-      dialogue: {
-        resolveUserDisplayName: () => "太郎",
-      },
-    });
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({
+        llm,
+        episodes,
+        workingMemory: new WorkingMemory(20),
+        getPersona: async () => "test persona",
+      }),
+    );
 
     await orch.run({
       type: "user_message",
@@ -48,20 +69,12 @@ describe("TurnOrchestrator", () => {
       REPLY: false,
       NEXT_STATE: "静穏",
     });
-    const llm = new FakeLlmClient([judgeJson, "内省のみ"]);
+    const llm = new FakeLlmClient([judgeJson, "内省のみ", "静かな気持ち"]);
     const wm = new WorkingMemory(20);
-    const orch = new TurnOrchestrator("対話", {
-      llm,
-      episodes: new InMemoryEpisodeStore(),
-      workingMemory: wm,
-      episodeRecallTopK: 3,
-      recallDistanceThresholds: DEFAULT_RECALL_DISTANCE_THRESHOLDS,
-      contextTokenBudget: 6000,
-      getPersona: async () => "",
-      dialogue: {
-        resolveUserDisplayName: () => "太郎",
-      },
-    });
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({ llm, workingMemory: wm }),
+    );
 
     const result = await orch.run({
       type: "user_message",
@@ -70,7 +83,7 @@ describe("TurnOrchestrator", () => {
     });
 
     expect(result.speech).toBeNull();
-    expect(llm.calls).toHaveLength(2);
+    expect(llm.calls).toHaveLength(3);
     const introCall = llm.calls[1];
     expect(introCall.messages[1].content).toContain(
       "（返答はしなかった）",
@@ -86,18 +99,10 @@ describe("TurnOrchestrator", () => {
     });
     const llm = new FakeLlmClient([judgeJson]);
     const episodes = new InMemoryEpisodeStore();
-    const orch = new TurnOrchestrator("静穏", {
-      llm,
-      episodes,
-      workingMemory: new WorkingMemory(20),
-      episodeRecallTopK: 3,
-      recallDistanceThresholds: DEFAULT_RECALL_DISTANCE_THRESHOLDS,
-      contextTokenBudget: 6000,
-      getPersona: async () => "",
-      dialogue: {
-        resolveUserDisplayName: () => "太郎",
-      },
-    });
+    const orch = new TurnOrchestrator(
+      "静穏",
+      baseTurnDeps({ llm, episodes, workingMemory: new WorkingMemory(20) }),
+    );
 
     const result = await orch.run({ type: "heartbeat" });
 
@@ -113,22 +118,19 @@ describe("TurnOrchestrator", () => {
       REPLY: true,
       NEXT_STATE: "対話",
     });
-    const llm = new FakeLlmClient([judgeJson, "独り言セリフ", "内省"]);
+    const llm = new FakeLlmClient([
+      judgeJson,
+      "独り言セリフ",
+      "内省",
+      "穏やかな気分",
+    ]);
     const wm = new WorkingMemory(20, [
       { role: "user", speakerId: "user_001", content: "前の質問" },
     ]);
-    const orch = new TurnOrchestrator("対話", {
-      llm,
-      episodes: new InMemoryEpisodeStore(),
-      workingMemory: wm,
-      episodeRecallTopK: 3,
-      recallDistanceThresholds: DEFAULT_RECALL_DISTANCE_THRESHOLDS,
-      contextTokenBudget: 6000,
-      getPersona: async () => "",
-      dialogue: {
-        resolveUserDisplayName: () => "太郎",
-      },
-    });
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({ llm, workingMemory: wm }),
+    );
 
     await orch.run({ type: "heartbeat" });
 
@@ -148,23 +150,19 @@ describe("TurnOrchestrator", () => {
       judgeJson,
       "CONCEPT.md は設計書だった。次は別メモも見よう",
       "内省テキスト",
+      "少し満足した気分",
     ]);
     const wm = new WorkingMemory(20, [
       { role: "user", speakerId: "user_001", content: "メモ見て" },
     ]);
     const episodes = new InMemoryEpisodeStore();
-    const orch = new TurnOrchestrator("対話", {
-      llm,
-      episodes,
-      workingMemory: wm,
-      episodeRecallTopK: 3,
-      recallDistanceThresholds: DEFAULT_RECALL_DISTANCE_THRESHOLDS,
-      contextTokenBudget: 6000,
-      getPersona: async () => "",
-      dialogue: {
-        resolveUserDisplayName: () => "太郎",
-      },
-      runAction: async () => ({
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({
+        llm,
+        episodes,
+        workingMemory: wm,
+        runAction: async () => ({
         attempted: true,
         kind: "memory",
         intent: "CONCEPT.md を読む",
@@ -175,18 +173,155 @@ describe("TurnOrchestrator", () => {
           body: "設計書",
         },
         summary: "data/notes/CONCEPT.md を読んだ:\n設計書",
+        }),
       }),
-    });
+    );
 
     const result = await orch.run({ type: "heartbeat" });
 
     expect(result.speech).toBe("CONCEPT.md は設計書だった。次は別メモも見よう");
-    expect(llm.calls).toHaveLength(3);
+    expect(llm.calls).toHaveLength(4);
     expect(wm.getRecent()[1]).toEqual({
       role: "assistant",
       channel: "monologue",
       content: "CONCEPT.md は設計書だった。次は別メモも見よう",
     });
     expect(result.episodeSaved).toBe(true);
+  });
+
+  it("loads semantic facts into turn context from semantic store", async () => {
+    const semantic = new InMemorySemanticStore();
+    await semantic.upsert({
+      body: "ユーザーは夏目漱石を好む",
+      vector: pseudoVector("読書の話"),
+    });
+
+    const judgeJson = JSON.stringify({
+      ACTION: { kind: "none", intent: "" },
+      REPLY: true,
+      NEXT_STATE: "対話",
+    });
+    const llm = new FakeLlmClient([
+      judgeJson,
+      "夏目漱石の話ですね",
+      "内省",
+      "読書の話で少し嬉しい",
+    ]);
+
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({
+        llm,
+        semantic,
+        workingMemory: new WorkingMemory(20),
+        runAction: undefined,
+      }),
+    );
+
+    const originalRun = orch.run.bind(orch);
+    await originalRun({
+      type: "user_message",
+      content: "読書の話",
+      speakerId: "user_001",
+    });
+
+    const judgePayload = llm.calls[0]!.messages[1]!.content;
+    expect(judgePayload).toContain("夏目漱石");
+    expect(judgePayload).toContain("semanticFacts");
+  });
+
+  it("updates inner state after introspection and persists to session", async () => {
+    const judgeJson = JSON.stringify({
+      ACTION: { kind: "none", intent: "" },
+      REPLY: true,
+      NEXT_STATE: "対話",
+    });
+    const llm = new FakeLlmClient([
+      judgeJson,
+      "返答",
+      "内省本文",
+      "さっき二度言っちゃった、ちょっと恥ずかしい",
+    ]);
+    let savedInner = "";
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        initialInnerState: "",
+        onSessionPersist: async (s) => {
+          savedInner = s.innerState;
+        },
+      }),
+    );
+
+    await orch.run({
+      type: "user_message",
+      content: "こんにちは",
+      speakerId: "user_001",
+    });
+
+    expect(orch.getInnerState()).toBe(
+      "さっき二度言っちゃった、ちょっと恥ずかしい",
+    );
+    expect(savedInner).toBe("さっき二度言っちゃった、ちょっと恥ずかしい");
+    expect(llm.calls[3]!.messages[0].content).toContain("前の内心");
+  });
+
+  it("excludes recent episode turnIds from recall", async () => {
+    const episodes = new InMemoryEpisodeStore();
+    await episodes.append({
+      body: "古い内省",
+      metadata: {
+        timestamp: "2026-01-01T00:00:00.000Z",
+        participants: [],
+        tags: [],
+        state: "対話",
+        action: "",
+        source: "introspection",
+        reply: true,
+        turnId: "old-turn",
+      },
+    });
+
+    const judgeJson = JSON.stringify({
+      ACTION: { kind: "none", intent: "" },
+      REPLY: true,
+      NEXT_STATE: "対話",
+    });
+    const llm = new FakeLlmClient([
+      judgeJson,
+      "返答1",
+      "直近の内省",
+      "内心1",
+      judgeJson,
+      "返答2",
+      "内省2",
+      "内心2",
+    ]);
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({
+        llm,
+        episodes,
+        workingMemory: new WorkingMemory(20),
+        recencyExclusionTurns: 4,
+      }),
+    );
+
+    await orch.run({
+      type: "user_message",
+      content: "最初",
+      speakerId: "user_001",
+    });
+    await orch.run({
+      type: "user_message",
+      content: "二回目",
+      speakerId: "user_001",
+    });
+
+    const secondJudge = llm.calls[4]!.messages[1].content;
+    expect(secondJudge).toContain("古い内省");
+    expect(secondJudge).not.toContain("直近の内省");
   });
 });

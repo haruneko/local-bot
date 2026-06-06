@@ -71,6 +71,71 @@ describe("TurnContext", () => {
     expect(rendered).toContain("髪を切りたい");
   });
 
+  it("renders inner state in language input when non-empty", () => {
+    const ctx = createTurnContext({
+      turnId: "t-inner",
+      state: "対話",
+      trigger: {
+        type: "user_message",
+        content: "元気？",
+        speakerId: "user_001",
+      },
+      dialogue,
+      recentTurns: [
+        { role: "user", speakerId: "user_001", content: "元気？" },
+      ],
+      recalledEpisodes: [],
+      innerState: "さっき少し恥ずかしかった",
+    });
+
+    const rendered = renderLanguageUserContent(ctx);
+    expect(rendered).toContain("## いまの内心");
+    expect(rendered).toContain("さっき少し恥ずかしかった");
+    expect(rendered).toContain("温度の素");
+  });
+
+  it("omits inner state section when empty", () => {
+    const ctx = createTurnContext({
+      turnId: "t-empty-inner",
+      state: "対話",
+      trigger: {
+        type: "user_message",
+        content: "おはよう",
+        speakerId: "user_001",
+      },
+      dialogue,
+      recentTurns: [
+        { role: "user", speakerId: "user_001", content: "おはよう" },
+      ],
+      recalledEpisodes: [],
+      innerState: "",
+    });
+
+    expect(renderLanguageUserContent(ctx)).not.toContain("## いまの内心");
+  });
+
+  it("includes innerState in judge memory snapshot", () => {
+    const ctx = createTurnContext({
+      turnId: "t-judge-inner",
+      state: "対話",
+      trigger: {
+        type: "user_message",
+        content: "こんにちは",
+        speakerId: "user_001",
+      },
+      dialogue,
+      recentTurns: [
+        { role: "user", speakerId: "user_001", content: "こんにちは" },
+      ],
+      recalledEpisodes: [],
+      innerState: "穏やか",
+    });
+
+    const payload = renderJudgeUserPayload(ctx);
+    expect(payload).toContain("innerState");
+    expect(payload).toContain("穏やか");
+  });
+
   it("judge and language share the same recalled episodes before action", () => {
     const ctx = createTurnContext({
       turnId: "t3",
@@ -181,5 +246,36 @@ describe("TurnContext", () => {
     expect(ctx.recallDelivery).toBe("omit");
     expect(judgePayload.context.recalledEpisodes).toEqual([]);
     expect(langBody).not.toContain("背景の記憶");
+  });
+
+  it("renders semantic facts in judge and language channels", () => {
+    const ctx = createTurnContext({
+      turnId: "t7",
+      state: "対話",
+      trigger: {
+        type: "user_message",
+        content: "好きな作家は？",
+        speakerId: "user_001",
+      },
+      dialogue,
+      recentTurns: [
+        { role: "user", speakerId: "user_001", content: "好きな作家は？" },
+      ],
+      recalledEpisodes: [],
+      semanticFacts: [
+        { body: "ユーザーは夏目漱石を好む", relevance: 0.9 },
+      ],
+    });
+
+    const judgePayload = JSON.parse(renderJudgeUserPayload(ctx));
+    const langBody = renderLanguageUserContent(ctx);
+    const snap = memorySnapshot(ctx);
+
+    expect(judgePayload.context.semanticFacts).toEqual([
+      "ユーザーは夏目漱石を好む",
+    ]);
+    expect(snap.semanticFacts).toEqual(["ユーザーは夏目漱石を好む"]);
+    expect(langBody).toContain("## 知っていること（意味記憶）");
+    expect(langBody).toContain("1. ユーザーは夏目漱石を好む");
   });
 });

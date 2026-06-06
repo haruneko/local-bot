@@ -17,11 +17,11 @@ import {
   formatWorkingMemoryDialogue,
   type DialogueFormatOptions,
 } from "./dialogue.js";
-import type {
-  RecalledEpisode,
-} from "../recall/types.js";
+import type { RecalledEpisode } from "../recall/types.js";
+import type { SemanticFactView } from "../recall/semantic-present.js";
 
 export type { RecalledEpisode } from "../recall/types.js";
+export type { SemanticFactView } from "../recall/semantic-present.js";
 
 /** 想起チャンネル全体の渡し方（ターン内で明示） */
 export type RecallDelivery = "omit" | "full" | "summarize";
@@ -42,6 +42,10 @@ export type TurnContext = {
   priorDialogueChannel?: string;
   recalledEpisodes: RecalledEpisode[];
   recallDelivery: RecallDelivery;
+  /** 意味記憶（夢で蒸留した知識）。背景のエピソード想起とは別チャンネル */
+  semanticFacts: SemanticFactView[];
+  /** 持ち越す内心（余韻）。空 = 起きたて */
+  innerState: string;
 
   /** withJudge で平坦化（内省は judge オブジェクトを参照しない） */
   reply?: boolean;
@@ -60,6 +64,8 @@ export type CreateTurnContextInput = {
   dialogue: DialogueFormatOptions;
   recentTurns: readonly ConversationTurn[];
   recalledEpisodes: RecalledEpisode[];
+  semanticFacts?: SemanticFactView[];
+  innerState?: string;
   now?: Date;
   timeZone?: string;
 };
@@ -102,6 +108,8 @@ export function createTurnContext(input: CreateTurnContextInput): TurnContext {
     priorTurns: priorTurnsFromRecent(input.recentTurns, input.trigger),
     recalledEpisodes: [...input.recalledEpisodes],
     recallDelivery: "full",
+    semanticFacts: [...(input.semanticFacts ?? [])],
+    innerState: input.innerState ?? "",
     action: { attempted: false },
   };
 }
@@ -189,6 +197,10 @@ export function formatRecalledEpisodeMeta(ctx: TurnContext) {
   }));
 }
 
+export function formatSemanticFacts(ctx: TurnContext): string[] {
+  return ctx.semanticFacts.map((f) => f.body);
+}
+
 /** 全ロールが参照する記憶スナップショット */
 export function memorySnapshot(ctx: TurnContext) {
   return {
@@ -201,6 +213,8 @@ export function memorySnapshot(ctx: TurnContext) {
     recalledEpisodes: formatRecalledEpisodes(ctx),
     recalledMeta: formatRecalledEpisodeMeta(ctx),
     recallDelivery: ctx.recallDelivery,
+    semanticFacts: formatSemanticFacts(ctx),
+    innerState: ctx.innerState,
   };
 }
 
@@ -213,6 +227,26 @@ export function renderJudgeUserPayload(ctx: TurnContext): string {
     },
     null,
     2,
+  );
+}
+
+function appendInnerState(parts: string[], ctx: TurnContext): void {
+  if (!ctx.innerState.trim()) return;
+  parts.push(
+    "",
+    "## いまの内心",
+    "（いま抱えている気持ち。温度の素であって台本ではない）",
+    ctx.innerState,
+  );
+}
+
+function appendSemanticFacts(parts: string[], ctx: TurnContext): void {
+  if (ctx.semanticFacts.length === 0) return;
+  parts.push(
+    "",
+    "## 知っていること（意味記憶）",
+    "（夢で蒸留した経験由来の知識。自信を持って使ってよい）",
+    ...ctx.semanticFacts.map((f, i) => `${i + 1}. ${f.body}`),
   );
 }
 
@@ -267,6 +301,8 @@ export function renderLanguageUserContent(ctx: TurnContext): string {
       snap.priorDialogue,
     ];
 
+    appendInnerState(parts, ctx);
+    appendSemanticFacts(parts, ctx);
     appendRecalledEpisodes(parts, ctx);
     return parts.join("\n");
   }
@@ -288,6 +324,8 @@ export function renderLanguageUserContent(ctx: TurnContext): string {
     snap.priorDialogue,
   ];
 
+  appendInnerState(parts, ctx);
+  appendSemanticFacts(parts, ctx);
   appendRecalledEpisodes(parts, ctx);
   return parts.join("\n");
 }
