@@ -1,0 +1,347 @@
+import {
+  formatActionForIntrospection,
+  formatActionForLanguage,
+  silenceLine,
+} from "../action/present.js";
+import { actionLabelJa } from "../action/types.js";
+import type { TurnTrigger } from "../orchestrator/turn.js";
+import type {
+  ActionOutcome,
+  AgentState,
+  ConversationTurn,
+  JudgeOutput,
+} from "../types.js";
+import { buildContextClock } from "../sensor/datetime.js";
+import {
+  formatDialogueTurn,
+  formatWorkingMemoryDialogue,
+  type DialogueFormatOptions,
+} from "./dialogue.js";
+import type {
+  RecalledEpisode,
+} from "../recall/types.js";
+
+export type { RecalledEpisode } from "../recall/types.js";
+
+/** 想起チャンネル全体の渡し方（ターン内で明示） */
+export type RecallDelivery = "omit" | "full" | "summarize";
+
+export type TurnContext = {
+  turnId: string;
+  state: AgentState;
+  executedAt: string;
+  currentDateTime: string;
+  trigger: TurnTrigger;
+  dialogue: DialogueFormatOptions;
+
+  /** このターンの相手発話（全ロール共通） */
+  partnerUtteranceLine: string;
+  /** 相手発話より前の会話ターン */
+  priorTurns: ConversationTurn[];
+  /** preprocess で要約された会話チャンネル。あるとき priorTurns の代わりに使う */
+  priorDialogueChannel?: string;
+  recalledEpisodes: RecalledEpisode[];
+  recallDelivery: RecallDelivery;
+
+  /** withJudge で平坦化（内省は judge オブジェクトを参照しない） */
+  reply?: boolean;
+  /** withPersona で設定（言語野用） */
+  persona?: string;
+
+  judge?: JudgeOutput;
+  action: ActionOutcome;
+  speech?: string | null;
+};
+
+export type CreateTurnContextInput = {
+  turnId: string;
+  state: AgentState;
+  trigger: TurnTrigger;
+  dialogue: DialogueFormatOptions;
+  recentTurns: readonly ConversationTurn[];
+  recalledEpisodes: RecalledEpisode[];
+  now?: Date;
+  timeZone?: string;
+};
+
+function partnerUtteranceLine(
+  trigger: TurnTrigger,
+  dialogue: DialogueFormatOptions,
+): string {
+  if (trigger.type === "user_message") {
+    const name = dialogue.resolveUserDisplayName(trigger.speakerId);
+    return `${name}: ${trigger.content}`;
+  }
+  return "（ハートビート・相手の発話なし）";
+}
+
+function priorTurnsFromRecent(
+  recentTurns: readonly ConversationTurn[],
+  trigger: TurnTrigger,
+): ConversationTurn[] {
+  if (trigger.type !== "user_message" || recentTurns.length === 0) {
+    return [...recentTurns];
+  }
+  const last = recentTurns[recentTurns.length - 1];
+  if (last.role === "user" && last.content === trigger.content) {
+    return recentTurns.slice(0, -1) as ConversationTurn[];
+  }
+  return [...recentTurns];
+}
+
+export function createTurnContext(input: CreateTurnContextInput): TurnContext {
+  const clock = buildContextClock(input.now, input.timeZone);
+  return {
+    turnId: input.turnId,
+    state: input.state,
+    executedAt: clock.executedAt,
+    currentDateTime: clock.currentDateTime,
+    trigger: input.trigger,
+    dialogue: input.dialogue,
+    partnerUtteranceLine: partnerUtteranceLine(input.trigger, input.dialogue),
+    priorTurns: priorTurnsFromRecent(input.recentTurns, input.trigger),
+    recalledEpisodes: [...input.recalledEpisodes],
+    recallDelivery: "full",
+    action: { attempted: false },
+  };
+}
+
+export function withJudge(ctx: TurnContext, judge: JudgeOutput): TurnContext {
+  return { ...ctx, judge, reply: judge.REPLY };
+}
+
+export function withAction(
+  ctx: TurnContext,
+  action: ActionOutcome,
+): TurnContext {
+  let recallDelivery = ctx.recallDelivery;
+  if (
+    action.attempted &&
+    action.kind === "recall" &&
+    action.status === "succeeded"
+  ) {
+    recallDelivery = "omit";
+  }
+  return { ...ctx, action, recallDelivery };
+}
+
+export function withPersona(ctx: TurnContext, persona: string): TurnContext {
+  return { ...ctx, persona };
+}
+
+export function withSpeech(
+  ctx: TurnContext,
+  speech: string | null,
+): TurnContext {
+  return { ...ctx, speech };
+}
+
+/** ジャッジ向けの作業記憶チャンネル（相手発話＋それ以前） */
+export function formatWorkingMemoryChannel(ctx: TurnContext): string {
+  if (ctx.priorDialogueChannel !== undefined) {
+    const prior = ctx.priorDialogueChannel.trim();
+    if (!prior) {
+      return ctx.partnerUtteranceLine;
+    }
+    return `${prior}\n\n${ctx.partnerUtteranceLine}`;
+  }
+  const turns: ConversationTurn[] = [
+    ...ctx.priorTurns,
+    ...(ctx.trigger.type === "user_message"
+      ? [
+          {
+            role: "user" as const,
+            speakerId: ctx.trigger.speakerId,
+            content: ctx.trigger.content,
+          },
+        ]
+      : []),
+  ];
+  return formatWorkingMemoryDialogue(turns, ctx.dialogue);
+}
+
+export function formatPriorDialogue(ctx: TurnContext): string {
+  if (ctx.priorDialogueChannel !== undefined) {
+    return ctx.priorDialogueChannel.trim() || "（このターンの相手発話より前はまだない）";
+  }
+  if (ctx.priorTurns.length === 0) {
+    return "（このターンの相手発話より前はまだない）";
+  }
+  return ctx.priorTurns
+    .map((t) => formatDialogueTurn(t, ctx.dialogue))
+    .join("\n\n");
+}
+
+export function formatRecalledEpisodes(
+  ctx: TurnContext,
+  delivery: RecallDelivery = ctx.recallDelivery,
+): string[] {
+  if (delivery === "omit" || ctx.recalledEpisodes.length === 0) {
+    return [];
+  }
+  return ctx.recalledEpisodes.map((e) => e.presented);
+}
+
+export function formatRecalledEpisodeMeta(ctx: TurnContext) {
+  return ctx.recalledEpisodes.map((e) => ({
+    relevance: e.relevance,
+    presentation: e.presentation,
+  }));
+}
+
+/** 全ロールが参照する記憶スナップショット */
+export function memorySnapshot(ctx: TurnContext) {
+  return {
+    state: ctx.state,
+    executedAt: ctx.executedAt,
+    currentDateTime: ctx.currentDateTime,
+    partnerUtterance: ctx.partnerUtteranceLine,
+    priorDialogue: formatPriorDialogue(ctx),
+    workingMemory: formatWorkingMemoryChannel(ctx),
+    recalledEpisodes: formatRecalledEpisodes(ctx),
+    recalledMeta: formatRecalledEpisodeMeta(ctx),
+    recallDelivery: ctx.recallDelivery,
+  };
+}
+
+export function renderJudgeUserPayload(ctx: TurnContext): string {
+  return JSON.stringify(
+    {
+      state: ctx.state,
+      trigger: ctx.trigger,
+      context: memorySnapshot(ctx),
+    },
+    null,
+    2,
+  );
+}
+
+function appendRecalledEpisodes(parts: string[], ctx: TurnContext): void {
+  const recalled = formatRecalledEpisodes(ctx);
+  if (recalled.length === 0) return;
+
+  parts.push(
+    "",
+    "## 背景の記憶（口に出さない・参考のみ）",
+    "（これは過去の内省。ユーザーには見せていない。口調の台本として使わない）",
+    ...ctx.recalledEpisodes.map((ep, i) => {
+      const tag =
+        ep.presentation === "vague"
+          ? "（おぼろげ）"
+          : ep.presentation === "summarize"
+            ? "（要約）"
+            : "";
+      return `${i + 1}. ${tag}${ep.presented}`;
+    }),
+  );
+}
+
+function lastUserTurn(
+  turns: readonly ConversationTurn[],
+): ConversationTurn | undefined {
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].role === "user") return turns[i];
+  }
+  return undefined;
+}
+
+export function renderLanguageUserContent(ctx: TurnContext): string {
+  const snap = memorySnapshot(ctx);
+
+  if (ctx.trigger.type === "heartbeat") {
+    const pending = lastUserTurn(ctx.priorTurns);
+    const pendingLine = pending
+      ? `${ctx.dialogue.resolveUserDisplayName(pending.speakerId ?? "user")}: ${pending.content}`
+      : "（直近のユーザー依頼は見当たらない）";
+
+    const parts: string[] = [
+      `（状況: ${snap.state} / ${snap.currentDateTime} / ハートビート・相手なし）`,
+      "",
+      "## 未完了の依頼",
+      pendingLine,
+      "",
+      "## このターンで起きたこと",
+      formatActionForLanguage(ctx.action),
+      "",
+      "## 直近の会話と独り言",
+      snap.priorDialogue,
+    ];
+
+    appendRecalledEpisodes(parts, ctx);
+    return parts.join("\n");
+  }
+
+  const partnerName = ctx.dialogue.resolveUserDisplayName(
+    ctx.trigger.speakerId,
+  );
+
+  const parts: string[] = [
+    `（状況: ${snap.state} / ${snap.currentDateTime} / 相手: ${partnerName}）`,
+    "",
+    `## ${partnerName}の発話（このターン）`,
+    snap.partnerUtterance,
+    "",
+    "## このターンで起きたこと",
+    formatActionForLanguage(ctx.action),
+    "",
+    "## 直近の会話",
+    snap.priorDialogue,
+  ];
+
+  appendRecalledEpisodes(parts, ctx);
+  return parts.join("\n");
+}
+
+export function renderIntrospectionPrompt(ctx: TurnContext): string {
+  const reply = ctx.reply ?? false;
+  const speechBlock = ctx.speech?.trim()
+    ? ctx.speech
+    : reply
+      ? ""
+      : silenceLine();
+
+  const parts = [
+    `（状況: ${ctx.state} / ${ctx.currentDateTime}）`,
+    "",
+    "【直近の会話】",
+    formatWorkingMemoryChannel(ctx),
+    "",
+    "【いま自分が言ったこと】",
+    speechBlock,
+  ];
+
+  if (ctx.action.attempted) {
+    const label = actionLabelJa(ctx.action.kind);
+    parts.push(
+      "",
+      "【行動】",
+      `やろうとしたこと: ${label} — ${ctx.action.intent}`,
+      formatActionForIntrospection(ctx.action),
+    );
+  }
+
+  return parts.join("\n");
+}
+
+/** preprocess / verbose 用のトークン見積もり */
+export function serializeMemoryForBudget(ctx: TurnContext): string {
+  return JSON.stringify(memorySnapshot(ctx));
+}
+
+export function redactTurnContextForLog(
+  ctx: TurnContext,
+): Omit<
+  TurnContext,
+  "executedAt" | "currentDateTime" | "dialogue" | "trigger"
+> & {
+  dateTime: string;
+  trigger: TurnTrigger;
+} {
+  const {
+    executedAt: _e,
+    currentDateTime: _c,
+    dialogue: _d,
+    ...rest
+  } = ctx;
+  return { ...rest, dateTime: "(コンテキスト内のみ)", trigger: ctx.trigger };
+}

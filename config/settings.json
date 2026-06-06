@@ -1,0 +1,15 @@
+{
+  "workingMemoryTurns": 20,
+  "contextTokenBudget": 6000,
+  "episodeRecallTopK": 3,
+  "recallDistance": {
+    "fullMax": 0.55,
+    "summarizeMax": 0.72,
+    "vagueMax": 0.85
+  },
+  "chatModel": "qwen3.6:35b-a3b",
+  "embedModel": "nomic-embed-text:latest",
+  "ollamaHost": "http://192.168.16.1:11434",
+  "ollamaThink": false,
+  "timeZone": "Asia/Tokyo"
+}

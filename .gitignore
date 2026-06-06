@@ -1,0 +1,8 @@
+node_modules/
+dist/
+data/lancedb/
+data/state.json
+data/notes/*.md
+!data/notes/.gitkeep
+.env
+*.log

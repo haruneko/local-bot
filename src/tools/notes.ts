@@ -1,0 +1,110 @@
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+
+export const NOTES_DIR = path.join(process.cwd(), "data", "notes");
+
+export type WriteNoteArgs = {
+  filename: string;
+  content: string;
+  append?: boolean;
+};
+
+export type ReadNoteArgs = {
+  filename: string;
+};
+
+export function defaultNoteFilename(date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `note-${y}-${m}-${d}.md`;
+}
+
+export function slugifyFilename(name: string): string {
+  const base = name
+    .trim()
+    .replace(/[^\w\u3040-\u30ff\u4e00-\u9fff.-]+/gu, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const stem = base || "memo";
+  return stem.endsWith(".md") ? stem : `${stem}.md`;
+}
+
+export function safeFilename(name: string): string | null {
+  const trimmed = name.trim();
+  const base = path.basename(trimmed);
+  if (!base || base !== trimmed.replace(/[/\\]/g, "") || base.includes("..")) {
+    return null;
+  }
+  return base;
+}
+
+export function ensureMdExtension(filename: string): string {
+  return filename.endsWith(".md") ? filename : `${filename}.md`;
+}
+
+export function pickString(
+  args: Record<string, unknown>,
+  keys: string[],
+): string | undefined {
+  for (const key of keys) {
+    const v = args[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return undefined;
+}
+
+export function normalizeWriteArgs(
+  raw: Record<string, unknown>,
+  fallbackContent?: string,
+): WriteNoteArgs | null {
+  const content =
+    pickString(raw, ["content", "body", "text", "note", "message"]) ??
+    fallbackContent?.trim();
+  if (!content) return null;
+
+  let filename =
+    pickString(raw, ["filename", "file", "name", "path"]) ??
+    defaultNoteFilename();
+  filename = ensureMdExtension(filename);
+  let safe = safeFilename(filename);
+  if (!safe) safe = slugifyFilename(filename);
+
+  const append =
+    raw.append === true ||
+    pickString(raw, ["mode"]) === "append" ||
+    raw.append === "true";
+
+  return { filename: safe, content, append: append || undefined };
+}
+
+export function normalizeReadArgs(
+  raw: Record<string, unknown>,
+): ReadNoteArgs | null {
+  const filename = pickString(raw, ["filename", "file", "name", "path"]);
+  if (!filename) return null;
+  const withMd = ensureMdExtension(filename);
+  const safe = safeFilename(withMd) ?? slugifyFilename(withMd);
+  return { filename: safe };
+}
+
+export async function readNoteContent(filename: string): Promise<string | null> {
+  const safe = safeFilename(filename) ?? slugifyFilename(filename);
+  try {
+    return await readFile(path.join(NOTES_DIR, safe), "utf8");
+  } catch {
+    return null;
+  }
+}
+
+export async function listNoteFilenames(): Promise<string[]> {
+  try {
+    const entries = await readdir(NOTES_DIR, { withFileTypes: true });
+    return entries
+      .filter((e) => e.isFile() && !e.name.startsWith("."))
+      .map((e) => e.name)
+      .sort();
+  } catch {
+    return [];
+  }
+}

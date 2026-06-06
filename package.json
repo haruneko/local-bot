@@ -1,0 +1,27 @@
+{
+  "name": "local-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli/main.ts",
+    "start": "tsx src/cli/main.ts",
+    "heartbeat": "tsx src/cli/heartbeat.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke": "tsx scripts/smoke-ollama.ts"
+  },
+  "dependencies": {
+    "@lancedb/lancedb": "^0.22.0",
+    "ollama": "^0.5.18",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.24.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
