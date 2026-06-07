@@ -225,9 +225,10 @@ describe("TurnOrchestrator", () => {
       speakerId: "user_001",
     });
 
-    const judgePayload = llm.calls[0]!.messages[1]!.content;
-    expect(judgePayload).toContain("夏目漱石");
-    expect(judgePayload).toContain("semanticFacts");
+    // 新形式: 意味記憶は system (messages[0]) に含まれる
+    const judgeSystem = llm.calls[0]!.messages[0]!.content;
+    expect(judgeSystem).toContain("夏目漱石");
+    expect(judgeSystem).toContain("意味記憶");
   });
 
   it("updates inner state after introspection and persists to session", async () => {
@@ -320,8 +321,9 @@ describe("TurnOrchestrator", () => {
       speakerId: "user_001",
     });
 
-    const secondJudge = llm.calls[4]!.messages[1].content;
-    expect(secondJudge).toContain("古い内省");
-    expect(secondJudge).not.toContain("直近の内省");
+    // 新形式: 想起エピソードは system (messages[0]) に含まれる
+    const secondJudgeSystem = llm.calls[4]!.messages[0].content;
+    expect(secondJudgeSystem).toContain("古い内省");
+    expect(secondJudgeSystem).not.toContain("直近の内省");
   });
 });

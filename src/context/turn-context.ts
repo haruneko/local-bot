@@ -19,6 +19,7 @@ import {
 } from "./dialogue.js";
 import type { RecalledEpisode } from "../recall/types.js";
 import type { SemanticFactView } from "../recall/semantic-present.js";
+import type { ChatMessage } from "../llm/types.js";
 
 export type { RecalledEpisode } from "../recall/types.js";
 export type { SemanticFactView } from "../recall/semantic-present.js";
@@ -382,4 +383,52 @@ export function redactTurnContextForLog(
     ...rest
   } = ctx;
   return { ...rest, dateTime: "(コンテキスト内のみ)", trigger: ctx.trigger };
+}
+
+/**
+ * priorTurns を実際の ChatMessage ターンに変換する。
+ * - monologue（ハートビート独り言）はスキップ
+ * - 先頭の孤立 assistant ターン（user より前）はスキップ
+ */
+export function buildConversationTurns(ctx: TurnContext): ChatMessage[] {
+  const messages: ChatMessage[] = [];
+  let firstUserSeen = false;
+  for (const turn of ctx.priorTurns) {
+    if (turn.channel === "monologue") continue;
+    if (!firstUserSeen && turn.role === "assistant") continue;
+    if (turn.role === "user") firstUserSeen = true;
+    if (turn.role === "user") {
+      const name = ctx.dialogue.resolveUserDisplayName(turn.speakerId ?? "");
+      messages.push({ role: "user", content: `${name}: ${turn.content}` });
+    } else {
+      messages.push({ role: "assistant", content: turn.content });
+    }
+  }
+  return messages;
+}
+
+/** ジャッジの system メッセージに追記するコンテキスト部分（状態・内心・想起・意味記憶） */
+export function buildJudgeContextSuffix(ctx: TurnContext): string {
+  const parts: string[] = ["", `状態: ${ctx.state}`, `日時: ${ctx.currentDateTime}`];
+  if (ctx.innerState.trim()) {
+    parts.push("", "## 内心", ctx.innerState);
+  }
+  const recalled = formatRecalledEpisodes(ctx);
+  if (recalled.length > 0) {
+    parts.push("", "## 想起（参考）", ...recalled.map((e, i) => `${i + 1}. ${e}`));
+  }
+  const semantic = formatSemanticFacts(ctx);
+  if (semantic.length > 0) {
+    parts.push("", "## 意味記憶", ...semantic.map((f, i) => `${i + 1}. ${f}`));
+  }
+  return parts.join("\n");
+}
+
+/** 言語野の system メッセージに追記するコンテキスト部分（内心・意味記憶・背景の記憶） */
+export function buildLanguageContextSuffix(ctx: TurnContext): string {
+  const parts: string[] = [];
+  appendInnerState(parts, ctx);
+  appendSemanticFacts(parts, ctx);
+  appendRecalledEpisodes(parts, ctx);
+  return parts.join("\n");
 }

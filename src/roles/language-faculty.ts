@@ -1,10 +1,15 @@
 import type { TurnContext } from "../context/turn-context.js";
-import { renderLanguageUserContent } from "../context/turn-context.js";
+import {
+  buildConversationTurns,
+  buildLanguageContextSuffix,
+  renderLanguageUserContent,
+} from "../context/turn-context.js";
 import {
   LANGUAGE_HEARTBEAT_SYSTEM_PREFIX,
   LANGUAGE_SYSTEM_PREFIX,
 } from "../prompts/roles.js";
-import type { LlmClient } from "../llm/types.js";
+import type { ChatMessage, LlmClient } from "../llm/types.js";
+import { formatActionForLanguage } from "../action/present.js";
 
 export type GenerateLanguageOptions = {
   persona: string;
@@ -27,6 +32,38 @@ export async function generateLanguageText(
     ],
     { temperature: options.temperature ?? 0.7 },
   );
+}
+
+function buildLanguageDialogueMessages(
+  ctx: TurnContext,
+  systemPrefix: string,
+  persona: string,
+): ChatMessage[] {
+  const partnerName = ctx.dialogue.resolveUserDisplayName(
+    ctx.trigger.type === "user_message" ? ctx.trigger.speakerId : "",
+  );
+  const situationLine = `\n\n状況: ${ctx.state} / ${ctx.currentDateTime} / 相手: ${partnerName}`;
+  const systemContent =
+    `${systemPrefix}\n\n## キャラクタールール\n${persona}` +
+    situationLine +
+    buildLanguageContextSuffix(ctx);
+
+  const messages: ChatMessage[] = [
+    { role: "system", content: systemContent },
+    ...buildConversationTurns(ctx),
+  ];
+
+  const triggerLine =
+    ctx.trigger.type === "user_message"
+      ? `${partnerName}: ${ctx.trigger.content}`
+      : "（ハートビート）";
+  const actionText = formatActionForLanguage(ctx.action);
+  const userContent = actionText
+    ? `${triggerLine}\n\n## このターンで起きたこと\n${actionText}`
+    : triggerLine;
+
+  messages.push({ role: "user", content: userContent });
+  return messages;
 }
 
 export async function generateExpressText(
@@ -59,16 +96,17 @@ export async function generateDialogueSpeech(
   ctx: TurnContext,
 ): Promise<string> {
   const persona = ctx.persona ?? "";
-  const userContent = renderLanguageUserContent(ctx);
-  const systemPrefix =
-    ctx.trigger.type === "heartbeat"
-      ? LANGUAGE_HEARTBEAT_SYSTEM_PREFIX
-      : LANGUAGE_SYSTEM_PREFIX;
 
-  return generateLanguageText(llm, {
-    persona,
-    systemPrefix,
-    userContent,
-    temperature: ctx.trigger.type === "heartbeat" ? 0.6 : 0.8,
-  });
+  if (ctx.trigger.type === "heartbeat") {
+    const userContent = renderLanguageUserContent(ctx);
+    return generateLanguageText(llm, {
+      persona,
+      systemPrefix: LANGUAGE_HEARTBEAT_SYSTEM_PREFIX,
+      userContent,
+      temperature: 0.6,
+    });
+  }
+
+  const messages = buildLanguageDialogueMessages(ctx, LANGUAGE_SYSTEM_PREFIX, persona);
+  return llm.chat(messages, { temperature: 0.8 });
 }
