@@ -132,6 +132,7 @@ export class LanceEpisodeStore implements EpisodeStore {
     queryText: string,
     topK: number,
     excludeTurnIds?: ReadonlySet<string>,
+    filterState?: string,
   ): Promise<EpisodeRecallHit[]> {
     const table = await this.ensureTable();
     const count = await table.countRows();
@@ -139,8 +140,13 @@ export class LanceEpisodeStore implements EpisodeStore {
 
     const excludeSize = excludeTurnIds?.size ?? 0;
     const vector = await this.embedder.embed(queryText || ".");
+    const escaped = filterState?.replace(/'/g, "''") ?? "";
+    const where = filterState
+      ? `deleted = false AND state = '${escaped}'`
+      : "deleted = false";
     const results = await table
       .vectorSearch(vector)
+      .where(where)
       .limit(Math.max(topK + excludeSize, 1) * 2)
       .toArray();
     return (results as (EpisodeRow & { _distance?: number })[])
@@ -155,6 +161,7 @@ export class LanceEpisodeStore implements EpisodeStore {
         turnId: r.turnId,
         body: r.body,
         distance: r._distance ?? Number.POSITIVE_INFINITY,
+        timestamp: r.timestamp,
       }));
   }
 

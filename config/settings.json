@@ -1,7 +1,7 @@
 {
-  "workingMemoryTurns": 20,
+  "workingMemoryTurns": 8,
   "contextTokenBudget": 16000,
-  "episodeRecallTopK": 3,
+  "episodeRecallTopK": 6,
   "recencyExclusionTurns": 4,
   "recallDistance": {
     "fullMax": 0.55,
@@ -12,5 +12,7 @@
   "embedModel": "nomic-embed-text:latest",
   "ollamaHost": "http://192.168.16.1:11434",
   "ollamaThink": false,
+  "ollamaNumCtx": 30000,
+  "languageNumPredict": 400,
   "timeZone": "Asia/Tokyo"
 }

@@ -32,6 +32,8 @@ export type TurnContext = {
   state: AgentState;
   executedAt: string;
   currentDateTime: string;
+  /** ターン開始時刻（相対時刻計算用） */
+  now: Date;
   trigger: TurnTrigger;
   dialogue: DialogueFormatOptions;
 
@@ -97,12 +99,14 @@ function priorTurnsFromRecent(
 }
 
 export function createTurnContext(input: CreateTurnContextInput): TurnContext {
-  const clock = buildContextClock(input.now, input.timeZone);
+  const now = input.now ?? new Date();
+  const clock = buildContextClock(now, input.timeZone);
   return {
     turnId: input.turnId,
     state: input.state,
     executedAt: clock.executedAt,
     currentDateTime: clock.currentDateTime,
+    now,
     trigger: input.trigger,
     dialogue: input.dialogue,
     partnerUtteranceLine: partnerUtteranceLine(input.trigger, input.dialogue),
@@ -166,7 +170,7 @@ export function formatWorkingMemoryChannel(ctx: TurnContext): string {
         ]
       : []),
   ];
-  return formatWorkingMemoryDialogue(turns, ctx.dialogue);
+  return formatWorkingMemoryDialogue(turns, ctx.dialogue, ctx.now);
 }
 
 export function formatPriorDialogue(ctx: TurnContext): string {
@@ -177,7 +181,7 @@ export function formatPriorDialogue(ctx: TurnContext): string {
     return "（このターンの相手発話より前はまだない）";
   }
   return ctx.priorTurns
-    .map((t) => formatDialogueTurn(t, ctx.dialogue))
+    .map((t) => formatDialogueTurn(t, ctx.dialogue, ctx.now))
     .join("\n\n");
 }
 

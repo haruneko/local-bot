@@ -21,7 +21,7 @@ import type { LlmClient } from "../llm/types.js";
 import { runJudge } from "../roles/judge.js";
 import { runLanguage as runLanguageRole } from "../roles/language.js";
 import { updateInnerState } from "../roles/inner-state.js";
-import { runIntrospection } from "../roles/introspection.js";
+import { extractEpisodeTags, runIntrospection } from "../roles/introspection.js";
 import { applyNextState } from "../state/log.js";
 import {
   buildRecallQuery,
@@ -61,6 +61,8 @@ export type TurnDeps = {
   recallDistanceThresholds: RecallDistanceThresholds;
   initialInnerState?: string;
   contextTokenBudget: number;
+  /** 言語野の通常応答トークン上限。-1 = 無制限（未設定時は 400） */
+  languageNumPredict?: number;
   timeZone?: string;
   getPersona: () => Promise<string>;
   dialogue: DialogueFormatOptions;
@@ -158,6 +160,7 @@ export class TurnOrchestrator {
       recallQuery,
       this.deps.episodeRecallTopK,
       excludeTurnIds,
+      startState,
     );
     v?.recall(recallQuery, recallHits, Date.now() - recallStart, {
       excludedTurnIds: [...excludeTurnIds],
@@ -255,7 +258,10 @@ export class TurnOrchestrator {
     if (shouldRunLanguage(ctx)) {
       const langStart = Date.now();
       ctx = withPersona(ctx, await this.deps.getPersona());
-      ctx = withSpeech(ctx, await runLanguageRole(this.deps.llm, ctx));
+      ctx = withSpeech(
+        ctx,
+        await runLanguageRole(this.deps.llm, ctx, this.deps.languageNumPredict ?? 400),
+      );
       this.turnContext = ctx;
       v?.languageSpeech(ctx.speech!, Date.now() - langStart);
       if (trigger.type === "user_message") {
@@ -281,11 +287,14 @@ export class TurnOrchestrator {
     const persistEpisode = shouldPersistIntrospection(ctx);
 
     let introspection = "";
+    let tags: string[] = [];
     if (persistEpisode) {
       v?.introspectionPrompt(renderIntrospectionPrompt(ctx));
       const introStart = Date.now();
       introspection = await runIntrospection(this.deps.llm, ctx);
       v?.introspectionBody(introspection, Date.now() - introStart);
+
+      tags = await extractEpisodeTags(this.deps.llm, introspection);
 
       const prevInner = this.innerState;
       const innerStart = Date.now();
@@ -308,7 +317,7 @@ export class TurnOrchestrator {
       const metadata = {
         timestamp: new Date().toISOString(),
         participants,
-        tags: trigger.type === "heartbeat" ? (["heartbeat"] as string[]) : [],
+        tags: trigger.type === "heartbeat" ? ["heartbeat", ...tags] : tags,
         state: startState,
         action: formatActionMeta(ctx.judge!.ACTION),
         source: "introspection" as const,

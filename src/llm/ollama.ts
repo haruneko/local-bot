@@ -7,6 +7,8 @@ export type OllamaClientConfig = {
   model: string;
   /** false で thinking off（Ollama think API） */
   think?: OllamaThinkSetting;
+  /** Ollama num_ctx: コンテキストウィンドウサイズ。未設定時は Ollama デフォルト(2048)のまま */
+  numCtx?: number;
 };
 
 export class OllamaLlmClient implements LlmClient {
@@ -32,6 +34,8 @@ export class OllamaLlmClient implements LlmClient {
       think: this.config.think ?? false,
       options: {
         temperature: options?.temperature ?? 0.7,
+        ...(this.config.numCtx !== undefined && { num_ctx: this.config.numCtx }),
+        ...(options?.numPredict !== undefined && { num_predict: options.numPredict }),
       },
     });
     return response.message.content;

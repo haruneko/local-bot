@@ -11,6 +11,8 @@ export type EpisodeRecallHit = {
   body: string;
   /** ベクトル距離（L2。小さいほど類似） */
   distance: number;
+  /** ISO 8601。時間減衰スコアの計算に使う */
+  timestamp?: string;
 };
 
 export interface EpisodeStore {
@@ -19,6 +21,7 @@ export interface EpisodeStore {
     queryText: string,
     topK: number,
     excludeTurnIds?: ReadonlySet<string>,
+    filterState?: string,
   ): Promise<EpisodeRecallHit[]>;
   /** timestamp 昇順で列挙（sinceIso 以降のみ。省略時は全件） */
   listSince(sinceIso?: string, limit?: number): Promise<EpisodeRecord[]>;
@@ -41,12 +44,14 @@ export class InMemoryEpisodeStore implements EpisodeStore {
     _queryText: string,
     topK: number,
     excludeTurnIds?: ReadonlySet<string>,
+    filterState?: string,
   ): Promise<EpisodeRecallHit[]> {
     const eligible = this.records
       .filter((r) => !this.deletedTurnIds.has(r.metadata.turnId))
       .filter(
         (r) => !excludeTurnIds?.size || !excludeTurnIds.has(r.metadata.turnId),
-      );
+      )
+      .filter((r) => !filterState || r.metadata.state === filterState);
     return eligible
       .slice(-topK)
       .reverse()
@@ -54,6 +59,7 @@ export class InMemoryEpisodeStore implements EpisodeStore {
         turnId: r.metadata.turnId,
         body: r.body,
         distance: IN_MEMORY_FAKE_DISTANCES[i] ?? 1.5,
+        timestamp: r.metadata.timestamp,
       }));
   }
 

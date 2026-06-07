@@ -6,6 +6,8 @@ export type ChatMessage = {
 export type ChatOptions = {
   format?: Record<string, unknown> | "json";
   temperature?: number;
+  /** Ollama num_predict: 生成トークン上限。-1 = 無制限 */
+  numPredict?: number;
 };
 
 export interface LlmClient {

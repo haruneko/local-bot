@@ -10,7 +10,12 @@ export async function runRecall(
 ): Promise<ActionOutcome> {
   const action = input.ctx.judge!.ACTION;
   const query = action.intent.trim() || ".";
-  const hits = await input.episodes.recall(query, input.episodeRecallTopK);
+  const hits = await input.episodes.recall(
+    query,
+    input.episodeRecallTopK,
+    undefined,
+    input.ctx.state,
+  );
 
   if (hits.length === 0) {
     return actionSucceeded(action, "（該当する記憶は見つからなかった）");

@@ -3,6 +3,7 @@ import {
   DEFAULT_RECALL_DISTANCE_THRESHOLDS,
   distanceToRelevance,
   filterRecallByDistance,
+  recencyDecay,
   VAGUE_PRESENTED,
 } from "../src/recall/distance.js";
 
@@ -54,5 +55,31 @@ describe("recall distance filter", () => {
   it("distanceToRelevance returns 0 above vagueMax", () => {
     expect(distanceToRelevance(0.9, 0.85)).toBe(0);
     expect(distanceToRelevance(0.425, 0.85)).toBeCloseTo(0.5, 5);
+  });
+
+  it("recencyDecay: no timestamp returns 1", () => {
+    expect(recencyDecay(undefined)).toBe(1);
+  });
+
+  it("recencyDecay: future timestamp returns 1", () => {
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    expect(recencyDecay(future)).toBe(1);
+  });
+
+  it("recencyDecay: 70 days ≈ 0.5 (half-life)", () => {
+    const now = new Date();
+    const past = new Date(now.getTime() - 70 * 86_400_000).toISOString();
+    expect(recencyDecay(past, now)).toBeCloseTo(0.5, 1);
+  });
+
+  it("older timestamp ranks below newer one at same distance", () => {
+    const now = new Date();
+    const recent = now.toISOString();
+    const old = new Date(now.getTime() - 200 * 86_400_000).toISOString();
+    const result = filterRecallByDistance([
+      { body: "old", distance: 0.4, timestamp: old },
+      { body: "new", distance: 0.4, timestamp: recent },
+    ]);
+    expect(result[0].presented).toBe("new");
   });
 });

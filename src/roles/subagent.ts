@@ -126,6 +126,10 @@ async function executeMcpStep(
   };
 }
 
+function isNetworkError(summary: string): boolean {
+  return /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|に接続できません|-32603/i.test(summary);
+}
+
 function findCatalogTool(
   catalog: readonly CatalogTool[],
   name: string,
@@ -151,6 +155,7 @@ export async function runResearchSubagent(
   let lastContent = "";
   let lastTool = "";
   let lastSummary = "";
+  let lastFailure: { summary: string; content: string } | undefined;
 
   for (let step = 0; step < MAX_SUBAGENT_STEPS; step++) {
     const pick = await runSubagentToolPick(llm, {
@@ -163,6 +168,13 @@ export async function runResearchSubagent(
 
     if (pick.done || !pick.tool) {
       if (lastContent) break;
+      if (lastFailure) {
+        return actionFailed(action, "探索ツールの実行に失敗した", {
+          code: ACTION_ERROR_CODES.TOOL_FAILED,
+          message: lastFailure.summary,
+          detail: lastFailure.content,
+        });
+      }
       return actionSucceeded(
         action,
         pick.reason ?? "探索を完了したが結果がない",
@@ -185,19 +197,33 @@ export async function runResearchSubagent(
     priorSteps.push(
       `${pick.tool}: ${result.ok ? "成功" : "失敗"} — ${result.summary}`,
     );
+
+    if (!result.ok) {
+      // ネットワーク障害（接続不可・タイムアウト等）はクエリ変更で解決しないので即失敗
+      if (isNetworkError(result.summary)) {
+        return actionFailed(action, "探索ツールに接続できない", {
+          code: ACTION_ERROR_CODES.TOOL_FAILED,
+          message: result.summary,
+          detail: result.content,
+        });
+      }
+      lastFailure = { summary: result.summary, content: result.content };
+      continue;
+    }
+
     lastContent = result.content;
     lastTool = pick.tool;
     lastSummary = result.summary;
 
-    if (!result.ok) {
-      return actionFailed(action, "探索ツールの実行に失敗した", {
-        code: ACTION_ERROR_CODES.TOOL_FAILED,
-        message: result.summary,
-        detail: result.content,
-      });
-    }
-
     if (pick.done) break;
+  }
+
+  if (!lastContent) {
+    return actionFailed(action, "探索ツールの実行に失敗した", {
+      code: ACTION_ERROR_CODES.TOOL_FAILED,
+      message: lastFailure?.summary ?? "探索結果が得られなかった",
+      detail: lastFailure?.content,
+    });
   }
 
   return actionSucceeded(action, {

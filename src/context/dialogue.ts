@@ -1,4 +1,5 @@
 import type { ConversationTurn } from "../types.js";
+import { formatRelativeTime } from "../sensor/datetime.js";
 
 /** 作業記憶・コンテキスト上のボット発話ラベル（一人称ではない） */
 export const BOT_SPEAKER_LABEL = "自分";
@@ -10,20 +11,25 @@ export type DialogueFormatOptions = {
 export function formatDialogueTurn(
   turn: ConversationTurn,
   opts: DialogueFormatOptions,
+  now?: Date,
 ): string {
+  const timeLabel = turn.createdAt && now
+    ? ` [${formatRelativeTime(turn.createdAt, now)}]`
+    : "";
   if (turn.role === "user") {
     const name = opts.resolveUserDisplayName(turn.speakerId ?? "user");
-    return `${name}: ${turn.content}`;
+    return `${name}${timeLabel}: ${turn.content}`;
   }
   if (turn.channel === "monologue") {
-    return `${BOT_SPEAKER_LABEL}（独り言）: ${turn.content}`;
+    return `${BOT_SPEAKER_LABEL}（独り言）${timeLabel}: ${turn.content}`;
   }
-  return `${BOT_SPEAKER_LABEL}: ${turn.content}`;
+  return `${BOT_SPEAKER_LABEL}${timeLabel}: ${turn.content}`;
 }
 
 export function formatWorkingMemoryDialogue(
   turns: readonly ConversationTurn[],
   opts: DialogueFormatOptions,
+  now?: Date,
 ): string {
   if (turns.length === 0) return "（まだ会話はない）";
 
@@ -35,6 +41,6 @@ export function formatWorkingMemoryDialogue(
     "",
   ].join("\n");
 
-  const lines = turns.map((t) => formatDialogueTurn(t, opts));
+  const lines = turns.map((t) => formatDialogueTurn(t, opts, now));
   return `${header}${lines.join("\n\n")}`;
 }

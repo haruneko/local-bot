@@ -34,6 +34,19 @@ export async function generateLanguageText(
   );
 }
 
+function collectUniqueSpeakerNames(ctx: TurnContext): string[] {
+  const names = new Map<string, string>();
+  for (const turn of ctx.priorTurns) {
+    if (turn.role === "user" && turn.speakerId) {
+      names.set(turn.speakerId, ctx.dialogue.resolveUserDisplayName(turn.speakerId));
+    }
+  }
+  if (ctx.trigger.type === "user_message") {
+    names.set(ctx.trigger.speakerId, ctx.dialogue.resolveUserDisplayName(ctx.trigger.speakerId));
+  }
+  return [...names.values()];
+}
+
 function buildLanguageDialogueMessages(
   ctx: TurnContext,
   systemPrefix: string,
@@ -42,7 +55,11 @@ function buildLanguageDialogueMessages(
   const partnerName = ctx.dialogue.resolveUserDisplayName(
     ctx.trigger.type === "user_message" ? ctx.trigger.speakerId : "",
   );
-  const situationLine = `\n\n状況: ${ctx.state} / ${ctx.currentDateTime} / 相手: ${partnerName}`;
+  const speakers = collectUniqueSpeakerNames(ctx);
+  const speakerLabel = speakers.length > 1
+    ? `話者: ${speakers.join(", ")}`
+    : `相手: ${partnerName}`;
+  const situationLine = `\n\n状況: ${ctx.state} / ${ctx.currentDateTime} / ${speakerLabel}`;
   const systemContent =
     `${systemPrefix}\n\n## キャラクタールール\n${persona}` +
     situationLine +
@@ -91,9 +108,21 @@ export async function generateExpressText(
   });
 }
 
+function resolveNumPredict(ctx: TurnContext, defaultNumPredict: number): number {
+  if (
+    ctx.action.attempted &&
+    ctx.action.status === "succeeded" &&
+    ctx.action.facts?.kind === "research"
+  ) {
+    return -1;
+  }
+  return defaultNumPredict;
+}
+
 export async function generateDialogueSpeech(
   llm: LlmClient,
   ctx: TurnContext,
+  defaultNumPredict = 400,
 ): Promise<string> {
   const persona = ctx.persona ?? "";
 
@@ -107,6 +136,7 @@ export async function generateDialogueSpeech(
     });
   }
 
+  const numPredict = resolveNumPredict(ctx, defaultNumPredict);
   const messages = buildLanguageDialogueMessages(ctx, LANGUAGE_SYSTEM_PREFIX, persona);
-  return llm.chat(messages, { temperature: 0.8 });
+  return llm.chat(messages, { temperature: 0.8, numPredict });
 }

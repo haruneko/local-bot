@@ -20,6 +20,21 @@ export const DEFAULT_RECALL_DISTANCE_THRESHOLDS: RecallDistanceThresholds = {
   vagueMax: 0.85,
 };
 
+/** 半減期 ~70日。長く使って違和感があれば調整 */
+const RECENCY_DECAY_LAMBDA = 0.01;
+
+/** ISO 8601 → 経過日数に応じた減衰係数 0〜1。timestamp 未指定時は減衰なし（1） */
+export function recencyDecay(
+  timestamp: string | undefined,
+  now = new Date(),
+): number {
+  if (!timestamp) return 1;
+  const ageMs = now.getTime() - Date.parse(timestamp);
+  if (ageMs <= 0) return 1;
+  const ageDays = ageMs / 86_400_000;
+  return Math.exp(-RECENCY_DECAY_LAMBDA * ageDays);
+}
+
 function mechanicalSummarize(text: string): string {
   const t = text.trim();
   if (!t) return "（内容不明）";
@@ -72,7 +87,9 @@ export function classifyRecallHits(
       body: hit.body,
       distance: hit.distance,
       presentation,
-      relevance: distanceToRelevance(hit.distance, thresholds.vagueMax),
+      relevance:
+        distanceToRelevance(hit.distance, thresholds.vagueMax) *
+        recencyDecay(hit.timestamp),
     });
   }
 
@@ -107,7 +124,9 @@ export function filterRecallByDistance(
 
     result.push({
       presented,
-      relevance: distanceToRelevance(hit.distance, thresholds.vagueMax),
+      relevance:
+        distanceToRelevance(hit.distance, thresholds.vagueMax) *
+        recencyDecay(hit.timestamp),
       presentation: validPresentation,
     });
   }

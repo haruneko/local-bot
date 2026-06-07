@@ -39,6 +39,7 @@ describe("TurnOrchestrator", () => {
       judgeJson,
       "ボットの返答です",
       "内省テキストです",
+      '{"tags":["会話"]}',
       "少し嬉しい気分",
     ]);
     const episodes = new InMemoryEpisodeStore();
@@ -69,7 +70,7 @@ describe("TurnOrchestrator", () => {
       REPLY: false,
       NEXT_STATE: "静穏",
     });
-    const llm = new FakeLlmClient([judgeJson, "内省のみ", "静かな気持ち"]);
+    const llm = new FakeLlmClient([judgeJson, "内省のみ", '{"tags":["会話"]}', "静かな気持ち"]);
     const wm = new WorkingMemory(20);
     const orch = new TurnOrchestrator(
       "対話",
@@ -83,7 +84,7 @@ describe("TurnOrchestrator", () => {
     });
 
     expect(result.speech).toBeNull();
-    expect(llm.calls).toHaveLength(3);
+    expect(llm.calls).toHaveLength(4);
     const introCall = llm.calls[1];
     expect(introCall.messages[1].content).toContain(
       "（返答はしなかった）",
@@ -122,6 +123,7 @@ describe("TurnOrchestrator", () => {
       judgeJson,
       "独り言セリフ",
       "内省",
+      '{"tags":["日常"]}',
       "穏やかな気分",
     ]);
     const wm = new WorkingMemory(20, [
@@ -135,8 +137,8 @@ describe("TurnOrchestrator", () => {
     await orch.run({ type: "heartbeat" });
 
     expect(wm.getRecent()).toEqual([
-      { role: "user", speakerId: "user_001", content: "前の質問" },
-      { role: "assistant", channel: "monologue", content: "独り言セリフ" },
+      expect.objectContaining({ role: "user", speakerId: "user_001", content: "前の質問" }),
+      expect.objectContaining({ role: "assistant", channel: "monologue", content: "独り言セリフ" }),
     ]);
   });
 
@@ -150,6 +152,7 @@ describe("TurnOrchestrator", () => {
       judgeJson,
       "CONCEPT.md は設計書だった。次は別メモも見よう",
       "内省テキスト",
+      '{"tags":["メモ"]}',
       "少し満足した気分",
     ]);
     const wm = new WorkingMemory(20, [
@@ -180,12 +183,14 @@ describe("TurnOrchestrator", () => {
     const result = await orch.run({ type: "heartbeat" });
 
     expect(result.speech).toBe("CONCEPT.md は設計書だった。次は別メモも見よう");
-    expect(llm.calls).toHaveLength(4);
-    expect(wm.getRecent()[1]).toEqual({
-      role: "assistant",
-      channel: "monologue",
-      content: "CONCEPT.md は設計書だった。次は別メモも見よう",
-    });
+    expect(llm.calls).toHaveLength(5);
+    expect(wm.getRecent()[1]).toEqual(
+      expect.objectContaining({
+        role: "assistant",
+        channel: "monologue",
+        content: "CONCEPT.md は設計書だった。次は別メモも見よう",
+      }),
+    );
     expect(result.episodeSaved).toBe(true);
   });
 
@@ -205,6 +210,7 @@ describe("TurnOrchestrator", () => {
       judgeJson,
       "夏目漱石の話ですね",
       "内省",
+      '{"tags":["読書"]}',
       "読書の話で少し嬉しい",
     ]);
 
@@ -241,6 +247,7 @@ describe("TurnOrchestrator", () => {
       judgeJson,
       "返答",
       "内省本文",
+      '{"tags":["会話"]}',
       "さっき二度言っちゃった、ちょっと恥ずかしい",
     ]);
     let savedInner = "";
@@ -266,7 +273,7 @@ describe("TurnOrchestrator", () => {
       "さっき二度言っちゃった、ちょっと恥ずかしい",
     );
     expect(savedInner).toBe("さっき二度言っちゃった、ちょっと恥ずかしい");
-    expect(llm.calls[3]!.messages[0].content).toContain("前の内心");
+    expect(llm.calls[4]!.messages[0].content).toContain("前の内心");
   });
 
   it("excludes recent episode turnIds from recall", async () => {
@@ -294,10 +301,12 @@ describe("TurnOrchestrator", () => {
       judgeJson,
       "返答1",
       "直近の内省",
+      '{"tags":["会話"]}',
       "内心1",
       judgeJson,
       "返答2",
       "内省2",
+      '{"tags":["会話"]}',
       "内心2",
     ]);
     const orch = new TurnOrchestrator(
@@ -322,7 +331,7 @@ describe("TurnOrchestrator", () => {
     });
 
     // 新形式: 想起エピソードは system (messages[0]) に含まれる
-    const secondJudgeSystem = llm.calls[4]!.messages[0].content;
+    const secondJudgeSystem = llm.calls[5]!.messages[0].content;
     expect(secondJudgeSystem).toContain("古い内省");
     expect(secondJudgeSystem).not.toContain("直近の内省");
   });

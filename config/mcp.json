@@ -2,11 +2,11 @@
   "expressDryRun": true,
   "servers": [
     {
-      "name": "research-stubs",
-      "enabled": false,
+      "name": "research",
+      "enabled": true,
       "transport": "stdio",
       "command": "node",
-      "args": ["scripts/mcp-research-stub.mjs"],
+      "args": ["scripts/mcp-research.mjs"],
       "categories": ["research"]
     },
     {

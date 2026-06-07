@@ -29,6 +29,7 @@ function isConversationTurn(value: unknown): value is ConversationTurn {
   ) {
     return false;
   }
+  if (t.createdAt !== undefined && typeof t.createdAt !== "string") return false;
   return true;
 }
 

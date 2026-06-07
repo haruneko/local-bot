@@ -25,6 +25,10 @@ export type AppSettings = {
   ollamaHost: string;
   /** 未指定時は false（thinking off） */
   ollamaThink?: OllamaThinkSetting;
+  /** Ollama num_ctx: コンテキストウィンドウサイズ（未設定時は Ollama デフォルト 2048） */
+  ollamaNumCtx?: number;
+  /** 言語野の通常応答の num_predict 上限。-1 = 無制限（未設定時は 400） */
+  languageNumPredict?: number;
   /** コンテキスト日時のタイムゾーン（IANA） */
   timeZone?: string;
 };

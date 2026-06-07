@@ -33,6 +33,8 @@ export type ConversationTurn = {
   content: string;
   /** 省略時は dialogue（ユーザー向け）。heartbeat 独り言は monologue */
   channel?: "dialogue" | "monologue";
+  /** append 時に自動付与される ISO 8601 タイムスタンプ */
+  createdAt?: string;
 };
 
 export type EpisodeSource = "remember" | "introspection";

@@ -89,6 +89,7 @@ export async function createApp(
     host,
     model: settings.chatModel,
     think,
+    numCtx: settings.ollamaNumCtx,
   });
   if (verboseLogger) {
     llm = withVerboseLlm(llm, verboseLogger);
@@ -149,6 +150,7 @@ export async function createApp(
     recallDistanceThresholds: resolveRecallDistanceThresholds(settings),
     initialInnerState: session.innerState,
     contextTokenBudget: settings.contextTokenBudget,
+    languageNumPredict: settings.languageNumPredict ?? 400,
     timeZone: settings.timeZone ?? "Asia/Tokyo",
     getPersona: async () => personaText,
     dialogue: { resolveUserDisplayName },

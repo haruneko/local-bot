@@ -12,11 +12,16 @@
     "dream": "tsx src/cli/dream.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "smoke": "tsx scripts/smoke-ollama.ts"
+    "slack": "tsx src/cli/slack.ts",
+    "smoke": "tsx scripts/smoke-ollama.ts",
+    "searxng:up": "sudo docker compose up -d searxng",
+    "searxng:down": "sudo docker compose down searxng",
+    "searxng:logs": "sudo docker compose logs -f searxng"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.22.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@slack/bolt": "^4.7.3",
     "ollama": "^0.5.18",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.24.6"

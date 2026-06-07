@@ -10,6 +10,7 @@ import {
   loadDreamState,
 } from "../state/dream-state.js";
 import { resolveDreamMinEpisodes } from "../config/settings.js";
+import { FakeMcpToolProvider } from "../mcp/fake.js";
 
 async function main(): Promise<void> {
   const args = parseDreamArgs(process.argv.slice(2));
@@ -18,6 +19,7 @@ async function main(): Promise<void> {
     speakerId: args.speakerId,
     memory: args.memory,
     verbose: args.verbose,
+    mcp: new FakeMcpToolProvider(),
   });
 
   const seedRequested = args.seedPath !== undefined;
@@ -69,7 +71,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
+main().then(() => process.exit(0)).catch((err) => {
   console.error(err);
   process.exit(1);
 });

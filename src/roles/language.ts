@@ -5,6 +5,7 @@ import { generateDialogueSpeech } from "./language-faculty.js";
 export async function runLanguage(
   llm: LlmClient,
   ctx: TurnContext,
+  defaultNumPredict = 400,
 ): Promise<string> {
-  return generateDialogueSpeech(llm, ctx);
+  return generateDialogueSpeech(llm, ctx, defaultNumPredict);
 }

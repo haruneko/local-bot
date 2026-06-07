@@ -1,3 +1,13 @@
+export function formatRelativeTime(createdAt: string, now: Date): string {
+  const diffMs = now.getTime() - Date.parse(createdAt);
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 2) return "さっき";
+  if (mins < 60) return `${mins}分前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}時間前`;
+  return `${Math.floor(hours / 24)}日前`;
+}
+
 /** ターン実行時点の日時（揮発コンテキスト用） */
 export type ContextClock = {
   /** ISO8601（機械用） */

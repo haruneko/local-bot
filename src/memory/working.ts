@@ -38,7 +38,10 @@ export class WorkingMemory {
   append(turn: ConversationTurn): void {
     const last = this.turns[this.turns.length - 1];
     if (last && isSameTurn(last, turn)) return;
-    this.turns.push(turn);
+    const withTs: ConversationTurn = turn.createdAt
+      ? turn
+      : { ...turn, createdAt: new Date().toISOString() };
+    this.turns.push(withTs);
     if (this.turns.length > this.maxTurns) {
       this.turns = this.turns.slice(-this.maxTurns);
     }
