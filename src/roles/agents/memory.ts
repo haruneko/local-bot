@@ -47,23 +47,27 @@ export async function runMemorySubagent(
   pickedTool?: string,
 ): Promise<ActionOutcome> {
   const action = input.ctx.judge!.ACTION;
-  const toolName =
-    pickedTool ??
-    (
-      await runSubagentToolPick(llm, {
-        category: "memory",
-        intent: action.intent,
-        catalog: (input.toolCatalog ?? []).filter((t) => t.category === "memory"),
-        ctx: input.ctx,
-      })
-    ).tool;
+  let toolName = pickedTool;
+  if (!toolName) {
+    const pick = await runSubagentToolPick(llm, {
+      category: "memory",
+      intent: action.intent,
+      catalog: (input.toolCatalog ?? []).filter((t) => t.category === "memory"),
+      ctx: input.ctx,
+    });
+    if (pick.done || !pick.tool) {
+      return actionFailed(action, "記憶ツールを選べなかった", {
+        code: ACTION_ERROR_CODES.PICK_FAILED,
+        message: pick.reason ?? "サブエージェントがツールを返さなかった",
+      });
+    }
+    toolName = pick.tool;
+  }
 
-  if (!toolName || !isMemoryToolKind(toolName)) {
+  if (!isMemoryToolKind(toolName)) {
     return actionFailed(action, "記憶ツールを選べなかった", {
       code: ACTION_ERROR_CODES.PICK_FAILED,
-      message: toolName
-        ? `未知の記憶ツール: ${toolName}`
-        : "サブエージェントがツールを返さなかった",
+      message: `未知の記憶ツール: ${toolName}`,
     });
   }
 

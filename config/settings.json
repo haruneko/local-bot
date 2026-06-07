@@ -1,6 +1,6 @@
 {
   "workingMemoryTurns": 20,
-  "contextTokenBudget": 6000,
+  "contextTokenBudget": 16000,
   "episodeRecallTopK": 3,
   "recencyExclusionTurns": 4,
   "recallDistance": {

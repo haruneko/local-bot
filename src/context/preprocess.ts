@@ -1,11 +1,10 @@
 import { SUMMARIZE_SYSTEM } from "../prompts/roles.js";
 import type { LlmClient } from "../llm/types.js";
 import {
-  formatWorkingMemoryChannel,
   serializeMemoryForBudget,
   type TurnContext,
 } from "./turn-context.js";
-import { estimateTokens, exceedsTokenBudget } from "../util/tokens.js";
+import { exceedsTokenBudget } from "../util/tokens.js";
 
 export async function fitTurnContext(
   llm: LlmClient,
@@ -17,39 +16,44 @@ export async function fitTurnContext(
     return draft;
   }
 
-  const [priorDialogueChannel, recalledText] = await Promise.all([
-    summarizeChannel(
-      llm,
-      "作業記憶",
-      formatWorkingMemoryChannel(draft),
-    ),
-    summarizeChannel(
-      llm,
-      "想起エピソード",
-      draft.recalledEpisodes.map((e) => e.presented).join("\n---\n"),
-    ),
-  ]);
+  // Step 1: 作業記憶の古いターンを先頭から削る（LLM 要約しない）
+  let ctx: TurnContext = draft;
+  while (
+    ctx.priorTurns.length > 0 &&
+    exceedsTokenBudget(serializeMemoryForBudget(ctx), tokenBudget)
+  ) {
+    ctx = { ...ctx, priorTurns: ctx.priorTurns.slice(1) };
+  }
+  if (!exceedsTokenBudget(serializeMemoryForBudget(ctx), tokenBudget)) {
+    return ctx;
+  }
+
+  // Step 2: それでも足りなければエピソード記憶を LLM 要約（最終手段）
+  const recalledText = await summarizeChannel(
+    llm,
+    "想起エピソード",
+    ctx.recalledEpisodes.map((e) => e.presented).join("\n---\n"),
+  );
 
   const semanticFacts =
-    draft.semanticFacts.length > 3
-      ? draft.semanticFacts
+    ctx.semanticFacts.length > 3
+      ? ctx.semanticFacts
           .slice()
           .sort((a, b) => b.relevance - a.relevance)
           .slice(0, 3)
-      : draft.semanticFacts;
+      : ctx.semanticFacts;
 
   const shrunk: TurnContext = {
-    ...draft,
-    priorDialogueChannel,
+    ...ctx,
     recalledEpisodes: recalledText
       ? [{ presented: recalledText, relevance: 1, presentation: "summarize" as const }]
       : [],
-    recallDelivery: recalledText ? "summarize" : draft.recallDelivery,
+    recallDelivery: recalledText ? "summarize" : ctx.recallDelivery,
     semanticFacts,
   };
 
   if (exceedsTokenBudget(serializeMemoryForBudget(shrunk), tokenBudget)) {
-    return truncateTurnContext(shrunk, tokenBudget);
+    return truncateTurnContext(shrunk);
   }
   return shrunk;
 }
@@ -72,15 +76,10 @@ async function summarizeChannel(
   );
 }
 
-function truncateTurnContext(ctx: TurnContext, budget: number): TurnContext {
-  const targetChars = Math.floor(budget * 3 * 0.9);
-  let prior = ctx.priorDialogueChannel ?? "";
-  if (estimateTokens(prior) > budget / 2) {
-    prior = prior.slice(-targetChars);
-  }
+function truncateTurnContext(ctx: TurnContext): TurnContext {
   return {
     ...ctx,
-    priorDialogueChannel: prior,
+    priorTurns: [],
     recalledEpisodes: ctx.recalledEpisodes.map((e) => ({
       ...e,
       presented:

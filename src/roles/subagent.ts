@@ -56,6 +56,19 @@ export async function runSubagentToolPick(
   let lastFailure: ParseJsonFailure | undefined;
 
   for (let attempt = 0; attempt < 2; attempt++) {
+    const contextLines: string[] = [];
+    const recentTurns = input.ctx.priorTurns.slice(-3);
+    if (recentTurns.length > 0) {
+      contextLines.push("直近の会話:");
+      for (const t of recentTurns) {
+        const speaker = t.role === "user" ? (t.speakerId ?? "相手") : "自分";
+        contextLines.push(`${speaker}: ${t.content}`);
+      }
+    }
+    if (input.ctx.partnerUtteranceLine) {
+      contextLines.push(`現在のターン: ${input.ctx.partnerUtteranceLine}`);
+    }
+
     const raw = await llm.chat(
       [
         { role: "system", content: SUBAGENT_STEP_SYSTEM },
@@ -64,6 +77,7 @@ export async function runSubagentToolPick(
           content: [
             `カテゴリ: ${input.category}`,
             `意図: ${input.intent}`,
+            contextLines.length ? ["", ...contextLines].join("\n") : "",
             "",
             "利用可能なツール:",
             formatCatalogForPrompt(input.catalog),
