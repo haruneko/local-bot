@@ -1,4 +1,5 @@
 import type { EpisodeStore } from "../memory/episode.js";
+import type { MemoIndexStore } from "../memory/memo-index.js";
 import type { TurnContext } from "../context/turn-context.js";
 import type { McpToolProvider } from "../mcp/types.js";
 import type { CatalogTool } from "../tools/catalog.js";
@@ -10,6 +11,7 @@ export type RunActionDeps = {
   mcp?: McpToolProvider;
   toolCatalog?: readonly CatalogTool[];
   expressDryRun?: boolean;
+  memoIndex?: MemoIndexStore;
 };
 
 export type RunActionInput = {

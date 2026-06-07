@@ -7,9 +7,10 @@ import type { ActionOutcome } from "../types.js";
 export async function runRecall(
   llm: LlmClient,
   input: RunActionInput,
+  query?: string,
 ): Promise<ActionOutcome> {
   const action = input.ctx.judge!.ACTION;
-  const query = action.intent.trim() || ".";
+  query = (query ?? action.intent).trim() || ".";
   const hits = await input.episodes.recall(
     query,
     input.episodeRecallTopK,

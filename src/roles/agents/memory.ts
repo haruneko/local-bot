@@ -14,6 +14,65 @@ import { runMemoWrite } from "../memo-write.js";
 import { runMemoRead } from "../memo-read.js";
 import { runSubagentToolPick } from "../subagent.js";
 
+const MAX_RECALL_STEPS = 3;
+
+const RECALL_ONLY_CATALOG = [
+  {
+    name: "recall",
+    description: "LanceDB 記憶から意識的に掘り出す。引数: {query: 検索クエリ（省略時は intent を使う）}",
+    parameters: { type: "object", properties: { query: { type: "string" } } },
+    category: "memory" as const,
+    source: "in-process" as const,
+  },
+];
+
+async function runRecallLoop(
+  llm: LlmClient,
+  input: RunActionInput,
+): Promise<ActionOutcome> {
+  const action = input.ctx.judge!.ACTION;
+  const allBullets: string[] = [];
+  const priorSteps: string[] = [];
+  let currentQuery = action.intent.trim() || ".";
+
+  for (let step = 0; step < MAX_RECALL_STEPS; step++) {
+    const outcome = await runRecall(llm, input, currentQuery);
+
+    if (!outcome.attempted) {
+      return step === 0 ? outcome : actionSucceeded(action, { kind: "recall", bullets: allBullets });
+    }
+
+    if (outcome.status === "succeeded" && outcome.facts?.kind === "recall") {
+      const newBullets = outcome.facts.bullets;
+      allBullets.push(...newBullets);
+      priorSteps.push(
+        `recall("${currentQuery}"): ${newBullets.length}件 — ${newBullets.slice(0, 2).join(" / ")}`,
+      );
+    } else {
+      priorSteps.push(`recall("${currentQuery}"): 0件`);
+    }
+
+    const pick = await runSubagentToolPick(llm, {
+      category: "memory",
+      intent: action.intent,
+      catalog: RECALL_ONLY_CATALOG,
+      ctx: input.ctx,
+      priorSteps,
+    });
+
+    if (pick.done || pick.tool !== "recall") break;
+
+    const nextQuery = String(pick.arguments?.query ?? "").trim();
+    if (!nextQuery || nextQuery === currentQuery) break;
+    currentQuery = nextQuery;
+  }
+
+  if (allBullets.length === 0) {
+    return actionSucceeded(action, "（該当する記憶は見つからなかった）");
+  }
+  return actionSucceeded(action, { kind: "recall", bullets: [...new Set(allBullets)] });
+}
+
 function isMemoryToolKind(name: string): name is MemoryToolKind {
   return (MEMORY_TOOL_KINDS as readonly string[]).includes(name);
 }
@@ -85,7 +144,7 @@ export async function runMemorySubagent(
       outcome = await runRemember(llm, routed);
       break;
     case "recall":
-      outcome = await runRecall(llm, routed);
+      outcome = await runRecallLoop(llm, routed);
       break;
     case "forget":
       outcome = await runForget(llm, routed);

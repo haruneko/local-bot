@@ -11,7 +11,7 @@
     },
     {
       "name": "express-stubs",
-      "enabled": false,
+      "enabled": true,
       "transport": "stdio",
       "command": "node",
       "args": ["scripts/mcp-express-stub.mjs"],

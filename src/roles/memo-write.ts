@@ -98,6 +98,15 @@ export async function runMemoWrite(
       message: result.summary,
     });
   }
+
+  const now = new Date().toISOString();
+  await input.memoIndex?.upsert({
+    path: args.filename,
+    preview: args.content.slice(0, 200),
+    createdAt: now,
+    updatedAt: now,
+  });
+
   return actionSucceeded(action, {
     kind: "memo_write",
     filename: args.filename,

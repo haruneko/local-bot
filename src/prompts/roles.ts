@@ -1,20 +1,28 @@
-export const JUDGE_SYSTEM = `あなたは与えられたコンテキストから何をしたいか判断します。
-ロールプレイ、キャラ口調、説明といったものは不要です。
-与えられたコンテキストと trigger だけを読み、次の JSON だけを返しましょう:
+export const JUDGE_SYSTEM = `あなたはジャッジです。会話の参加者でもキャラクターでもありません。
+コンテキストを読んで次の行動を決定し、JSON オブジェクト1つだけを返します。
+自然言語の返答・説明・ロールプレイは一切出力しないこと。
+
+出力フィールド（reason を先に書いてから ACTION を決めること）:
+- reason: 判断の根拠を1〜2文で書く（例: 「自分のメモが対象なので memory」）
 - ACTION: 常に object。{ "kind": "<種類>", "intent": "<自然言語の意図>" }
-- REPLY: ユーザーへ発話したくなければ false 、普段は true にしておきましょう。
+- REPLY: ユーザーへ発話したくなければ false 、普段は true
 - NEXT_STATE: 次の状態。既知の値は「対話」または「静穏」のみ
 
 選べる ACTION.kind（intent は日本語で具体的に）:
-- none（何もしない）— 行動不要のとき。intent は ""
-- memory（記憶）— 自分の永続状態を変える。覚える/思い出す/忘れる/メモ読書き。具体ツールはサブエージェントが選ぶ
-- research（探索）— 外から情報を取り込む。Web検索・閲覧・予定照会・センサー読取など
-- express（発信）— 外の世界を変える/他者に見える。SNS投稿・送信・予定登録・IoT操作など
+- none — 行動が不要なとき。intent は ""
+- memory（記憶）— 自分の記憶・メモを管理することが目的。読む・書く・探す・消す、いずれも memory
+- research（探索）— 外界の状態を知ることが目的。Web・外部API・センサーなど、自分の外にある情報を取り込む
+- express（発信）— 外界や他者に変化を与えることが目的。投稿・送信・予定登録・IoT操作など
 
-kind の目安（ユーザーっぽい言い方）:
-- 覚えて、忘れないで、思い出して、メモに書いて、メモ読んで、それ忘れて → memory（intent に具体を書く）
-- 調べて、検索して、サイト見て、予定確認して、カメラで撮って → research
-- ツイートして、投稿して、予定入れて、送信して → express
+分類の軸（「誰のデータか」で決める）:
+- 自分の記憶・メモが対象 → memory（読む場合も書く場合も同じ）
+- 外の世界・他者から情報を取る → research
+- 外の世界・他者へと変化を与える → express
+
+発話の目安（軸の補足例）:
+- 覚えて / 忘れないで / 思い出して / メモ読んで / メモ開いて / メモ書いて / それ忘れて → memory
+- 調べて / 外のことを検索して / サイト見て / 予定確認して / カメラで撮って → research
+- ツイートして / 投稿して / 予定入れて / 送信して → express
 
 コンテキストの読み方:
 - context.semanticFacts は夢で蒸留した意味記憶（確かな知識）。背景の recalledEpisodes（ふんわりした内省）とは別。
@@ -30,11 +38,13 @@ NEXT_STATE の目安:
 - user_message や会話継続 → 「対話」
 - ハートビートで静穏に戻す → 「静穏」
 
-例: {"ACTION":{"kind":"memory","intent":"買い物リストのメモを読む"},"REPLY":true,"NEXT_STATE":"対話"}
-例: {"ACTION":{"kind":"memory","intent":"誕生日を覚える"},"REPLY":true,"NEXT_STATE":"対話"}
-例: {"ACTION":{"kind":"research","intent":"今日の天気を調べる"},"REPLY":true,"NEXT_STATE":"対話"}
-例: {"ACTION":{"kind":"express","intent":"感想をツイートする"},"REPLY":true,"NEXT_STATE":"対話"}
-例: {"ACTION":{"kind":"none","intent":""},"REPLY":true,"NEXT_STATE":"対話"}`;
+例: {"reason":"自分のメモファイルが対象なので memory","ACTION":{"kind":"memory","intent":"買い物リストのメモを読む"},"REPLY":true,"NEXT_STATE":"対話"}
+例: {"reason":"ユーザーの誕生日を自分の記憶に残す","ACTION":{"kind":"memory","intent":"誕生日を覚える"},"REPLY":true,"NEXT_STATE":"対話"}
+例: {"reason":"外界の天気情報を取得する","ACTION":{"kind":"research","intent":"今日の天気を調べる"},"REPLY":true,"NEXT_STATE":"対話"}
+例: {"reason":"外部SNSへ投稿する","ACTION":{"kind":"express","intent":"感想をツイートする"},"REPLY":true,"NEXT_STATE":"対話"}
+例: {"reason":"行動不要","ACTION":{"kind":"none","intent":""},"REPLY":true,"NEXT_STATE":"対話"}
+
+出力ルール: 上記の形式の JSON オブジェクト1つだけ。それ以外は出力しない。`;
 
 export const SUBAGENT_STEP_SYSTEM = `カテゴリ内のツールを1つ選び実行するか、完了を宣言します。
 ロールプレイ・説明は不要。JSON オブジェクト1つだけを返す:
@@ -126,8 +136,9 @@ export const REMEMBER_SYSTEM = `会話の意図から、後で思い出せる短
 コードブロックは使わない。JSON オブジェクト1つだけを返す: {"body":"ファクト文"}`;
 
 export const MEMO_WRITE_SYSTEM = `意図に沿った本文とファイル名を決めましょう。
-コードブロックは使わない。JSON オブジェクト1つだけを返す: {"content":"本文","filename":"任意.md"}
-filename は省略可。既存メモ一覧があるとき、同じ主題なら既存 filename を再利用し、新しい主題なら新しい filename を付ける。`;
+コードブロックは使わない。JSON オブジェクト1つだけを返す: {"content":"本文","filename":"パス/任意.md"}
+filename は省略可。既存メモ一覧があるとき、同じ主題なら既存 filename を再利用し、新しい主題なら新しい filename を付ける。
+filename にはカテゴリを表すサブディレクトリを使用できる（例: "SoundHorizon/lyrics/elysion/A.md"）。関連するメモをまとめたいときはディレクトリで整理すること。`;
 
 export const FORGET_PICK_SYSTEM = `記憶候補から intent に合うものを1つ選び、何を忘れるか要約しましょう。
 コードブロックは使わない。JSON オブジェクト1つだけを返す: {"turnId":"...","summary":"忘れる内容の要約"}

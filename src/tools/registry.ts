@@ -1,4 +1,5 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { safePath } from "./notes.js";
 import path from "node:path";
 import {
   NOTES_DIR,
@@ -65,18 +66,20 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
 }
 
 async function writeNote(args: WriteNoteArgs): Promise<ToolResult> {
-  const target = path.join(NOTES_DIR, args.filename);
+  const safe = safePath(args.filename) ?? args.filename;
+  const target = path.join(NOTES_DIR, safe);
+  await mkdir(path.dirname(target), { recursive: true });
   if (args.append) {
     try {
       await appendFile(target, `\n${args.content}`, "utf8");
-      return { ok: true, summary: `メモ ${args.filename} に追記した` };
+      return { ok: true, summary: `メモ ${safe} に追記した` };
     } catch {
       await writeFile(target, args.content, "utf8");
-      return { ok: true, summary: `メモ ${args.filename} を新規作成した` };
+      return { ok: true, summary: `メモ ${safe} を新規作成した` };
     }
   }
   await writeFile(target, args.content, "utf8");
-  return { ok: true, summary: `メモ ${args.filename} を書き込んだ` };
+  return { ok: true, summary: `メモ ${safe} を書き込んだ` };
 }
 
 async function readNote(args: ReadNoteArgs): Promise<ToolResult> {

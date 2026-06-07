@@ -59,16 +59,18 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 - 内省は `ctx.judge` を見ない。`ctx.reply` + `ctx.speech` + `ctx.action.facts` のみ（判断プロセス・ツールログは渡さない）。
 - 行動成功時の構造化事実は `ActionFacts` (`src/action/facts.ts`)、表示は `src/action/present.ts`。`summary` の regex 再パースはしない。
 
-## 記憶の二系統（鮮明さが違う）
+## 記憶の4層（性質が違う・混ぜない）
 
-| 系統 | 保存先 | 読み出し時の方針 |
-|------|--------|------------------|
+| 層 | 保存先 | 読み出し時の方針 |
+|----|--------|------------------|
 | エピソード記憶 | `data/lancedb/` `episodes` | LLM 要約・グラデーション（full/summarize/vague）OK＝ふんわり思い出す |
 | 意味記憶 | `data/lancedb/` `semantic` | 夢で蒸留した知識 |
-| 共有メモ | `data/notes/*.md` | **既存本文を LLM で要約・改変しない**。全文を `facts.body` に載せる |
+| メモインデックス | `data/lancedb/` `memo_index` | 「どこに何を書いたか」の所在管理。`memo_write` 成功時に機械的 upsert。減衰しない |
+| 共有メモ本文 | `data/notes/**/*.md` | **既存本文を LLM で要約・改変しない**。全文を `facts.body` に載せる。階層ディレクトリ可 |
 | 作業記憶 | `data/state.json` | ユーザーとボットの**表面発話のみ**。ジャッジ・ツール結果は含めない |
 | 内心ステート | `data/state.json` `innerState` | 持ち越す生の感情（余韻）。内省が毎ターン書き換える。空＝起きたて |
 
+`memo_index` はエピソード記憶・意味記憶とは別テーブル（情報源記憶）。`episodes` に書かない（DECISIONS.md §メモインデックスの設計 参照）。  
 想起グラデーションは `src/recall/distance.ts`（距離分類）+ `src/recall/llm-present.ts`（LLM 提示）。閾値は `DEFAULT_RECALL_DISTANCE_THRESHOLDS`。
 
 ## 設定
@@ -91,6 +93,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 - ロールごとに想起・会話ログの入れ方を変えること
 - ヒューリスティックでジャッジをバイパスすること
 - メモ（`data/notes/`）本文を LLM で要約・改変すること（新規作成と pick のみ LLM 可）
+- `memo_write` 成功時に `episodes` へ直接追記すること（`memo_index` へ書く）
 - 理由のない暗黙トリム（preview・verbose の truncate は別）
 
 ## テスト方針

@@ -17,14 +17,31 @@ import {
   formatNotePreviewIndex,
   listNotePreviews,
   readNoteContent,
+  type NotePreview,
 } from "../tools/notes.js";
+import type { MemoIndexHit } from "../memory/memo-index.js";
+
+function hitsToNotePreviews(hits: MemoIndexHit[]): NotePreview[] {
+  return hits.map((h) => ({ filename: h.path, preview: h.preview }));
+}
 
 export async function runMemoRead(
   llm: LlmClient,
   input: RunActionInput,
 ): Promise<ActionOutcome> {
   const action = input.ctx.judge!.ACTION;
-  const previews = await listNotePreviews();
+
+  // memoIndex がある場合はベクトル検索で候補を絞る。なければ全スキャン
+  let previews: NotePreview[];
+  const indexHits = input.memoIndex
+    ? await input.memoIndex.recall(action.intent, 5)
+    : [];
+  if (indexHits.length > 0) {
+    previews = hitsToNotePreviews(indexHits);
+  } else {
+    previews = await listNotePreviews();
+  }
+
   const files = previews.map((p) => p.filename);
 
   if (files.length === 0) {

@@ -19,10 +19,12 @@ import {
 } from "./dialogue.js";
 import type { RecalledEpisode } from "../recall/types.js";
 import type { SemanticFactView } from "../recall/semantic-present.js";
+import type { MemoIndexHit } from "../memory/memo-index.js";
 import type { ChatMessage } from "../llm/types.js";
 
 export type { RecalledEpisode } from "../recall/types.js";
 export type { SemanticFactView } from "../recall/semantic-present.js";
+export type { MemoIndexHit } from "../memory/memo-index.js";
 
 /** 想起チャンネル全体の渡し方（ターン内で明示） */
 export type RecallDelivery = "omit" | "full" | "summarize";
@@ -49,6 +51,8 @@ export type TurnContext = {
   semanticFacts: SemanticFactView[];
   /** 持ち越す内心（余韻）。空 = 起きたて */
   innerState: string;
+  /** memo_index から想起した関連メモの所在 */
+  recalledNotes: MemoIndexHit[];
 
   /** withJudge で平坦化（内省は judge オブジェクトを参照しない） */
   reply?: boolean;
@@ -68,6 +72,7 @@ export type CreateTurnContextInput = {
   recentTurns: readonly ConversationTurn[];
   recalledEpisodes: RecalledEpisode[];
   semanticFacts?: SemanticFactView[];
+  recalledNotes?: MemoIndexHit[];
   innerState?: string;
   now?: Date;
   timeZone?: string;
@@ -114,6 +119,7 @@ export function createTurnContext(input: CreateTurnContextInput): TurnContext {
     recalledEpisodes: [...input.recalledEpisodes],
     recallDelivery: "full",
     semanticFacts: [...(input.semanticFacts ?? [])],
+    recalledNotes: [...(input.recalledNotes ?? [])],
     innerState: input.innerState ?? "",
     action: { attempted: false },
   };
@@ -206,6 +212,11 @@ export function formatSemanticFacts(ctx: TurnContext): string[] {
   return ctx.semanticFacts.map((f) => f.body);
 }
 
+export function formatRecalledNotes(ctx: TurnContext): string[] {
+  if (!ctx.recalledNotes.length) return [];
+  return ctx.recalledNotes.map((n) => `${n.path}: ${n.preview}`);
+}
+
 /** 全ロールが参照する記憶スナップショット */
 export function memorySnapshot(ctx: TurnContext) {
   return {
@@ -219,6 +230,7 @@ export function memorySnapshot(ctx: TurnContext) {
     recalledMeta: formatRecalledEpisodeMeta(ctx),
     recallDelivery: ctx.recallDelivery,
     semanticFacts: formatSemanticFacts(ctx),
+    recalledNotes: formatRecalledNotes(ctx),
     innerState: ctx.innerState,
   };
 }

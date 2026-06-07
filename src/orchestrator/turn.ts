@@ -15,6 +15,7 @@ import { fitTurnContext } from "../context/preprocess.js";
 import { buildContextClock } from "../sensor/datetime.js";
 import type { EpisodeStore } from "../memory/episode.js";
 import type { SemanticStore } from "../memory/semantic.js";
+import type { MemoIndexStore } from "../memory/memo-index.js";
 import { presentSemanticFacts } from "../recall/semantic-present.js";
 import { WorkingMemory } from "../memory/working.js";
 import type { LlmClient } from "../llm/types.js";
@@ -72,6 +73,8 @@ export type TurnDeps = {
     toolCatalog?: readonly import("../tools/catalog.js").CatalogTool[];
     expressDryRun?: boolean;
   };
+  memoIndex?: MemoIndexStore;
+  memoIndexTopK?: number;
   onSessionPersist?: (session: {
     state: AgentState;
     workingMemory: readonly ConversationTurn[];
@@ -198,6 +201,10 @@ export class TurnOrchestrator {
     );
     v?.semanticRecall(recallQuery, semanticHits, semanticFacts, Date.now() - semanticStart);
 
+    const memoHits = this.deps.memoIndex
+      ? await this.deps.memoIndex.recall(recallQuery, this.deps.memoIndexTopK ?? 3)
+      : [];
+
     let ctx = createTurnContext({
       turnId,
       state: startState,
@@ -206,6 +213,7 @@ export class TurnOrchestrator {
       recentTurns,
       recalledEpisodes: recalled,
       semanticFacts,
+      recalledNotes: memoHits,
       innerState: this.innerState,
       now: turnNow,
       timeZone: this.deps.timeZone,
@@ -239,6 +247,7 @@ export class TurnOrchestrator {
         mcp: this.deps.actionDeps?.mcp,
         toolCatalog: this.deps.actionDeps?.toolCatalog,
         expressDryRun: this.deps.actionDeps?.expressDryRun,
+        memoIndex: this.deps.memoIndex,
       };
       ctx = withAction(
         ctx,

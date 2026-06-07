@@ -8,6 +8,7 @@ export const abstractActionSchema = z.object({
 });
 
 export const judgeOutputSchema = z.object({
+  reason: z.string().optional(),
   ACTION: z.union([abstractActionSchema, z.null()]),
   REPLY: z.boolean(),
   NEXT_STATE: z.string(),

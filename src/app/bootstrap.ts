@@ -19,6 +19,8 @@ import { InMemoryEpisodeStore } from "../memory/episode.js";
 import { InMemorySemanticStore } from "../memory/semantic.js";
 import { LanceSemanticStore } from "../memory/semantic-lancedb.js";
 import type { SemanticStore } from "../memory/semantic.js";
+import { InMemoryMemoIndexStore, type MemoIndexStore } from "../memory/memo-index.js";
+import { LanceMemoIndexStore } from "../memory/memo-index-lancedb.js";
 import { OllamaEmbedClient, OllamaLlmClient } from "../llm/ollama.js";
 import { withVerboseLlm } from "../llm/logging.js";
 import { runAction } from "../roles/action.js";
@@ -46,6 +48,7 @@ export type AppContext = {
   llm: LlmClient;
   episodes: EpisodeStore;
   semantic: SemanticStore;
+  memoIndex: MemoIndexStore;
 };
 
 export type BootstrapOptions = {
@@ -97,14 +100,17 @@ export async function createApp(
 
   let episodes: EpisodeStore;
   let semantic: SemanticStore;
+  let memoIndex: MemoIndexStore;
   if (options.memory === "memory") {
     episodes = new InMemoryEpisodeStore();
     semantic = new InMemorySemanticStore();
+    memoIndex = new InMemoryMemoIndexStore();
   } else {
     const embedder = new OllamaEmbedClient(host, settings.embedModel);
     const dbPath = path.join(process.cwd(), "data", "lancedb");
     episodes = await LanceEpisodeStore.open(dbPath, embedder);
     semantic = await LanceSemanticStore.open(dbPath, embedder);
+    memoIndex = await LanceMemoIndexStore.open(dbPath, embedder);
   }
 
   const personaPath = path.join(process.cwd(), "persona", "character.md");
@@ -142,6 +148,7 @@ export async function createApp(
     llm,
     episodes,
     semantic,
+    memoIndex,
     workingMemory: wm,
     episodeRecallTopK: settings.episodeRecallTopK,
     semanticRecallTopK: resolveSemanticRecallTopK(settings),
@@ -194,5 +201,6 @@ export async function createApp(
     llm,
     episodes,
     semantic,
+    memoIndex,
   };
 }

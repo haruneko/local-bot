@@ -140,8 +140,53 @@ LanceDB ベクトル検索の直後、2段階で処理する（`src/recall/dista
 - `shouldPersistIntrospection(ctx)`: user_message は常に。heartbeat は ACTION 成功・REPLY 発話・独り言のいずれかがあるときのみ
 - idle heartbeat は内省 LLM と LanceDB 追記をスキップ
 
+## メモインデックスの設計
+
+### 永続層の4層構造
+
+記憶は目的と性質で4層に分離する。混ぜない。
+
+| 層 | 保存先 | 目的 | 性質 |
+|----|--------|------|------|
+| エピソード記憶 | LanceDB `episodes` | 体験・感情の再構成（内省が書く） | ふんわり・減衰してよい |
+| 意味記憶 | LanceDB `semantic` | 蒸留された知識・理解 | 凝縮・長持ち |
+| メモインデックス | LanceDB `memo_index` | 「どこに何を書いたか」の所在管理 | 正確・機械的・減衰しない |
+| メモ本文 | `data/notes/**/*.md` | 参照元の全文（不変） | ファイルシステム |
+
+### `memo_write` のエピソード記録はしない
+
+`memo_write` 成功時に `episodes` へ直接追記しない。
+
+**理由**: 「どこに書いたか」は**情報源記憶（ソース記憶）**であり、エピソード記憶（体験・感情文脈）でも意味記憶（蒸留知識）でもない。`episodes` に押し込むのはカテゴリ違反で、二経路問題（内省との重複書き込み）も生じる。`remember` ツールは「LanceDB への書き込みそのものが行動目的」であり別物。
+
+**正しい記録先**: `memo_index` テーブル（機械的・LLM 不要）。
+
+### `memo_index` の構造
+
+```
+path:          "SoundHorizon/lyrics/elysion/A.md"   フルパス
+path_segments: ["SoundHorizon", "lyrics", "elysion"] 階層フィルタ用
+depth_1〜3:    各階層名                               構造クエリ用
+preview:       冒頭200文字（機械的切り出し）           LLM加工しない
+vector:        embed(path + preview)                 意味検索用
+created_at:    ISO8601
+```
+
+- `preview` は機械的切り出しのみ。DECISIONS §記憶とメモの扱い の「既存本文を LLM で要約・改変しない」に準ずる
+- `path_segments` で構造フィルタ（例: depth_1 = "SoundHorizon"）とベクトル検索を同時に使える
+- `data/notes/` をそのまま Obsidian Vault として開けるようにファイル構造を保つ
+
+### ファイルシステムと Obsidian 互換性
+
+`data/notes/` はサブディレクトリ対応の階層構造とする。  
+Obsidian でフォルダを Vault として開くだけでグラフビュー・全文検索・バックリンクが使える（追加実装ゼロ）。  
+エージェント側は `memo_index` で索引を持ち、Obsidian はヒューマンリーダブルなビューとして使い分ける。
+
+---
+
 ## 禁止事項
 
 - キーワードマッチでの直行ルーティング（旧 router 復活）
 - ロールごとに想起・会話ログの入れ方を変えること
 - ヒューリスティックでジャッジをバイパスすること
+- `memo_write` 成功時に `episodes` へ直接追記すること（上記 §メモインデックスの設計 参照）

@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { platform } from "node:process";
 
 export const NOTES_DIR = path.join(process.cwd(), "data", "notes");
 
@@ -37,6 +38,26 @@ export function safeFilename(name: string): string | null {
     return null;
   }
   return base;
+}
+
+/**
+ * サブディレクトリを含む相対パスを検証する。
+ * NOTES_DIR の外に出るパス（.. 等）は null を返す。
+ */
+export function safePath(p: string): string | null {
+  const trimmed = p.trim();
+  if (!trimmed) return null;
+  // Windows パス区切り統一
+  const normalized = path.normalize(trimmed).split(path.sep).join("/");
+  if (
+    path.isAbsolute(normalized) ||
+    normalized.startsWith("..") ||
+    normalized.includes("/../") ||
+    (platform === "win32" && /^[a-zA-Z]:/.test(normalized))
+  ) {
+    return null;
+  }
+  return normalized;
 }
 
 export function ensureMdExtension(filename: string): string {
@@ -89,7 +110,7 @@ export function normalizeReadArgs(
 }
 
 export async function readNoteContent(filename: string): Promise<string | null> {
-  const safe = safeFilename(filename) ?? slugifyFilename(filename);
+  const safe = safePath(filename) ?? safeFilename(filename) ?? slugifyFilename(filename);
   try {
     return await readFile(path.join(NOTES_DIR, safe), "utf8");
   } catch {
@@ -115,10 +136,21 @@ export function truncateNotePreview(
 
 export async function listNoteFilenames(): Promise<string[]> {
   try {
-    const entries = await readdir(NOTES_DIR, { withFileTypes: true });
+    const entries = await readdir(NOTES_DIR, {
+      recursive: true,
+      withFileTypes: true,
+    });
     return entries
       .filter((e) => e.isFile() && !e.name.startsWith("."))
-      .map((e) => e.name)
+      .map((e) => {
+        const fullPath = path.join(
+          (e as unknown as { parentPath?: string; path?: string }).parentPath ??
+            (e as unknown as { path?: string }).path ??
+            NOTES_DIR,
+          e.name,
+        );
+        return path.relative(NOTES_DIR, fullPath).split(path.sep).join("/");
+      })
       .sort();
   } catch {
     return [];
