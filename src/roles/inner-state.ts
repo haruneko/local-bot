@@ -11,7 +11,7 @@ export type UpdateInnerStateInput = {
   prevInnerState: string;
   introspection: string;
   speech: string | null;
-  action: ActionOutcome;
+  actions: ActionOutcome[];
   currentDateTime: string;
 };
 
@@ -33,14 +33,18 @@ function buildInnerStateUserContent(input: UpdateInnerStateInput): string {
     speechBlock,
   ];
 
-  if (input.action.attempted) {
-    const label = actionLabelJa(input.action.kind);
-    parts.push(
-      "",
-      "【行動】",
-      `やろうとしたこと: ${label} — ${input.action.intent}`,
-      formatActionForIntrospection(input.action),
-    );
+  const attempted = input.actions.filter(
+    (a): a is Extract<ActionOutcome, { attempted: true }> => a.attempted,
+  );
+  if (attempted.length > 0) {
+    parts.push("", "【行動】");
+    for (const action of attempted) {
+      const label = actionLabelJa(action.kind);
+      parts.push(
+        `やろうとしたこと: ${label} — ${action.intent}`,
+        formatActionForIntrospection(action),
+      );
+    }
   }
 
   return parts.join("\n");

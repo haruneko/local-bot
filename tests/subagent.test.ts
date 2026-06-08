@@ -4,29 +4,24 @@ import { FakeLlmClient } from "../src/llm/fake.js";
 import { FakeMcpToolProvider } from "../src/mcp/fake.js";
 import { buildToolCatalog } from "../src/tools/catalog.js";
 import { InMemoryEpisodeStore } from "../src/memory/episode.js";
-import {
-  createTurnContext,
-  withJudge,
-} from "../src/context/turn-context.js";
+import { createTurnContext } from "../src/context/turn-context.js";
 
 const dialogue = { resolveUserDisplayName: () => "太郎" };
 
 async function makeInput(intent: string, kind: "research" | "express") {
   const mcp = new FakeMcpToolProvider();
   const toolCatalog = await buildToolCatalog(mcp);
-  const ctx = withJudge(
-    createTurnContext({
-      turnId: "turn-sub",
-      state: "対話",
-      trigger: { type: "user_message", content: "test", speakerId: "u1" },
-      dialogue,
-      recentTurns: [],
-      recalledEpisodes: [],
-    }),
-    { ACTION: { kind, intent }, REPLY: true, NEXT_STATE: "対話" },
-  );
+  const ctx = createTurnContext({
+    turnId: "turn-sub",
+    state: "対話",
+    trigger: { type: "user_message", content: "test", speakerId: "u1" },
+    dialogue,
+    recentTurns: [],
+    recalledEpisodes: [],
+  });
   return {
     ctx,
+    action: { kind, intent },
     episodes: new InMemoryEpisodeStore(),
     episodeRecallTopK: 3,
     mcp,

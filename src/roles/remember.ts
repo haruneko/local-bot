@@ -18,7 +18,7 @@ export async function runRemember(
   llm: LlmClient,
   input: RunActionInput,
 ): Promise<ActionOutcome> {
-  const action = input.ctx.judge!.ACTION;
+  const action = input.action;
   const lastUserMessage = lastUserMessageFromContext(input.ctx);
   const { turnId, state, currentDateTime } = input.ctx;
   const userLines = [

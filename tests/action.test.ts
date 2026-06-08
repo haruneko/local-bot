@@ -4,33 +4,25 @@ import { FakeLlmClient } from "../src/llm/fake.js";
 import { InMemoryEpisodeStore } from "../src/memory/episode.js";
 import { NONE_ACTION } from "../src/action/types.js";
 import { memoryCatalogTools } from "../src/tools/catalog.js";
-import {
-  createTurnContext,
-  withJudge,
-} from "../src/context/turn-context.js";
+import { createTurnContext } from "../src/context/turn-context.js";
+import type { AbstractAction } from "../src/action/types.js";
 
 const dialogue = {
   resolveUserDisplayName: () => "太郎",
 };
 
-function actionInput(
-  action:
-    | typeof NONE_ACTION
-    | { kind: "memory"; intent: string },
-) {
-  const ctx = withJudge(
-    createTurnContext({
-      turnId: "turn-1",
-      state: "対話",
-      trigger: { type: "user_message", content: "test", speakerId: "u1" },
-      dialogue,
-      recentTurns: [],
-      recalledEpisodes: [],
-    }),
-    { ACTION: action, REPLY: true, NEXT_STATE: "対話" },
-  );
+function actionInput(action: AbstractAction) {
+  const ctx = createTurnContext({
+    turnId: "turn-1",
+    state: "対話",
+    trigger: { type: "user_message", content: "test", speakerId: "u1" },
+    dialogue,
+    recentTurns: [],
+    recalledEpisodes: [],
+  });
   return {
     ctx,
+    action,
     episodes: new InMemoryEpisodeStore(),
     episodeRecallTopK: 3,
     toolCatalog: memoryCatalogTools(),

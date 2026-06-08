@@ -6,6 +6,25 @@ import { DEFAULT_RECALL_DISTANCE_THRESHOLDS } from "../recall/distance.js";
 /** Ollama `think` API（推論モード）。false で thinking off */
 export type OllamaThinkSetting = boolean | "high" | "medium" | "low";
 
+/** State 別のコンテキスト設定（元データは変更しない・TurnContext に載せる量のみ絞る） */
+export type StateConfigEntry = {
+  workingMemoryTurns?: number;
+  episodeRecallTopK?: number;
+};
+
+export type RoleName =
+  | "memory"
+  | "research"
+  | "language"
+  | "introspection"
+  | "innerState";
+
+/** ロール別モデル設定 */
+export type RoleConfig = {
+  model?: string;
+  think?: OllamaThinkSetting;
+};
+
 export type AppSettings = {
   workingMemoryTurns: number;
   contextTokenBudget: number;
@@ -31,6 +50,10 @@ export type AppSettings = {
   languageNumPredict?: number;
   /** コンテキスト日時のタイムゾーン（IANA） */
   timeZone?: string;
+  /** State 別コンテキスト設定。存在しない State はグローバル値を使用 */
+  stateConfig?: Record<string, StateConfigEntry>;
+  /** ロール別モデル設定。未指定ロールは chatModel / ollamaThink を使用 */
+  roles?: Partial<Record<RoleName, RoleConfig>>;
 };
 
 export function resolveRecallDistanceThresholds(
@@ -66,6 +89,32 @@ export function resolveOllamaThink(
   if (env === "true" || env === "1" || env === "on") return true;
   if (env === "high" || env === "medium" || env === "low") return env;
   return settings.ollamaThink ?? false;
+}
+
+/** State 別設定値を返す。該当 State がなければ空オブジェクト（グローバル値で補完される） */
+export function resolveStateConfigEntry(
+  settings: AppSettings,
+  state: string,
+): StateConfigEntry {
+  return settings.stateConfig?.[state] ?? {};
+}
+
+/** ロールのモデル名を解決する。未設定は chatModel にフォールバック */
+export function resolveRoleModel(
+  settings: AppSettings,
+  role: RoleName,
+): string {
+  return settings.roles?.[role]?.model ?? settings.chatModel;
+}
+
+/** ロールの think 設定を解決する。未設定はグローバル ollamaThink にフォールバック */
+export function resolveRoleThink(
+  settings: AppSettings,
+  role: RoleName,
+): OllamaThinkSetting {
+  const roleThink = settings.roles?.[role]?.think;
+  if (roleThink !== undefined) return roleThink;
+  return resolveOllamaThink(settings);
 }
 
 export async function loadSettings(): Promise<AppSettings> {

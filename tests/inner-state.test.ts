@@ -9,7 +9,7 @@ describe("updateInnerState", () => {
       prevInnerState: "",
       introspection: "同じことを二度言ってしまった",
       speech: "ごめんね",
-      action: { attempted: false },
+      actions: [],
       currentDateTime: "2026-06-06 10:00",
     });
 
@@ -28,7 +28,7 @@ describe("updateInnerState", () => {
       prevInnerState: "恥ずかしかった",
       introspection: "謝ったら少し楽になった",
       speech: null,
-      action: { attempted: false },
+      actions: [],
       currentDateTime: "2026-06-06 10:05",
     });
 

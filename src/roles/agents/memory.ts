@@ -1,7 +1,5 @@
-import { withJudge } from "../../context/turn-context.js";
 import type { RunActionInput } from "../../action/context.js";
 import type { ActionOutcome } from "../../types.js";
-import type { AbstractAction } from "../../action/types.js";
 import type { MemoryToolKind } from "../../tools/catalog.js";
 import { MEMORY_TOOL_KINDS } from "../../tools/catalog.js";
 import type { LlmClient } from "../../llm/types.js";
@@ -30,7 +28,7 @@ async function runRecallLoop(
   llm: LlmClient,
   input: RunActionInput,
 ): Promise<ActionOutcome> {
-  const action = input.ctx.judge!.ACTION;
+  const action = input.action;
   const allBullets: string[] = [];
   const priorSteps: string[] = [];
   let currentQuery = action.intent.trim() || ".";
@@ -77,35 +75,12 @@ function isMemoryToolKind(name: string): name is MemoryToolKind {
   return (MEMORY_TOOL_KINDS as readonly string[]).includes(name);
 }
 
-function remapToCategory(
-  parent: AbstractAction,
-  outcome: ActionOutcome,
-): ActionOutcome {
-  if (!outcome.attempted) return outcome;
-  return { ...outcome, kind: parent.kind, intent: parent.intent };
-}
-
-function withMemoryTool(
-  input: RunActionInput,
-  tool: MemoryToolKind,
-): RunActionInput {
-  const judge = input.ctx.judge!;
-  const synthetic = withJudge(input.ctx, {
-    ...judge,
-    ACTION: {
-      kind: tool,
-      intent: judge.ACTION.intent,
-    } as unknown as AbstractAction,
-  });
-  return { ...input, ctx: synthetic };
-}
-
 export async function runMemorySubagent(
   llm: LlmClient,
   input: RunActionInput,
   pickedTool?: string,
 ): Promise<ActionOutcome> {
-  const action = input.ctx.judge!.ACTION;
+  const action = input.action;
   let toolName = pickedTool;
   if (!toolName) {
     const pick = await runSubagentToolPick(llm, {
@@ -137,29 +112,21 @@ export async function runMemorySubagent(
     );
   }
 
-  const routed = withMemoryTool(input, toolName);
-  let outcome: ActionOutcome;
   switch (toolName) {
     case "remember":
-      outcome = await runRemember(llm, routed);
-      break;
+      return runRemember(llm, input);
     case "recall":
-      outcome = await runRecallLoop(llm, routed);
-      break;
+      return runRecallLoop(llm, input);
     case "forget":
-      outcome = await runForget(llm, routed);
-      break;
+      return runForget(llm, input);
     case "memo_write":
-      outcome = await runMemoWrite(llm, routed);
-      break;
+      return runMemoWrite(llm, input);
     case "memo_read":
-      outcome = await runMemoRead(llm, routed);
-      break;
+      return runMemoRead(llm, input);
     default:
       return actionFailed(action, "記憶ツールの実行に失敗した", {
         code: ACTION_ERROR_CODES.ACTION_DISCONNECTED,
         message: `未接続: ${toolName}`,
       });
   }
-  return remapToCategory(action, outcome);
 }

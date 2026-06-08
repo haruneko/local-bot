@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import type { TurnContext } from "../context/turn-context.js";
 import {
   buildConversationTurns,
@@ -9,7 +11,7 @@ import {
   LANGUAGE_SYSTEM_PREFIX,
 } from "../prompts/roles.js";
 import type { ChatMessage, LlmClient } from "../llm/types.js";
-import { formatActionForLanguage } from "../action/present.js";
+import { formatActionsForLanguage } from "../action/present.js";
 
 export type GenerateLanguageOptions = {
   persona: string;
@@ -17,6 +19,29 @@ export type GenerateLanguageOptions = {
   userContent: string;
   temperature?: number;
 };
+
+export type LanguageOutput = { speech: string; nextState: string };
+
+const languageOutputSchema = z.object({
+  speech: z.string(),
+  nextState: z.string(),
+});
+
+const languageJsonSchema = zodToJsonSchema(languageOutputSchema, {
+  name: "LanguageOutput",
+  $refStrategy: "none",
+}) as Record<string, unknown>;
+
+function parseLanguageOutput(raw: string, fallbackState: string): LanguageOutput {
+  try {
+    const obj = JSON.parse(raw) as unknown;
+    const parsed = languageOutputSchema.safeParse(obj);
+    if (parsed.success) return parsed.data;
+  } catch {
+    // fall through
+  }
+  return { speech: raw.trim(), nextState: fallbackState };
+}
 
 export async function generateLanguageText(
   llm: LlmClient,
@@ -74,8 +99,9 @@ function buildLanguageDialogueMessages(
     ctx.trigger.type === "user_message"
       ? `${partnerName}: ${ctx.trigger.content}`
       : "（ハートビート）";
-  const actionText = formatActionForLanguage(ctx.action);
-  const userContent = actionText
+  const actionText = formatActionsForLanguage(ctx.actions);
+  const hasAction = ctx.actions.some((a) => a.attempted);
+  const userContent = hasAction
     ? `${triggerLine}\n\n## このターンで起きたこと\n${actionText}`
     : triggerLine;
 
@@ -110,9 +136,12 @@ export async function generateExpressText(
 
 function resolveNumPredict(ctx: TurnContext, defaultNumPredict: number): number {
   if (
-    ctx.action.attempted &&
-    ctx.action.status === "succeeded" &&
-    ctx.action.facts?.kind === "research"
+    ctx.actions.some(
+      (a) =>
+        a.attempted &&
+        a.status === "succeeded" &&
+        a.facts?.kind === "research",
+    )
   ) {
     return -1;
   }
@@ -123,20 +152,27 @@ export async function generateDialogueSpeech(
   llm: LlmClient,
   ctx: TurnContext,
   defaultNumPredict = 400,
-): Promise<string> {
+): Promise<LanguageOutput> {
   const persona = ctx.persona ?? "";
+  const format = languageJsonSchema;
 
   if (ctx.trigger.type === "heartbeat") {
     const userContent = renderLanguageUserContent(ctx);
-    return generateLanguageText(llm, {
-      persona,
-      systemPrefix: LANGUAGE_HEARTBEAT_SYSTEM_PREFIX,
-      userContent,
-      temperature: 0.6,
-    });
+    const raw = await llm.chat(
+      [
+        {
+          role: "system",
+          content: `${LANGUAGE_HEARTBEAT_SYSTEM_PREFIX}\n\n## キャラクタールール\n${persona}`,
+        },
+        { role: "user", content: userContent },
+      ],
+      { temperature: 0.6, format },
+    );
+    return parseLanguageOutput(raw, ctx.state);
   }
 
   const numPredict = resolveNumPredict(ctx, defaultNumPredict);
   const messages = buildLanguageDialogueMessages(ctx, LANGUAGE_SYSTEM_PREFIX, persona);
-  return llm.chat(messages, { temperature: 0.8, numPredict });
+  const raw = await llm.chat(messages, { temperature: 0.8, numPredict, format });
+  return parseLanguageOutput(raw, ctx.state);
 }

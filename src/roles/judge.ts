@@ -3,14 +3,14 @@ import { judgeJsonSchema } from "../judge/schema.js";
 import { defaultJudgeFallback, parseJudgeJson } from "../judge/parse.js";
 import {
   buildConversationTurns,
-  buildJudgeContextSuffix,
+  buildLanguageContextSuffix,
   type TurnContext,
 } from "../context/turn-context.js";
 import type { ChatMessage, LlmClient } from "../llm/types.js";
 import type { JudgeOutput } from "../types.js";
 
 function buildJudgeMessages(ctx: TurnContext): ChatMessage[] {
-  const systemContent = JUDGE_SYSTEM + buildJudgeContextSuffix(ctx);
+  const systemContent = JUDGE_SYSTEM + buildLanguageContextSuffix(ctx);
 
   // 会話履歴はロールごとのターンではなくプレーンテキストとして渡す。
   // multi-turn 形式にすると judge LLM が assistant ロールを引き継ぎ

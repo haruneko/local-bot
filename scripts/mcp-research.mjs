@@ -56,7 +56,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args = {} } = request.params;
 
   if (name === "web_search") {
-    const text = await webSearch(String(args.query ?? ""), Number(args.limit ?? 5));
+    let queryArg = args.query ?? "";
+    // LLM sometimes wraps the query in a nested object like {"query": "..."}
+    if (typeof queryArg === "object" && queryArg !== null) {
+      queryArg = queryArg.query ?? queryArg.q ?? Object.values(queryArg)[0] ?? "";
+    }
+    const text = await webSearch(String(queryArg), Number(args.limit ?? 5));
     return { content: [{ type: "text", text }] };
   }
 

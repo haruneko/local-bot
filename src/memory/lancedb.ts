@@ -133,6 +133,8 @@ export class LanceEpisodeStore implements EpisodeStore {
     topK: number,
     excludeTurnIds?: ReadonlySet<string>,
     filterState?: string,
+    since?: string,
+    until?: string,
   ): Promise<EpisodeRecallHit[]> {
     const table = await this.ensureTable();
     const count = await table.countRows();
@@ -141,9 +143,11 @@ export class LanceEpisodeStore implements EpisodeStore {
     const excludeSize = excludeTurnIds?.size ?? 0;
     const vector = await this.embedder.embed(queryText || ".");
     const escaped = filterState?.replace(/'/g, "''") ?? "";
-    const where = filterState
+    let where = filterState
       ? `deleted = false AND state = '${escaped}'`
       : "deleted = false";
+    if (since) where += ` AND timestamp >= '${since}'`;
+    if (until) where += ` AND timestamp < '${until}'`;
     const results = await table
       .vectorSearch(vector)
       .where(where)

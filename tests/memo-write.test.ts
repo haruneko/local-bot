@@ -3,27 +3,22 @@ import { runMemoWrite } from "../src/roles/memo-write.js";
 import { FakeLlmClient } from "../src/llm/fake.js";
 import { InMemoryEpisodeStore } from "../src/memory/episode.js";
 import { InMemoryMemoIndexStore } from "../src/memory/memo-index.js";
-import {
-  createTurnContext,
-  withJudge,
-} from "../src/context/turn-context.js";
+import { createTurnContext } from "../src/context/turn-context.js";
 
 const dialogue = { resolveUserDisplayName: () => "HAL" };
 
 function makeInput(memoIndex?: InMemoryMemoIndexStore) {
-  const ctx = withJudge(
-    createTurnContext({
-      turnId: "turn-mw",
-      state: "対話",
-      trigger: { type: "user_message", content: "買い物リストを作って", speakerId: "u1" },
-      dialogue,
-      recentTurns: [],
-      recalledEpisodes: [],
-    }),
-    { ACTION: { kind: "memo_write", intent: "買い物リスト" } as never, REPLY: true, NEXT_STATE: "対話" },
-  );
+  const ctx = createTurnContext({
+    turnId: "turn-mw",
+    state: "対話",
+    trigger: { type: "user_message", content: "買い物リストを作って", speakerId: "u1" },
+    dialogue,
+    recentTurns: [],
+    recalledEpisodes: [],
+  });
   return {
     ctx,
+    action: { kind: "memory" as const, intent: "買い物リスト" },
     episodes: new InMemoryEpisodeStore(),
     episodeRecallTopK: 3,
     memoIndex,

@@ -2,10 +2,7 @@ import { describe, expect, it } from "vitest";
 import { runForget } from "../src/roles/forget.js";
 import { FakeLlmClient } from "../src/llm/fake.js";
 import { InMemoryEpisodeStore } from "../src/memory/episode.js";
-import {
-  createTurnContext,
-  withJudge,
-} from "../src/context/turn-context.js";
+import { createTurnContext } from "../src/context/turn-context.js";
 
 const dialogue = { resolveUserDisplayName: () => "太郎" };
 
@@ -32,7 +29,7 @@ describe("runForget", () => {
     });
     const llm = new FakeLlmClient([pickJson]);
 
-    let ctx = createTurnContext({
+    const ctx = createTurnContext({
       turnId: "turn-f",
       state: "対話",
       trigger: { type: "user_message", content: "忘れて", speakerId: "u1" },
@@ -40,14 +37,10 @@ describe("runForget", () => {
       recentTurns: [],
       recalledEpisodes: [],
     });
-    ctx = withJudge(ctx, {
-      ACTION: { kind: "forget", intent: "コーヒーの話" } as never,
-      REPLY: true,
-      NEXT_STATE: "対話",
-    });
 
     const outcome = await runForget(llm, {
       ctx,
+      action: { kind: "memory", intent: "コーヒーの話" },
       episodes,
       episodeRecallTopK: 3,
     });

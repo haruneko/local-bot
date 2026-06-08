@@ -11,8 +11,7 @@ export async function runAction(
   llm: LlmClient,
   input: RunActionInput,
 ): Promise<ActionOutcome> {
-  const action = input.ctx.judge?.ACTION;
-  if (!action || !isActionAttempted(action)) {
+  if (!isActionAttempted(input.action)) {
     return notAttempted();
   }
 

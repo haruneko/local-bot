@@ -1,7 +1,7 @@
 # 抽象 ACTION 設計（v0.5）
 
-ステータス: **v0.5 実装済み**  
-方針: ジャッジは **抽象3カテゴリ**だけ選ぶ。各 **カテゴリサブエージェント**がツールを選び実行する。
+ステータス: **v0.6 設計確定（実装前）**  
+方針: ジャッジ廃止。各エージェント（memory / research / language）が TurnContext を読んで自己判断・直列実行する。
 
 ## カテゴリ（意図軸）
 
@@ -18,46 +18,34 @@
 
 「層」を 2 つの意味で使い分ける。混同しないこと。
 
-### A. 認知の3層（ターン全体のパイプライン）
+### A. 認知の構造（ターン全体のパイプライン）
 
-エージェント1ターンの流れは **入力 → 判断 → 行動/出力** の3層。
+エージェント1ターンの流れは **入力フェーズ** と **自律エージェントフェーズ** の 2 フェーズ。
 
 ```
-[入力層] プリプロセス
+[入力フェーズ] プリプロセス
   センサー・永続記憶・作業記憶から揮発コンテキスト（TurnContext）を組み上げる
+  フィルタは TurnContext に載せる量を絞るだけ（元データ変更なし）
        ↓
-[判断層] ジャッジ
-  none | memory | research | express + intent / REPLY / NEXT_STATE を決める
+[自律エージェントフェーズ] 直列実行（本来は並行を直列で近似）
+  memory-agent: 記憶操作を自己判断・実行 → ctx.actions に追加
        ↓
-[行動・出力層] サブエージェント → 出力
-  - 行動: カテゴリサブエージェントがツールを実行（下記 B の2段）
-  - 出力(Reply): 言語野が発話を生成（共有言語機能）
-  - 出力(Memory): 内省を生成し LanceDB へ書き込み
+  research-agent: 外部情報取得を自己判断・実行 → ctx.actions に追加
+       ↓
+  language-agent: 全 facts を受け取り発話生成 + NEXT_STATE 決定
+       ↓
+  内省: speech + ctx.actions だけを読み内省文を生成 → LanceDB へ書き込み
 ```
 
-入力層がこのアーキテクチャの起点。ジャッジ以降のどのロールも、入力層が作った同一の `TurnContext` を参照する（事実の一元化）。
+プリプロセスがこのアーキテクチャの起点。全エージェントが同一の `TurnContext` を参照する（事実の一元化）。前エージェントの facts は後エージェントから参照可能（直列近似の帰結）。
 
 ```mermaid
 flowchart TD
-    Input["入力層: プリプロセス<br/>(センサー/記憶/作業記憶 → TurnContext)"] --> Judge["判断層: ジャッジ<br/>(カテゴリ + intent + REPLY + NEXT_STATE)"]
-    Judge --> Action["行動・出力層: サブエージェント"]
-    Action --> Reply["出力(Reply): 言語野 → 発話"]
-    Action --> Memory["出力(Memory): 内省 → LanceDB"]
+    Input["入力フェーズ: プリプロセス<br/>(センサー/記憶/作業記憶 → TurnContext)"] --> Mem["memory-agent<br/>(自己判断・記憶操作)"]
+    Mem --> Res["research-agent<br/>(自己判断・外部情報取得)"]
+    Res --> Lang["language-agent<br/>(発話生成 + NEXT_STATE)"]
+    Lang --> Intro["内省 → LanceDB"]
 ```
-
-### B. アクション意思決定の深さ（行動・出力層の内部 = 2段）
-
-行動・出力層の中の **アクション部分**だけを見ると、意思決定は2段。
-
-```
-ジャッジ（段1）: カテゴリ none | memory | research | express を選ぶ
-    ↓
-カテゴリサブエージェント（段2）: ツールカタログから具体ツール+引数を選ぶ
-    ↓
-実行: in-process（記憶）または MCP（探索・発信）
-```
-
-「2段ディスパッチ」は B の話、「3層アーキテクチャ」は A の話。これらは矛盾せず、A の行動・出力層の内側に B が収まる。
 
 ## 記憶サブエージェントのツール
 
@@ -99,10 +87,8 @@ flowchart TD
 
 ## ターンの流れ
 
-認知の3層（上記レイヤモデル A）を1行で表すと:
-
 ```
-[入力] プリプロセス → [判断] ジャッジ → [行動/出力] サブエージェント → 言語野 → 内省 → LanceDB
+[入力] プリプロセス → [自律] memory-agent → research-agent → language-agent → 内省 → LanceDB
 ```
 
 `recall` 行動成功時は `recallDelivery: omit`（`facts.kind === "recall"` で判定）。

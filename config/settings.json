@@ -14,5 +14,16 @@
   "ollamaThink": false,
   "ollamaNumCtx": 30000,
   "languageNumPredict": 400,
-  "timeZone": "Asia/Tokyo"
+  "timeZone": "Asia/Tokyo",
+  "stateConfig": {
+    "対話": { "workingMemoryTurns": 8, "episodeRecallTopK": 6 },
+    "静穏": { "workingMemoryTurns": 5, "episodeRecallTopK": 2 }
+  },
+  "roles": {
+    "memory":        { "model": "qwen3.6:35b-a3b", "think": false },
+    "research":      { "model": "qwen3.6:35b-a3b", "think": true  },
+    "language":      { "model": "qwen3.6:35b-a3b", "think": false },
+    "introspection": { "model": "qwen3.6:35b-a3b", "think": false },
+    "innerState":    { "model": "qwen3.6:35b-a3b", "think": false }
+  }
 }

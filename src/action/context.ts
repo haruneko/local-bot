@@ -4,6 +4,7 @@ import type { TurnContext } from "../context/turn-context.js";
 import type { McpToolProvider } from "../mcp/types.js";
 import type { CatalogTool } from "../tools/catalog.js";
 import { EmptyMcpToolProvider } from "../mcp/client.js";
+import type { AbstractAction } from "./types.js";
 
 export type RunActionDeps = {
   episodes: EpisodeStore;
@@ -16,6 +17,8 @@ export type RunActionDeps = {
 
 export type RunActionInput = {
   ctx: TurnContext;
+  /** このターンでの実行アクション（ツール役はここから intent と kind を読む） */
+  action: AbstractAction;
 } & RunActionDeps;
 
 export function defaultRunActionDeps(

@@ -9,7 +9,7 @@ export function printTurnSummary(
   const parts = [`[state → ${result.nextState}]`];
   if (verbose.enabled) {
     parts.push(`turn=${result.turnId.slice(0, 8)}`);
-    if (!result.speech && result.judge.REPLY === false) {
+    if (!result.speech) {
       parts.push("(無言ターン)");
     }
     if (!result.episodeSaved) {

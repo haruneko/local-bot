@@ -18,7 +18,7 @@ export async function runForget(
   llm: LlmClient,
   input: RunActionInput,
 ): Promise<ActionOutcome> {
-  const action = input.ctx.judge!.ACTION;
+  const action = input.action;
   const query = action.intent.trim() || ".";
   const hits = await input.episodes.recall(query, input.episodeRecallTopK);
 

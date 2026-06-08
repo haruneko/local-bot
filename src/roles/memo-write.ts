@@ -21,7 +21,7 @@ export async function runMemoWrite(
   llm: LlmClient,
   input: RunActionInput,
 ): Promise<ActionOutcome> {
-  const action = input.ctx.judge!.ACTION;
+  const action = input.action;
   const lastUserMessage = lastUserMessageFromContext(input.ctx);
   const existingNotes = await listNotesSummary();
 

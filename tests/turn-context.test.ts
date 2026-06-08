@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   createTurnContext,
   memorySnapshot,
-  renderJudgeUserPayload,
   renderLanguageUserContent,
   withAction,
 } from "../src/context/turn-context.js";
@@ -114,9 +113,9 @@ describe("TurnContext", () => {
     expect(renderLanguageUserContent(ctx)).not.toContain("## いまの内心");
   });
 
-  it("includes innerState in judge memory snapshot", () => {
+  it("includes innerState in memory snapshot", () => {
     const ctx = createTurnContext({
-      turnId: "t-judge-inner",
+      turnId: "t-snap-inner",
       state: "対話",
       trigger: {
         type: "user_message",
@@ -131,12 +130,11 @@ describe("TurnContext", () => {
       innerState: "穏やか",
     });
 
-    const payload = renderJudgeUserPayload(ctx);
-    expect(payload).toContain("innerState");
-    expect(payload).toContain("穏やか");
+    const snap = memorySnapshot(ctx);
+    expect(snap.innerState).toBe("穏やか");
   });
 
-  it("judge and language share the same recalled episodes before action", () => {
+  it("memory snapshot and language share the same recalled episodes before action", () => {
     const ctx = createTurnContext({
       turnId: "t3",
       state: "対話",
@@ -152,13 +150,9 @@ describe("TurnContext", () => {
       recalledEpisodes: fallbackRecalledEpisodes(["過去の内省全文"]),
     });
 
-    const judgePayload = JSON.parse(renderJudgeUserPayload(ctx));
-    const langBody = renderLanguageUserContent(ctx);
     const snap = memorySnapshot(ctx);
+    const langBody = renderLanguageUserContent(ctx);
 
-    expect(judgePayload.context.recalledEpisodes).toEqual([
-      "過去の内省全文",
-    ]);
     expect(snap.recalledEpisodes).toEqual(["過去の内省全文"]);
     expect(langBody).toContain("1. 過去の内省全文");
     expect(langBody).not.toMatch(/過去の内省全文.{0,20}…/);
@@ -188,7 +182,7 @@ describe("TurnContext", () => {
     expect(body).toContain("（要約）昨日話した");
   });
 
-  it("judge and language share priorDialogue from memorySnapshot", () => {
+  it("memory snapshot contains priorDialogue matching language render", () => {
     const ctx = createTurnContext({
       turnId: "t5",
       state: "対話",
@@ -205,16 +199,14 @@ describe("TurnContext", () => {
       recalledEpisodes: [],
     });
 
-    const judgePayload = JSON.parse(renderJudgeUserPayload(ctx));
+    const snap = memorySnapshot(ctx);
     const langBody = renderLanguageUserContent(ctx);
 
-    expect(judgePayload.context.priorDialogue).toBe(
-      langBody.split("## 直近の会話\n")[1]?.split("\n##")[0]?.trim(),
-    );
-    expect(judgePayload.context.priorDialogue).toContain("自分: 前の返答");
+    expect(snap.priorDialogue).toContain("自分: 前の返答");
+    expect(langBody).toContain(snap.priorDialogue);
   });
 
-  it("recallDelivery omit clears recall in judge and language", () => {
+  it("recallDelivery omit clears recall in snapshot and language", () => {
     const ctx = withAction(
       createTurnContext({
         turnId: "t6",
@@ -240,15 +232,15 @@ describe("TurnContext", () => {
       },
     );
 
-    const judgePayload = JSON.parse(renderJudgeUserPayload(ctx));
+    const snap = memorySnapshot(ctx);
     const langBody = renderLanguageUserContent(ctx);
 
     expect(ctx.recallDelivery).toBe("omit");
-    expect(judgePayload.context.recalledEpisodes).toEqual([]);
+    expect(snap.recalledEpisodes).toEqual([]);
     expect(langBody).not.toContain("背景の記憶");
   });
 
-  it("renders semantic facts in judge and language channels", () => {
+  it("renders semantic facts in snapshot and language channels", () => {
     const ctx = createTurnContext({
       turnId: "t7",
       state: "対話",
@@ -267,13 +259,9 @@ describe("TurnContext", () => {
       ],
     });
 
-    const judgePayload = JSON.parse(renderJudgeUserPayload(ctx));
-    const langBody = renderLanguageUserContent(ctx);
     const snap = memorySnapshot(ctx);
+    const langBody = renderLanguageUserContent(ctx);
 
-    expect(judgePayload.context.semanticFacts).toEqual([
-      "ユーザーは夏目漱石を好む",
-    ]);
     expect(snap.semanticFacts).toEqual(["ユーザーは夏目漱石を好む"]);
     expect(langBody).toContain("## 知っていること（意味記憶）");
     expect(langBody).toContain("1. ユーザーは夏目漱石を好む");

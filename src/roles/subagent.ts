@@ -141,7 +141,7 @@ export async function runResearchSubagent(
   llm: LlmClient,
   input: RunActionInput,
 ): Promise<ActionOutcome> {
-  const action = input.ctx.judge!.ACTION;
+  const action = input.action;
   const catalog = input.toolCatalog ?? [];
   const tools = catalog.filter((t) => t.category === "research");
   if (tools.length === 0) {
@@ -238,7 +238,7 @@ export async function runExpressSubagent(
   llm: LlmClient,
   input: RunActionInput,
 ): Promise<ActionOutcome> {
-  const action = input.ctx.judge!.ACTION;
+  const action = input.action;
   const catalog = input.toolCatalog ?? [];
   const tools = catalog.filter((t) => t.category === "express");
   if (tools.length === 0) {
@@ -311,7 +311,7 @@ export async function runCategorySubagent(
   llm: LlmClient,
   input: RunActionInput,
 ): Promise<ActionOutcome> {
-  const kind = input.ctx.judge!.ACTION.kind;
+  const kind = input.action.kind;
   switch (kind) {
     case "memory":
       return runMemorySubagent(llm, input);
@@ -320,7 +320,7 @@ export async function runCategorySubagent(
     case "express":
       return runExpressSubagent(llm, input);
     default:
-      return actionFailed(input.ctx.judge!.ACTION, "未対応のカテゴリ", {
+      return actionFailed(input.action, "未対応のカテゴリ", {
         code: ACTION_ERROR_CODES.ACTION_DISCONNECTED,
         message: `kind: ${kind}`,
       });

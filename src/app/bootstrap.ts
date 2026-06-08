@@ -6,9 +6,12 @@ import {
   resolveOllamaThink,
   resolveRecallDistanceThresholds,
   resolveRecencyExclusionTurns,
+  resolveRoleModel,
+  resolveRoleThink,
   resolveSemanticRecallMaxDistance,
   resolveSemanticRecallTopK,
   type AppSettings,
+  type RoleName,
 } from "../config/settings.js";
 import { loadMcpConfig, resolveExpressDryRun } from "../config/mcp.js";
 import { createUserResolver, loadUsers } from "../config/users.js";
@@ -23,7 +26,6 @@ import { InMemoryMemoIndexStore, type MemoIndexStore } from "../memory/memo-inde
 import { LanceMemoIndexStore } from "../memory/memo-index-lancedb.js";
 import { OllamaEmbedClient, OllamaLlmClient } from "../llm/ollama.js";
 import { withVerboseLlm } from "../llm/logging.js";
-import { runAction } from "../roles/action.js";
 import type { EpisodeStore } from "../memory/episode.js";
 import type { LlmClient } from "../llm/types.js";
 import { createVerboseLogger } from "../util/verbose.js";
@@ -38,8 +40,6 @@ import { McpToolClient } from "../mcp/client.js";
 import { FakeMcpToolProvider } from "../mcp/fake.js";
 import type { McpToolProvider } from "../mcp/types.js";
 import { buildToolCatalog, type CatalogTool } from "../tools/catalog.js";
-import type { RunActionInput } from "../action/context.js";
-
 export type AppContext = {
   settings: AppSettings;
   orchestrator: TurnOrchestrator;
@@ -62,6 +62,29 @@ export type BootstrapOptions = {
 
 function resolveOllamaHost(settings: AppSettings): string {
   return process.env.OLLAMA_HOST ?? settings.ollamaHost;
+}
+
+const ROLE_NAMES: RoleName[] = ["memory", "research", "language", "introspection", "innerState"];
+
+function buildRoleLlm(
+  settings: AppSettings,
+  host: string,
+  verboseLogger: ReturnType<typeof createVerboseLogger> | null,
+): Partial<Record<RoleName, LlmClient>> {
+  const result: Partial<Record<RoleName, LlmClient>> = {};
+  for (const role of ROLE_NAMES) {
+    const model = resolveRoleModel(settings, role);
+    const think = resolveRoleThink(settings, role);
+    let client: LlmClient = new OllamaLlmClient({
+      host,
+      model,
+      think,
+      numCtx: settings.ollamaNumCtx,
+    });
+    if (verboseLogger) client = withVerboseLlm(client, verboseLogger);
+    result[role] = client;
+  }
+  return result;
 }
 
 async function resolveMcpProvider(
@@ -144,6 +167,8 @@ export async function createApp(
     expressDryRun,
   };
 
+  const roleLlm = buildRoleLlm(settings, host, verboseLogger);
+
   const orchestrator = new TurnOrchestrator(session.state, {
     llm,
     episodes,
@@ -161,14 +186,9 @@ export async function createApp(
     timeZone: settings.timeZone ?? "Asia/Tokyo",
     getPersona: async () => personaText,
     dialogue: { resolveUserDisplayName },
-    runAction: (input: RunActionInput) =>
-      runAction(llm, {
-        ...input,
-        mcp: input.mcp ?? mcp,
-        toolCatalog: input.toolCatalog ?? toolCatalog,
-        expressDryRun: input.expressDryRun ?? expressDryRun,
-      }),
     actionDeps,
+    stateConfig: settings.stateConfig,
+    roleLlm,
     onSessionPersist: persistSession,
     verbose: verboseLogger ?? undefined,
   });

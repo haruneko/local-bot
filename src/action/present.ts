@@ -129,3 +129,12 @@ export function formatActionForLanguage(action: ActionOutcome): string {
 export function silenceLine(): string {
   return "（返答はしなかった）";
 }
+
+/** 複数 ActionOutcome を言語野向けにまとめる */
+export function formatActionsForLanguage(actions: ActionOutcome[]): string {
+  const attempted = actions.filter(
+    (a): a is Extract<ActionOutcome, { attempted: true }> => a.attempted,
+  );
+  if (attempted.length === 0) return "（このターンでは行動していない）";
+  return attempted.map((a) => formatActionForLanguage(a)).join("\n\n");
+}

@@ -7,9 +7,15 @@ export const ACTION_KINDS = [
 
 export type ActionKind = (typeof ACTION_KINDS)[number];
 
+export type TimeRange = {
+  sinceDaysAgo?: number;
+  untilDaysAgo?: number;
+};
+
 export type AbstractAction = {
   kind: ActionKind;
   intent: string;
+  timeRange?: TimeRange;
 };
 
 export const NONE_ACTION: AbstractAction = { kind: "none", intent: "" };

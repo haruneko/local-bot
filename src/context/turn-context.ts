@@ -1,6 +1,6 @@
 import {
   formatActionForIntrospection,
-  formatActionForLanguage,
+  formatActionsForLanguage,
   silenceLine,
 } from "../action/present.js";
 import { actionLabelJa } from "../action/types.js";
@@ -9,7 +9,6 @@ import type {
   ActionOutcome,
   AgentState,
   ConversationTurn,
-  JudgeOutput,
 } from "../types.js";
 import { buildContextClock } from "../sensor/datetime.js";
 import {
@@ -54,13 +53,13 @@ export type TurnContext = {
   /** memo_index から想起した関連メモの所在 */
   recalledNotes: MemoIndexHit[];
 
-  /** withJudge で平坦化（内省は judge オブジェクトを参照しない） */
-  reply?: boolean;
   /** withPersona で設定（言語野用） */
   persona?: string;
 
-  judge?: JudgeOutput;
-  action: ActionOutcome;
+  /** memory-agent → research-agent の順で積む */
+  actions: ActionOutcome[];
+  /** language-agent が出力した次 State */
+  nextState?: string;
   speech?: string | null;
 };
 
@@ -121,18 +120,16 @@ export function createTurnContext(input: CreateTurnContextInput): TurnContext {
     semanticFacts: [...(input.semanticFacts ?? [])],
     recalledNotes: [...(input.recalledNotes ?? [])],
     innerState: input.innerState ?? "",
-    action: { attempted: false },
+    actions: [],
   };
 }
 
-export function withJudge(ctx: TurnContext, judge: JudgeOutput): TurnContext {
-  return { ...ctx, judge, reply: judge.REPLY };
-}
-
+/** エージェントの ActionOutcome を actions 配列に追記する */
 export function withAction(
   ctx: TurnContext,
   action: ActionOutcome,
 ): TurnContext {
+  const actions = [...ctx.actions, action];
   let recallDelivery = ctx.recallDelivery;
   if (
     action.attempted &&
@@ -141,7 +138,7 @@ export function withAction(
   ) {
     recallDelivery = "omit";
   }
-  return { ...ctx, action, recallDelivery };
+  return { ...ctx, actions, recallDelivery };
 }
 
 export function withPersona(ctx: TurnContext, persona: string): TurnContext {
@@ -235,18 +232,6 @@ export function memorySnapshot(ctx: TurnContext) {
   };
 }
 
-export function renderJudgeUserPayload(ctx: TurnContext): string {
-  return JSON.stringify(
-    {
-      state: ctx.state,
-      trigger: ctx.trigger,
-      context: memorySnapshot(ctx),
-    },
-    null,
-    2,
-  );
-}
-
 function appendInnerState(parts: string[], ctx: TurnContext): void {
   if (!ctx.innerState.trim()) return;
   parts.push(
@@ -312,7 +297,7 @@ export function renderLanguageUserContent(ctx: TurnContext): string {
       pendingLine,
       "",
       "## このターンで起きたこと",
-      formatActionForLanguage(ctx.action),
+      formatActionsForLanguage(ctx.actions),
       "",
       "## 直近の会話と独り言",
       snap.priorDialogue,
@@ -335,7 +320,7 @@ export function renderLanguageUserContent(ctx: TurnContext): string {
     snap.partnerUtterance,
     "",
     "## このターンで起きたこと",
-    formatActionForLanguage(ctx.action),
+    formatActionsForLanguage(ctx.actions),
     "",
     "## 直近の会話",
     snap.priorDialogue,
@@ -348,12 +333,7 @@ export function renderLanguageUserContent(ctx: TurnContext): string {
 }
 
 export function renderIntrospectionPrompt(ctx: TurnContext): string {
-  const reply = ctx.reply ?? false;
-  const speechBlock = ctx.speech?.trim()
-    ? ctx.speech
-    : reply
-      ? ""
-      : silenceLine();
+  const speechBlock = ctx.speech?.trim() || silenceLine();
 
   const parts = [
     `（状況: ${ctx.state} / ${ctx.currentDateTime}）`,
@@ -365,14 +345,18 @@ export function renderIntrospectionPrompt(ctx: TurnContext): string {
     speechBlock,
   ];
 
-  if (ctx.action.attempted) {
-    const label = actionLabelJa(ctx.action.kind);
-    parts.push(
-      "",
-      "【行動】",
-      `やろうとしたこと: ${label} — ${ctx.action.intent}`,
-      formatActionForIntrospection(ctx.action),
-    );
+  const attempted = ctx.actions.filter(
+    (a): a is Extract<ActionOutcome, { attempted: true }> => a.attempted,
+  );
+  if (attempted.length > 0) {
+    parts.push("", "【行動】");
+    for (const action of attempted) {
+      const label = actionLabelJa(action.kind);
+      parts.push(
+        `やろうとしたこと: ${label} — ${action.intent}`,
+        formatActionForIntrospection(action),
+      );
+    }
   }
 
   return parts.join("\n");
@@ -421,23 +405,6 @@ export function buildConversationTurns(ctx: TurnContext): ChatMessage[] {
     }
   }
   return messages;
-}
-
-/** ジャッジの system メッセージに追記するコンテキスト部分（状態・内心・想起・意味記憶） */
-export function buildJudgeContextSuffix(ctx: TurnContext): string {
-  const parts: string[] = ["", `状態: ${ctx.state}`, `日時: ${ctx.currentDateTime}`];
-  if (ctx.innerState.trim()) {
-    parts.push("", "## 内心", ctx.innerState);
-  }
-  const recalled = formatRecalledEpisodes(ctx);
-  if (recalled.length > 0) {
-    parts.push("", "## 想起（参考）", ...recalled.map((e, i) => `${i + 1}. ${e}`));
-  }
-  const semantic = formatSemanticFacts(ctx);
-  if (semantic.length > 0) {
-    parts.push("", "## 意味記憶", ...semantic.map((f, i) => `${i + 1}. ${f}`));
-  }
-  return parts.join("\n");
 }
 
 /** 言語野の system メッセージに追記するコンテキスト部分（内心・意味記憶・背景の記憶） */

@@ -4,18 +4,31 @@ import type { LlmClient } from "../llm/types.js";
 import { summarizeRecallActionHits } from "../recall/llm-present.js";
 import type { ActionOutcome } from "../types.js";
 
+function daysAgoToIso(daysAgo: number, now = new Date()): string {
+  return new Date(now.getTime() - daysAgo * 86_400_000).toISOString();
+}
+
 export async function runRecall(
   llm: LlmClient,
   input: RunActionInput,
   query?: string,
 ): Promise<ActionOutcome> {
-  const action = input.ctx.judge!.ACTION;
+  const action = input.action;
   query = (query ?? action.intent).trim() || ".";
+  const now = new Date();
+  const since = action.timeRange?.sinceDaysAgo !== undefined
+    ? daysAgoToIso(action.timeRange.sinceDaysAgo, now)
+    : undefined;
+  const until = action.timeRange?.untilDaysAgo !== undefined
+    ? daysAgoToIso(action.timeRange.untilDaysAgo, now)
+    : undefined;
   const hits = await input.episodes.recall(
     query,
     input.episodeRecallTopK,
     undefined,
     input.ctx.state,
+    since,
+    until,
   );
 
   if (hits.length === 0) {

@@ -3,7 +3,6 @@ import {
   createTurnContext,
   renderIntrospectionPrompt,
   withAction,
-  withJudge,
   withSpeech,
 } from "../src/context/turn-context.js";
 
@@ -12,7 +11,6 @@ const dialogue = {
 };
 
 function introCtx(
-  reply: boolean,
   speech: string | null,
   action: Parameters<typeof withAction>[1],
   options?: {
@@ -33,11 +31,6 @@ function introCtx(
     recentTurns: options?.recentTurns ?? [],
     recalledEpisodes: [],
   });
-  ctx = withJudge(ctx, {
-    ACTION: { kind: "none", intent: "" },
-    REPLY: reply,
-    NEXT_STATE: "対話",
-  });
   ctx = withAction(ctx, action);
   if (speech !== null) {
     ctx = withSpeech(ctx, speech);
@@ -47,7 +40,7 @@ function introCtx(
 
 describe("renderIntrospectionPrompt", () => {
   it("T-I01: REPLY=false uses silence line", () => {
-    const prompt = introCtx(false, null, { attempted: false });
+    const prompt = introCtx(null, { attempted: false });
     expect(prompt).toMatch(/（状況: 対話 \/ .+）/);
     expect(prompt).toContain("【直近の会話】");
     expect(prompt).toContain("（返答はしなかった）");
@@ -55,7 +48,7 @@ describe("renderIntrospectionPrompt", () => {
   });
 
   it("T-I02: ACTION none omits action block", () => {
-    const prompt = introCtx(true, "こんにちは", { attempted: false });
+    const prompt = introCtx("こんにちは", { attempted: false });
     expect(prompt).toContain("【直近の会話】");
     expect(prompt).toContain("【いま自分が言ったこと】");
     expect(prompt).toContain("こんにちは");
@@ -64,7 +57,6 @@ describe("renderIntrospectionPrompt", () => {
 
   it("includes conversation history and separates partner utterance from own speech", () => {
     const prompt = introCtx(
-      true,
       "今どんな感じ？一緒に話してみない？",
       { attempted: false },
       {
@@ -89,7 +81,7 @@ describe("renderIntrospectionPrompt", () => {
   });
 
   it("T-I03: succeeded action shows factual summary", () => {
-    const prompt = introCtx(false, null, {
+    const prompt = introCtx(null, {
       attempted: true,
       kind: "memory",
       intent: "今日の予定をメモに",
@@ -108,7 +100,7 @@ describe("renderIntrospectionPrompt", () => {
   });
 
   it("uses monologue speech even when REPLY is false", () => {
-    const prompt = introCtx(false, "CONCEPT.md を読んだ。次は続きを", {
+    const prompt = introCtx("CONCEPT.md を読んだ。次は続きを", {
       attempted: true,
       kind: "memory",
       intent: "読む",
@@ -121,7 +113,7 @@ describe("renderIntrospectionPrompt", () => {
   });
 
   it("T-I04: failed action shows error detail", () => {
-    const prompt = introCtx(true, "ごめんね", {
+    const prompt = introCtx("ごめんね", {
       attempted: true,
       kind: "memory",
       intent: "誕生日を覚える",

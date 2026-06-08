@@ -22,6 +22,8 @@ export interface EpisodeStore {
     topK: number,
     excludeTurnIds?: ReadonlySet<string>,
     filterState?: string,
+    since?: string,
+    until?: string,
   ): Promise<EpisodeRecallHit[]>;
   /** timestamp 昇順で列挙（sinceIso 以降のみ。省略時は全件） */
   listSince(sinceIso?: string, limit?: number): Promise<EpisodeRecord[]>;
@@ -45,13 +47,21 @@ export class InMemoryEpisodeStore implements EpisodeStore {
     topK: number,
     excludeTurnIds?: ReadonlySet<string>,
     filterState?: string,
+    since?: string,
+    until?: string,
   ): Promise<EpisodeRecallHit[]> {
+    const sinceMs = since ? Date.parse(since) : Number.NEGATIVE_INFINITY;
+    const untilMs = until ? Date.parse(until) : Number.POSITIVE_INFINITY;
     const eligible = this.records
       .filter((r) => !this.deletedTurnIds.has(r.metadata.turnId))
       .filter(
         (r) => !excludeTurnIds?.size || !excludeTurnIds.has(r.metadata.turnId),
       )
-      .filter((r) => !filterState || r.metadata.state === filterState);
+      .filter((r) => !filterState || r.metadata.state === filterState)
+      .filter((r) => {
+        const ts = Date.parse(r.metadata.timestamp);
+        return ts > sinceMs && ts < untilMs;
+      });
     return eligible
       .slice(-topK)
       .reverse()

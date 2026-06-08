@@ -29,7 +29,7 @@ export async function runMemoRead(
   llm: LlmClient,
   input: RunActionInput,
 ): Promise<ActionOutcome> {
-  const action = input.ctx.judge!.ACTION;
+  const action = input.action;
 
   // memoIndex がある場合はベクトル検索で候補を絞る。なければ全スキャン
   let previews: NotePreview[];

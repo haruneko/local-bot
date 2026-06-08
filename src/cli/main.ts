@@ -36,7 +36,7 @@ async function main(): Promise<void> {
           const result = await orchestrator.run({ type: "heartbeat" });
           if (verbose.enabled) {
             console.error(
-              `[verbose] heartbeat judge: REPLY=${result.judge.REPLY} ACTION=${result.judge.ACTION.kind} episodeSaved=${result.episodeSaved}`,
+              `[verbose] heartbeat: speech=${!!result.speech} episodeSaved=${result.episodeSaved}`,
             );
           }
           printTurnSummary(result, verbose);

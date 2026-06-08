@@ -67,10 +67,23 @@ export function catalogForCategory(
   return catalog.filter((t) => t.category === category);
 }
 
+function formatParamSignature(parameters: Record<string, unknown>): string {
+  const props = parameters.properties as Record<string, { type?: string }> | undefined;
+  if (!props || Object.keys(props).length === 0) return "";
+  const required = new Set((parameters.required as string[] | undefined) ?? []);
+  const parts = Object.entries(props).map(
+    ([k, v]) => `${k}${required.has(k) ? "" : "?"}:${v.type ?? "any"}`,
+  );
+  return `(${parts.join(", ")})`;
+}
+
 export function formatCatalogForPrompt(tools: readonly CatalogTool[]): string {
   if (tools.length === 0) return "（利用可能なツールはない）";
   return tools
-    .map((t) => `- ${t.name}: ${t.description}`)
+    .map((t) => {
+      const sig = formatParamSignature(t.parameters);
+      return `- ${t.name}${sig}: ${t.description}`;
+    })
     .join("\n");
 }
 
