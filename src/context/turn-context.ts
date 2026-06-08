@@ -362,6 +362,35 @@ export function renderIntrospectionPrompt(ctx: TurnContext): string {
   return parts.join("\n");
 }
 
+/** actor / activator 向けの軽量コンテキスト文字列を組み立てる。
+ *  知識チャンネル（recalledEpisodes / semanticFacts / recalledNotes）は含めない。
+ *  activator と actor は同じチャンネルセットを宣言し、判断の一貫性を保つこと。 */
+export function buildActorContext(
+  ctx: TurnContext,
+  channels: import("../config/settings.js").ContextChannel[],
+  opts?: { actorList?: string[] },
+): string {
+  const parts: string[] = [
+    `（状況: ${ctx.state} / ${ctx.currentDateTime}）`,
+  ];
+
+  if (channels.includes("conversation")) {
+    parts.push("", "## 今ターンのトリガー", ctx.partnerUtteranceLine);
+    const prior = formatPriorDialogue(ctx);
+    parts.push("", "## 直近の会話", prior);
+  }
+
+  if (channels.includes("inner_state") && ctx.innerState.trim()) {
+    parts.push("", "## いまの内心", ctx.innerState);
+  }
+
+  if (channels.includes("actor_list") && opts?.actorList?.length) {
+    parts.push("", "## 利用可能なアクター", opts.actorList.join(", "));
+  }
+
+  return parts.join("\n");
+}
+
 /** preprocess / verbose 用のトークン見積もり */
 export function serializeMemoryForBudget(ctx: TurnContext): string {
   return JSON.stringify(memorySnapshot(ctx));

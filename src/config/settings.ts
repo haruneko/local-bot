@@ -6,15 +6,50 @@ import { DEFAULT_RECALL_DISTANCE_THRESHOLDS } from "../recall/distance.js";
 /** Ollama `think` API（推論モード）。false で thinking off */
 export type OllamaThinkSetting = boolean | "high" | "medium" | "low";
 
+/** actor が参照できる TurnContext のチャンネル */
+export type ContextChannel = "conversation" | "inner_state" | "actor_list" | "image_feed";
+
+/** フラット actor pool のアクター名 */
+export type ActorName =
+  | "recall"
+  | "remember"
+  | "forget"
+  | "memoWrite"
+  | "memoRead"
+  | "webSearch"
+  | "urlBrowse"
+  | "webcam";
+
+/** 各 actor の設定 */
+export type ActorConfig = {
+  enabled: boolean;
+  /** 参照チャンネル。未設定は DEFAULT_ACTOR_CHANNELS[name] にフォールバック */
+  channels?: ContextChannel[];
+  /** 使用モデル。未設定は actionModel にフォールバック */
+  model?: string;
+};
+
+/** actor ごとのデフォルト知覚チャンネル（activator と同一にすること） */
+export const DEFAULT_ACTOR_CHANNELS: Record<ActorName, ContextChannel[]> = {
+  recall:    ["conversation", "inner_state"],
+  remember:  ["conversation", "inner_state"],
+  forget:    ["conversation", "inner_state"],
+  memoWrite: ["conversation", "inner_state"],
+  memoRead:  ["conversation", "inner_state"],
+  webSearch: ["conversation", "inner_state"],
+  urlBrowse: ["conversation", "inner_state"],
+  webcam:    ["conversation", "inner_state", "image_feed"],
+};
+
 /** State 別のコンテキスト設定（元データは変更しない・TurnContext に載せる量のみ絞る） */
 export type StateConfigEntry = {
   workingMemoryTurns?: number;
   episodeRecallTopK?: number;
+  /** この State で有効な actor 名リスト。省略時はグローバル actors 設定を使用 */
+  actors?: ActorName[];
 };
 
 export type RoleName =
-  | "memory"
-  | "research"
   | "language"
   | "introspection"
   | "innerState";
@@ -40,6 +75,8 @@ export type AppSettings = {
   /** LanceDB L2 距離による想起の濃さ（省略時は厳しめ既定値） */
   recallDistance?: Partial<RecallDistanceThresholds>;
   chatModel: string;
+  /** activator と全実行 actors が使うモデル。未設定は chatModel にフォールバック */
+  actionModel?: string;
   embedModel: string;
   ollamaHost: string;
   /** 未指定時は false（thinking off） */
@@ -50,9 +87,11 @@ export type AppSettings = {
   languageNumPredict?: number;
   /** コンテキスト日時のタイムゾーン（IANA） */
   timeZone?: string;
+  /** actor pool の設定（Layer 1: 全 State 共通の enabled/channels） */
+  actors?: Partial<Record<ActorName, ActorConfig>>;
   /** State 別コンテキスト設定。存在しない State はグローバル値を使用 */
   stateConfig?: Record<string, StateConfigEntry>;
-  /** ロール別モデル設定。未指定ロールは chatModel / ollamaThink を使用 */
+  /** ロール別モデル設定（language / introspection / innerState）。未指定は chatModel / ollamaThink を使用 */
   roles?: Partial<Record<RoleName, RoleConfig>>;
 };
 
@@ -115,6 +154,42 @@ export function resolveRoleThink(
   const roleThink = settings.roles?.[role]?.think;
   if (roleThink !== undefined) return roleThink;
   return resolveOllamaThink(settings);
+}
+
+/** activator + 全実行 actors のデフォルトモデル名を解決する */
+export function resolveActionModel(settings: AppSettings): string {
+  return settings.actionModel ?? settings.chatModel;
+}
+
+/** actor のモデル名を解決する。actor 個別設定 → actionModel → chatModel の順でフォールバック */
+export function resolveActorModel(settings: AppSettings, name: ActorName): string {
+  return settings.actors?.[name]?.model ?? resolveActionModel(settings);
+}
+
+/** actor の知覚チャンネルを解決する。settings 未設定はデフォルトにフォールバック */
+export function resolveActorChannels(
+  settings: AppSettings,
+  name: ActorName,
+): ContextChannel[] {
+  return settings.actors?.[name]?.channels ?? DEFAULT_ACTOR_CHANNELS[name];
+}
+
+/** State と設定から有効な ActorName[] を返す。
+ *  Layer 2 (stateConfig.actors) → Layer 1 (actors.enabled) の順でフィルタ */
+export function resolveEnabledActors(
+  settings: AppSettings,
+  state: string,
+): ActorName[] {
+  const ALL_ACTORS: ActorName[] = [
+    "recall", "remember", "forget", "memoWrite", "memoRead",
+    "webSearch", "urlBrowse", "webcam",
+  ];
+  const stateActors = settings.stateConfig?.[state]?.actors;
+  const candidates = stateActors ?? ALL_ACTORS;
+  return candidates.filter((name) => {
+    const cfg = settings.actors?.[name];
+    return cfg === undefined || cfg.enabled !== false;
+  });
 }
 
 export async function loadSettings(): Promise<AppSettings> {

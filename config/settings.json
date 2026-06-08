@@ -15,13 +15,22 @@
   "ollamaNumCtx": 30000,
   "languageNumPredict": 400,
   "timeZone": "Asia/Tokyo",
-  "stateConfig": {
-    "対話": { "workingMemoryTurns": 8, "episodeRecallTopK": 6 },
-    "静穏": { "workingMemoryTurns": 5, "episodeRecallTopK": 2 }
+  "actors": {
+    "recall":    { "enabled": true,  "channels": ["conversation", "inner_state"] },
+    "remember":  { "enabled": true,  "channels": ["conversation", "inner_state"], "model": "qwen3.6:35b-a3b" },
+    "forget":    { "enabled": true,  "channels": ["conversation", "inner_state"] },
+    "memoWrite": { "enabled": true,  "channels": ["conversation", "inner_state"], "model": "qwen3.6:35b-a3b" },
+    "memoRead":  { "enabled": true,  "channels": ["conversation", "inner_state"] },
+    "webSearch": { "enabled": true,  "channels": ["conversation", "inner_state"], "model": "qwen3.6:35b-a3b" },
+    "urlBrowse": { "enabled": true,  "channels": ["conversation", "inner_state"] },
+    "webcam":    { "enabled": false, "channels": ["conversation", "inner_state", "image_feed"] }
   },
+  "stateConfig": {
+    "対話": { "workingMemoryTurns": 8, "episodeRecallTopK": 6, "actors": ["recall", "remember", "memoWrite", "memoRead", "webSearch", "urlBrowse"] },
+    "静穏": { "workingMemoryTurns": 5, "episodeRecallTopK": 2, "actors": ["recall", "remember"] }
+  },
+  "actionModel": "qwen3-vl:8b-instruct",
   "roles": {
-    "memory":        { "model": "qwen3.6:35b-a3b", "think": false },
-    "research":      { "model": "qwen3.6:35b-a3b", "think": true  },
     "language":      { "model": "qwen3.6:35b-a3b", "think": false },
     "introspection": { "model": "qwen3.6:35b-a3b", "think": false },
     "innerState":    { "model": "qwen3.6:35b-a3b", "think": false }

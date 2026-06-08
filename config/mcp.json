@@ -1,5 +1,5 @@
 {
-  "expressDryRun": true,
+  "expressDryRun": false,
   "servers": [
     {
       "name": "research",

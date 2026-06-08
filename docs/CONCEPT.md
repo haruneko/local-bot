@@ -13,10 +13,10 @@
 ターン全体は **入力フェーズ** と **自律エージェントフェーズ** の 2 フェーズで構成する。
 
 - **入力フェーズ（プリプロセス）**: センサー・永続記憶・作業記憶から揮発コンテキスト（`TurnContext`）を組み上げる。全エージェントが参照する事実の起点。フィルタは TurnContext に載せる量を絞るだけで、元データは変更しない。
-- **自律エージェントフェーズ**: memory・research・language の各エージェントが同一 TurnContext を読んで自己判断し、直列に実行する（本来は並行だが直列で近似）。前エージェントの結果は次エージェントから見える。
-  - **memory-agent**: 記憶操作が必要か判断し、必要なら実行する
-  - **research-agent**: 外部情報取得が必要か判断し、必要なら実行する
-  - **language-agent**: 全 facts を受け取り発話を生成し NEXT_STATE を決める
+- **自律エージェントフェーズ**: activator が起動 actor を選定し、選ばれた actor が並列に自律実行する。actor 間の within-turn 依存はない。
+  - **activator**: mini-context（直近会話 + 内心 + actor リスト）を元に起動すべき actor を 1 コールで選定する。小型・高速モデル使用
+  - **actor pool**: 各 actor が宣言した知覚チャンネルで TurnContext を参照し、自律判断・実行して `ctx.actions` に積む
+  - **language-agent**: 全チャンネル + `ctx.actions` を受け取り発話を生成し NEXT_STATE を決める
   - **内省・内心更新**: 発話結果から内省を生成し LanceDB へ書き込む
 
 各エージェントの活性化判断は必ず LLM で行う。ヒューリスティックによるスキップはしない。
@@ -43,13 +43,16 @@
   + 想起されたエピソード記憶
   + 必要な外部センサー状態
        ↓
-[memory-agent]
-  記憶操作（LanceDB / notes）が必要か 1 コールで判断・実行
-  必要なければ即スキップ。facts を ctx.actions に積む
+[activator]
+  mini-context（直近会話 + 内心 + actor リスト）× 小型モデル
+  config / stateConfig でフィルタ済みの pool から選定
+  → {"active": ["recall", "web-search", ...]}
        ↓
-[research-agent]
-  外部情報取得（MCP）が必要か 1 コールで判断・実行
-  memory facts も見える。必要なければ即スキップ
+[actor pool（並列実行）]
+  選ばれた actor が各自の知覚チャンネルで TurnContext を参照
+  recall / remember / memo_write / memo_read
+  web-search / url-browse / webcam / ...
+  結果を ctx.actions に積む
        ↓
 [language-agent（言語野）]
   全 facts を受け取りキャラクタールールに従いセリフ生成
@@ -89,11 +92,11 @@
 ### プリプロセス
 知的判断をしない濾過マシナリー。現在の State に応じて各チャンネルから必要な情報だけを引き出し、フィルタしてコンテキストを組み上げる。**フィルタは TurnContext に載せる量を絞るだけで、元データ（LanceDB・state.json）は変更しない**。フィルタ量は `stateConfig` で State 別に設定する。
 
-### memory-agent
-記憶操作（LanceDB・`data/notes/`）が必要か 1 コールで判断し、必要なら実行する。`activate: false` なら即終了。`activate: true` なら具体ツールと intent を決めて実行し `ctx.actions` に結果を積む。ツール: `remember` `recall` `forget` `memo_write` `memo_read` `distill`（スタブ）。
+### activator
+起動すべき actor を選定する軽量スクリーナー。mini-context（直近 2〜3 ターン・最新発話・内心ステート・利用可能 actor リスト）のみを受け取り、1 コールで `{"active": [...]}` を返す。想起済みエピソードは渡さない（それを取りに行くかを決めるのが activator のため）。config / stateConfig のフィルタで pool から除外済みの actor は提示されない。false negative のコストが高いため迷ったら ON に倒す。
 
-### research-agent
-外部情報取得（MCP: web 検索・URL 閲覧・予定照会等）が必要か 1 コールで判断し、必要なら MCP ツールを実行する。memory-agent の facts も参照できる。`activate: false` なら即終了。
+### actor pool
+activator が選んだ actor が並列に実行する。各 actor は宣言した**知覚チャンネル**の TurnContext フィールドのみを参照し、自律判断・実行して `ctx.actions` に `ActionOutcome` を積む。ツール例: `recall` `remember` `forget` `memo_write` `memo_read` `web-search` `url-browse` `webcam`。
 
 ### language-agent（言語野）
 全 facts を受け取りキャラクタールールに従ってセリフを生成する。行動後に結果を説明する分離脳の左脳モデル。毎ターン必ず起動し、発話するかどうかを自分で決める。発話に加えて `NEXT_STATE` を出力し、State 遷移の責任を担う。
@@ -140,13 +143,13 @@
   LanceDB から関連エピソードをベクトル検索で想起
   → TurnContext（揮発）を生成
 
-[3. memory-agent]
-  TurnContext を読み、記憶操作が必要か 1 コールで判断
-  必要なら実行し ctx.actions に ActionOutcome を追加
+[3. activator]
+  mini-context を読み、起動すべき actor を 1 コールで選定
+  config / stateConfig フィルタ済みの pool から選ぶ
 
-[4. research-agent]
-  TurnContext（memory facts を含む）を読み、外部情報取得が必要か 1 コールで判断
-  必要なら MCP ツールを実行し ctx.actions に ActionOutcome を追加
+[4. actor pool（並列）]
+  選ばれた actor が各自の知覚チャンネルで TurnContext を参照
+  自律判断・実行し ctx.actions に ActionOutcome を追加
 
 [5. language-agent]
   全 facts を受け取りキャラクタールールに従い発話生成

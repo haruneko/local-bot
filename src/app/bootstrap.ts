@@ -6,10 +6,15 @@ import {
   resolveOllamaThink,
   resolveRecallDistanceThresholds,
   resolveRecencyExclusionTurns,
+  resolveActionModel,
+  resolveActorChannels,
+  resolveActorModel,
+  resolveEnabledActors,
   resolveRoleModel,
   resolveRoleThink,
   resolveSemanticRecallMaxDistance,
   resolveSemanticRecallTopK,
+  type ActorName,
   type AppSettings,
   type RoleName,
 } from "../config/settings.js";
@@ -40,6 +45,7 @@ import { McpToolClient } from "../mcp/client.js";
 import { FakeMcpToolProvider } from "../mcp/fake.js";
 import type { McpToolProvider } from "../mcp/types.js";
 import { buildToolCatalog, type CatalogTool } from "../tools/catalog.js";
+
 export type AppContext = {
   settings: AppSettings;
   orchestrator: TurnOrchestrator;
@@ -64,7 +70,7 @@ function resolveOllamaHost(settings: AppSettings): string {
   return process.env.OLLAMA_HOST ?? settings.ollamaHost;
 }
 
-const ROLE_NAMES: RoleName[] = ["memory", "research", "language", "introspection", "innerState"];
+const ROLE_NAMES: RoleName[] = ["language", "introspection", "innerState"];
 
 function buildRoleLlm(
   settings: AppSettings,
@@ -121,6 +127,18 @@ export async function createApp(
     llm = withVerboseLlm(llm, verboseLogger);
   }
 
+  // actionModel クライアント（activator + 全実行 actors）
+  const actionModelName = resolveActionModel(settings);
+  let actionLlm: LlmClient = new OllamaLlmClient({
+    host,
+    model: actionModelName,
+    think: false,
+    numCtx: settings.ollamaNumCtx,
+  });
+  if (verboseLogger) {
+    actionLlm = withVerboseLlm(actionLlm, verboseLogger);
+  }
+
   let episodes: EpisodeStore;
   let semantic: SemanticStore;
   let memoIndex: MemoIndexStore;
@@ -169,8 +187,37 @@ export async function createApp(
 
   const roleLlm = buildRoleLlm(settings, host, verboseLogger);
 
+  // State ごとの有効 actor リスト（初期 State で解決。実行時は stateConfig で上書き）
+  const enabledActors = resolveEnabledActors(settings, session.state);
+
+  // actor ごとの知覚チャンネルと LLM
+  const ALL_ACTOR_NAMES: ActorName[] = [
+    "recall", "remember", "forget", "memoWrite", "memoRead",
+    "webSearch", "urlBrowse", "webcam",
+  ];
+  const actorChannels = Object.fromEntries(
+    ALL_ACTOR_NAMES.map((name) => [name, resolveActorChannels(settings, name)]),
+  ) as Record<ActorName, ReturnType<typeof resolveActorChannels>>;
+
+  const actorLlm = Object.fromEntries(
+    ALL_ACTOR_NAMES.map((name) => {
+      const model = resolveActorModel(settings, name);
+      // actionModel と同じならクライアントを共用
+      if (model === actionModelName) return [name, actionLlm];
+      let client: LlmClient = new OllamaLlmClient({
+        host,
+        model,
+        think: false,
+        numCtx: settings.ollamaNumCtx,
+      });
+      if (verboseLogger) client = withVerboseLlm(client, verboseLogger);
+      return [name, client];
+    }),
+  ) as Record<ActorName, LlmClient>;
+
   const orchestrator = new TurnOrchestrator(session.state, {
     llm,
+    actionLlm,
     episodes,
     semantic,
     memoIndex,
@@ -188,6 +235,9 @@ export async function createApp(
     dialogue: { resolveUserDisplayName },
     actionDeps,
     stateConfig: settings.stateConfig,
+    enabledActors,
+    actorChannels,
+    actorLlm,
     roleLlm,
     onSessionPersist: persistSession,
     verbose: verboseLogger ?? undefined,

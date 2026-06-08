@@ -26,8 +26,8 @@ import {
   buildRecallQuery,
   shouldPersistIntrospection,
 } from "./episode-persist.js";
-import { runMemoryAgent } from "../agents/memory.js";
-import { runResearchAgent } from "../agents/research.js";
+import { runActivator } from "./activator.js";
+import { getActor } from "../actors/registry.js";
 import type { VerboseLogger, VerboseLoggerImpl } from "../util/verbose.js";
 import { noopVerbose } from "../util/verbose.js";
 import { formatActionMeta } from "../action/types.js";
@@ -35,7 +35,13 @@ import type { RunActionDeps } from "../action/context.js";
 import type { AgentState, ConversationTurn } from "../types.js";
 import type { McpToolProvider } from "../mcp/types.js";
 import type { CatalogTool } from "../tools/catalog.js";
-import type { StateConfigEntry, RoleName } from "../config/settings.js";
+import type {
+  ActorName,
+  ContextChannel,
+  RoleName,
+  StateConfigEntry,
+} from "../config/settings.js";
+import { DEFAULT_ACTOR_CHANNELS } from "../config/settings.js";
 
 export type TurnTrigger =
   | { type: "user_message"; content: string; speakerId: string }
@@ -51,6 +57,8 @@ export type TurnResult = {
 
 export type TurnDeps = {
   llm: LlmClient;
+  /** activator + 全実行 actors 用モデル。未設定は llm にフォールバック */
+  actionLlm?: LlmClient;
   episodes: EpisodeStore;
   semantic: SemanticStore;
   workingMemory: WorkingMemory;
@@ -72,9 +80,15 @@ export type TurnDeps = {
   };
   memoIndex?: MemoIndexStore;
   memoIndexTopK?: number;
+  /** このターンで有効な actor 名リスト（設定解決済み） */
+  enabledActors?: ActorName[];
+  /** actor ごとの知覚チャンネル（設定解決済み）。未設定は DEFAULT_ACTOR_CHANNELS を使用 */
+  actorChannels?: Partial<Record<ActorName, ContextChannel[]>>;
+  /** actor ごとの LLM（設定解決済み）。未設定は actionLlm にフォールバック */
+  actorLlm?: Partial<Record<ActorName, LlmClient>>;
   /** State 別コンテキスト設定。TurnContext に載せる量のみ絞る（元データ不変） */
   stateConfig?: Record<string, StateConfigEntry>;
-  /** ロール別 LLM。未指定ロールは llm にフォールバック */
+  /** ロール別 LLM（language / introspection / innerState）。未指定は llm にフォールバック */
   roleLlm?: Partial<Record<RoleName, LlmClient>>;
   onSessionPersist?: (session: {
     state: AgentState;
@@ -142,15 +156,14 @@ export class TurnOrchestrator {
       ? (log as VerboseLoggerImpl)
       : null;
 
-    // Per-state config overrides (TurnContext への入力量を絞るのみ・元データ不変)
+    // Per-state config overrides
     const stateEntry = this.deps.stateConfig?.[startState] ?? {};
     const episodeRecallTopK = stateEntry.episodeRecallTopK ?? this.deps.episodeRecallTopK;
     const workingMemoryTurns = stateEntry.workingMemoryTurns;
 
-    // ロール別 LLM（未指定はデフォルト llm にフォールバック）
+    // LLM 解決
+    const actionLlm = this.deps.actionLlm ?? this.deps.llm;
     const rl = this.deps.roleLlm;
-    const memoryLlm = rl?.memory ?? this.deps.llm;
-    const researchLlm = rl?.research ?? this.deps.llm;
     const languageLlm = rl?.language ?? this.deps.llm;
     const introspectionLlm = rl?.introspection ?? this.deps.llm;
     const innerStateLlm = rl?.innerState ?? this.deps.llm;
@@ -258,22 +271,35 @@ export class TurnOrchestrator {
       memoIndex: this.deps.memoIndex,
     };
 
-    // --- memory-agent ---
-    const memStart = Date.now();
-    const memOutcome = await runMemoryAgent(memoryLlm, ctx, actionDeps);
-    if (memOutcome.attempted) {
-      ctx = withAction(ctx, memOutcome);
-      this.turnContext = ctx;
-      v?.actionResult(memOutcome, Date.now() - memStart);
-    }
+    // --- activator → actor pool ---
+    const enabledActors = this.deps.enabledActors ?? [];
+    const actorStart = Date.now();
+    const activeSpecs = await runActivator(actionLlm, ctx, enabledActors);
 
-    // --- research-agent ---
-    const resStart = Date.now();
-    const resOutcome = await runResearchAgent(researchLlm, ctx, actionDeps);
-    if (resOutcome.attempted) {
-      ctx = withAction(ctx, resOutcome);
-      this.turnContext = ctx;
-      v?.actionResult(resOutcome, Date.now() - resStart);
+    const outcomes = await Promise.all(
+      activeSpecs.map(async (spec) => {
+        const actor = getActor(spec.name);
+        if (!actor) return null;
+        const channels =
+          this.deps.actorChannels?.[spec.name] ??
+          DEFAULT_ACTOR_CHANNELS[spec.name];
+        const actorLlm = this.deps.actorLlm?.[spec.name] ?? actionLlm;
+        return actor.run(actorLlm, {
+          ctx,
+          intent: spec.intent,
+          timeRange: spec.timeRange,
+          channels,
+          deps: actionDeps,
+        });
+      }),
+    );
+
+    for (const outcome of outcomes) {
+      if (outcome?.attempted) {
+        ctx = withAction(ctx, outcome);
+        this.turnContext = ctx;
+        v?.actionResult(outcome, Date.now() - actorStart);
+      }
     }
 
     // --- language-agent（常に起動） ---

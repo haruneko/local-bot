@@ -24,7 +24,7 @@ const RECALL_ONLY_CATALOG = [
   },
 ];
 
-async function runRecallLoop(
+export async function runRecallLoop(
   llm: LlmClient,
   input: RunActionInput,
 ): Promise<ActionOutcome> {
