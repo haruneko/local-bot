@@ -7,7 +7,6 @@ import {
 import type {
   ActionOutcome,
   AgentState,
-  JudgeOutput,
 } from "../types.js";
 import type { EpisodeMetadata } from "../types.js";
 import type { EpisodeRecallHit } from "../memory/episode.js";
@@ -160,10 +159,6 @@ export class VerboseLoggerImpl implements VerboseLogger {
     }
   }
 
-  judge(output: JudgeOutput, ms: number): void {
-    this.json("judge", { ms, ...output });
-  }
-
   actionSkipped(): void {
     this.write("action", "(skipped — ACTION.kind is none)");
   }
@@ -256,7 +251,6 @@ function truncate(text: string, max: number): string {
 
 export function detectLlmRole(messages: ChatMessage[]): string {
   const sys = messages.find((m) => m.role === "system")?.content ?? "";
-  if (sys.includes("ジャッジ")) return "judge";
   if (sys.includes("行動くん")) return "action";
   if (sys.includes("キャラクタールールに従い")) return "language";
   if (sys.includes("エピソード記憶の断片")) return "recall.present";

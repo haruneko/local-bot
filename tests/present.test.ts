@@ -16,7 +16,7 @@ describe("formatActionForLanguage", () => {
       facts: { kind: "memo_read", filename: "状況.md", body: "眠くなった" },
       summary: "data/notes/状況.md を読んだ:\n眠くなった",
     });
-    expect(text).toContain("メモ（状況.md）を読んだ");
+    expect(text).toContain("状況.md のメモを読んでみた");
     expect(text).toContain("眠くなった");
     expect(text).not.toMatch(/わたし|私は/);
   });
@@ -30,7 +30,7 @@ describe("formatActionForLanguage", () => {
       facts: { kind: "memo_write", filename: "状況.md", body: "本文です" },
       summary: "data/notes/状況.md に書き込んだ:\n本文です",
     });
-    expect(text).toContain("メモ（状況.md）に書き込んだ");
+    expect(text).toContain("状況.md のメモに書き込んだ");
     expect(text).toContain("本文です");
     expect(text).not.toMatch(/わたし|私は/);
   });
@@ -48,7 +48,7 @@ describe("formatActionForIntrospection", () => {
     });
     expect(block).toContain("結果: できた");
     expect(block).toContain("内容:");
-    expect(block).toContain("メモ（状況.md）に書き込んだ");
+    expect(block).toContain("状況.md のメモに書き込んだ");
     expect(block).toContain("眠い");
   });
 
@@ -82,7 +82,7 @@ describe("formatActionForIntrospection", () => {
       facts: { kind: "memo_read", filename: "a.md", body: "本文" },
       summary: "data/notes/a.md を読んだ:\n本文",
     });
-    expect(facts).toContain("メモ（a.md）を読んだ");
+    expect(facts).toContain("a.md のメモを読んでみた");
     expect(facts).toContain("本文");
   });
 });

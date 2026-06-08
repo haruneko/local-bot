@@ -95,7 +95,7 @@ describe("renderIntrospectionPrompt", () => {
     expect(prompt).toContain("今日の予定をメモに");
     expect(prompt).toContain("結果: できた");
     expect(prompt).toContain("内容:");
-    expect(prompt).toContain("メモ（予定.md）に書き込んだ");
+    expect(prompt).toContain("予定.md のメモに書き込んだ");
     expect(prompt).toContain("買い物と会議");
   });
 

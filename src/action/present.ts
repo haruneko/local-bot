@@ -22,18 +22,18 @@ export function formatActionSummary(facts: ActionFacts): string {
       return `${noteDisplayPath(facts.filename)} を読んだ:\n${truncateBody(facts.body, 500)}`;
     case "remember": {
       const preview = truncateBody(facts.body, 120);
-      return `LanceDB（source: remember）に記録した: ${preview}`;
+      return `記憶に残した: ${preview}`;
     }
     case "recall":
       return facts.bullets.map((b) => `- ${b}`).join("\n");
     case "forget": {
       const preview = truncateBody(facts.body, 120);
-      return `LanceDB から記憶を忘れた: ${preview}`;
+      return `記憶を手放した: ${preview}`;
     }
     case "research":
-      return `${facts.tool}: ${truncateBody(facts.body, 500)}`;
+      return `${facts.tool} で調べた結果: ${truncateBody(facts.body, 500)}`;
     case "express":
-      return `${facts.tool} に発信: ${truncateBody(facts.body, 500)}`;
+      return `${facts.tool} に送った: ${truncateBody(facts.body, 500)}`;
   }
 }
 
@@ -52,26 +52,26 @@ export function formatActionFactContent(action: ActionOutcome): string {
   switch (facts.kind) {
     case "memo_read":
       return [
-        `メモ（${facts.filename}）を読んだ。書かれていた内容:`,
+        `${facts.filename} のメモを読んでみた。こんなことが書いてあった:`,
         facts.body,
       ].join("\n");
     case "memo_write":
       return [
-        `メモ（${facts.filename}）に書き込んだ。書いた内容:`,
+        `${facts.filename} のメモに書き込んだ:`,
         facts.body,
       ].join("\n");
     case "remember":
-      return ["記憶（LanceDB）に残した内容:", facts.body].join("\n");
+      return ["こんなことを記憶に残した:", facts.body].join("\n");
     case "recall":
       return [
-        "記憶（LanceDB）を検索した。ヒットした内容:",
+        "記憶を探してみた。こんなことが思い出せた:",
         facts.bullets.map((b) => `- ${b}`).join("\n"),
       ].join("\n");
     case "forget":
-      return ["記憶（LanceDB）から忘れた内容:", facts.body].join("\n");
+      return ["この記憶を手放した:", facts.body].join("\n");
     case "research":
       return [
-        `探索ツール（${facts.tool}）の結果:`,
+        `${facts.tool} で調べてみたら、こんな情報が見つかった:`,
         facts.title ? `件名: ${facts.title}` : "",
         facts.body,
       ]
@@ -79,7 +79,7 @@ export function formatActionFactContent(action: ActionOutcome): string {
         .join("\n");
     case "express":
       return [
-        `発信ツール（${facts.tool}）で送った内容:`,
+        `${facts.tool} を使って送った:`,
         facts.title ? `件名: ${facts.title}` : "",
         facts.body,
       ]

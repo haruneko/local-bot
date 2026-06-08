@@ -6,12 +6,6 @@ export type { ActionErrorInfo };
 
 export type AgentState = string;
 
-export type JudgeOutput = {
-  ACTION: AbstractAction;
-  REPLY: boolean;
-  NEXT_STATE: string;
-};
-
 export type ActionOutcome =
   | { attempted: false }
   | {

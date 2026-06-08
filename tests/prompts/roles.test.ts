@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  JUDGE_SYSTEM,
   LANGUAGE_HEARTBEAT_SYSTEM_PREFIX,
   LANGUAGE_SYSTEM_PREFIX,
   REMEMBER_SYSTEM,
@@ -12,18 +11,6 @@ describe("role prompts", () => {
     expect(LANGUAGE_SYSTEM_PREFIX).not.toContain("言語化するモジュール");
     expect(LANGUAGE_SYSTEM_PREFIX).not.toContain("あなたは言語化");
     expect(LANGUAGE_SYSTEM_PREFIX).not.toMatch(/あなたは.*担当/);
-  });
-
-  it("JUDGE_SYSTEM lists all category ACTION kinds", () => {
-    for (const kind of ["none", "memory", "research", "express"]) {
-      expect(JUDGE_SYSTEM).toContain(kind);
-    }
-  });
-
-  it("JUDGE_SYSTEM guides user_message REPLY and known NEXT_STATE", () => {
-    expect(JUDGE_SYSTEM).toContain("user_message");
-    expect(JUDGE_SYSTEM).toContain("「対話」");
-    expect(JUDGE_SYSTEM).toContain("「静穏」");
   });
 
   it("LANGUAGE_HEARTBEAT_SYSTEM_PREFIX uses positive templates", () => {

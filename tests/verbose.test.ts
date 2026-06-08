@@ -16,15 +16,6 @@ describe("verbose CLI", () => {
 });
 
 describe("detectLlmRole", () => {
-  it("detects judge from system prompt", () => {
-    expect(
-      detectLlmRole([
-        { role: "system", content: "あなたはジャッジくん" },
-        { role: "user", content: "x" },
-      ]),
-    ).toBe("judge");
-  });
-
   it("detects language from character rule prefix", () => {
     expect(
       detectLlmRole([

@@ -122,7 +122,7 @@ describe("dialogue format", () => {
         },
       ),
     );
-    expect(body).toContain("メモ（状況.md）に書き込んだ");
+    expect(body).toContain("状況.md のメモに書き込んだ");
     expect(body).toContain("眠くなった");
   });
 });

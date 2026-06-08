@@ -62,7 +62,7 @@ describe("runAction dispatch", () => {
     expect(all[0].metadata.source).toBe("remember");
     expect(all[0].metadata.turnId).toBe("turn-1-remember");
     if (outcome.attempted) {
-      expect(outcome.summary).toContain("LanceDB");
+      expect(outcome.summary).toContain("記憶に残した");
       expect(outcome.facts).toEqual({
         kind: "remember",
         body: "太郎はコーヒーが好き",

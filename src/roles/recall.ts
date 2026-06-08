@@ -32,7 +32,7 @@ export async function runRecall(
   );
 
   if (hits.length === 0) {
-    return actionSucceeded(action, "（該当する記憶は見つからなかった）");
+    return actionSucceeded(action, "記憶を探してみたが、それらしい記憶は見当たらなかった");
   }
 
   const bullets = await summarizeRecallActionHits(llm, query, hits);
