@@ -13,6 +13,10 @@ export type EpisodeRecallHit = {
   distance: number;
   /** ISO 8601。時間減衰スコアの計算に使う */
   timestamp?: string;
+  /** 埋め込みベクトル。抑制スコア計算に使う（LanceDB のみ付与） */
+  vector?: number[];
+  /** 重要度スコア 1-10。importance カラムが存在しない場合は undefined */
+  importance?: number;
 };
 
 export interface EpisodeStore {
@@ -29,6 +33,8 @@ export interface EpisodeStore {
   listSince(sinceIso?: string, limit?: number): Promise<EpisodeRecord[]>;
   /** ソフト削除。該当 turnId があれば true */
   softDelete(turnId: string): Promise<boolean>;
+  /** importance を更新する（score-importance バッチ用） */
+  updateImportance?(turnId: string, importance: number): Promise<void>;
 }
 
 /** InMemory 用: 新しい記憶ほど距離が小さい想定 */

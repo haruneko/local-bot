@@ -37,6 +37,8 @@ function baseTurnDeps(
     contextTokenBudget: 6000,
     getPersona: async () => "",
     dialogue: { resolveUserDisplayName: () => "太郎" },
+    // enabledActors=[] なので activator LLM は呼ばれない
+    resolveForState: () => ({ enabledActors: [], episodeRecallTopK: 3 }),
     ...overrides,
   };
 }

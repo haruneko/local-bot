@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  classifyRecallHits,
+  cosineSimilarity,
   DEFAULT_RECALL_DISTANCE_THRESHOLDS,
   distanceToRelevance,
   filterRecallByDistance,
@@ -81,5 +83,81 @@ describe("recall distance filter", () => {
       { body: "new", distance: 0.4, timestamp: recent },
     ]);
     expect(result[0].presented).toBe("new");
+  });
+});
+
+describe("cosineSimilarity", () => {
+  it("identical vectors → 1", () => {
+    const v = [1, 0, 0];
+    expect(cosineSimilarity(v, v)).toBeCloseTo(1, 5);
+  });
+
+  it("orthogonal vectors → 0", () => {
+    expect(cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0, 5);
+  });
+
+  it("opposite vectors → -1", () => {
+    expect(cosineSimilarity([1, 0], [-1, 0])).toBeCloseTo(-1, 5);
+  });
+
+  it("empty vectors → 0", () => {
+    expect(cosineSimilarity([], [])).toBe(0);
+  });
+});
+
+describe("inhibition scoring", () => {
+  const v1 = [1, 0, 0];
+  const v2 = [0, 1, 0];
+  const vSimilar = [0.99, 0.14, 0]; // v1 に近い
+
+  it("高類似度のベクトルは inhibition バッファにより relevance が下がる", () => {
+    const withoutInhibition = classifyRecallHits(
+      [{ turnId: "a", body: "A", distance: 0.4, vector: vSimilar }],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+      {},
+    );
+    const withInhibition = classifyRecallHits(
+      [{ turnId: "a", body: "A", distance: 0.4, vector: vSimilar }],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+      { inhibitionBuffer: [v1] },
+    );
+    expect(withInhibition[0]!.relevance).toBeLessThan(withoutInhibition[0]!.relevance);
+  });
+
+  it("非類似ベクトルは inhibition の影響を受けない", () => {
+    const withoutInhibition = classifyRecallHits(
+      [{ turnId: "b", body: "B", distance: 0.4, vector: v2 }],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+      {},
+    );
+    const withInhibition = classifyRecallHits(
+      [{ turnId: "b", body: "B", distance: 0.4, vector: v2 }],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+      { inhibitionBuffer: [v1] },
+    );
+    // v2 と v1 は直交（similarity ≈ 0）なのでほぼ同スコア
+    expect(withInhibition[0]!.relevance).toBeCloseTo(withoutInhibition[0]!.relevance, 3);
+  });
+
+  it("importance が高いほど relevance が高い", () => {
+    const low = classifyRecallHits(
+      [{ turnId: "c", body: "C", distance: 0.4, importance: 2 }],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+    );
+    const high = classifyRecallHits(
+      [{ turnId: "d", body: "D", distance: 0.4, importance: 9 }],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+    );
+    expect(high[0]!.relevance).toBeGreaterThan(low[0]!.relevance);
+  });
+
+  it("vector なし hits は inhibition の影響なし（エラーにならない）", () => {
+    expect(() =>
+      classifyRecallHits(
+        [{ turnId: "e", body: "E", distance: 0.4 }],
+        DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+        { inhibitionBuffer: [v1] },
+      ),
+    ).not.toThrow();
   });
 });

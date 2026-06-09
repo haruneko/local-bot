@@ -24,6 +24,8 @@ type EpisodeRow = {
   reply: boolean;
   turnId: string;
   deleted: boolean;
+  /** 重要度 1-10。addColumns マイグレーション前は undefined になりうる */
+  importance?: number;
 };
 
 export class LanceEpisodeStore implements EpisodeStore {
@@ -79,6 +81,9 @@ export class LanceEpisodeStore implements EpisodeStore {
     if (!fields.includes("deleted")) {
       await table.addColumns([{ name: "deleted", valueSql: "false" }]);
     }
+    if (!fields.includes("importance")) {
+      await table.addColumns([{ name: "importance", valueSql: "5.0" }]);
+    }
   }
 
   async append(record: EpisodeRecord): Promise<void> {
@@ -98,6 +103,7 @@ export class LanceEpisodeStore implements EpisodeStore {
       reply: record.metadata.reply,
       turnId: record.metadata.turnId,
       deleted: false,
+      importance: record.metadata.importance ?? 5,
     };
     await table.add([row]);
   }
@@ -166,6 +172,8 @@ export class LanceEpisodeStore implements EpisodeStore {
         body: r.body,
         distance: r._distance ?? Number.POSITIVE_INFINITY,
         timestamp: r.timestamp,
+        vector: Array.isArray(r.vector) ? (r.vector as number[]) : undefined,
+        importance: typeof r.importance === "number" ? r.importance : undefined,
       }));
   }
 
@@ -183,6 +191,15 @@ export class LanceEpisodeStore implements EpisodeStore {
       valuesSql: { deleted: "true" },
     });
     return true;
+  }
+
+  async updateImportance(turnId: string, importance: number): Promise<void> {
+    const table = await this.ensureTable();
+    const escaped = turnId.replace(/'/g, "''");
+    await table.update({
+      where: `"turnId" = '${escaped}'`,
+      valuesSql: { importance: String(importance) },
+    });
   }
 
   private async ensureTable(): Promise<lancedb.Table> {

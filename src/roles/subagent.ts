@@ -152,6 +152,7 @@ export async function runResearchSubagent(
   }
 
   const priorSteps: string[] = [];
+  const executedCalls = new Set<string>();
   let lastContent = "";
   let lastTool = "";
   let lastSummary = "";
@@ -181,6 +182,10 @@ export async function runResearchSubagent(
       );
     }
 
+    const callKey = `${pick.tool}:${JSON.stringify(pick.arguments ?? {})}`;
+    if (executedCalls.has(callKey)) break;
+    executedCalls.add(callKey);
+
     const tool = findCatalogTool(tools, pick.tool);
     if (!tool) {
       return actionFailed(action, "探索ツールが見つからない", {
@@ -195,7 +200,7 @@ export async function runResearchSubagent(
       pick.arguments ?? {},
     );
     priorSteps.push(
-      `${pick.tool}: ${result.ok ? "成功" : "失敗"} — ${result.summary}`,
+      `${pick.tool}(${JSON.stringify(pick.arguments ?? {})}): ${result.ok ? "成功" : "失敗"} — ${result.summary}`,
     );
 
     if (!result.ok) {

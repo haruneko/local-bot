@@ -6,19 +6,39 @@ import { INTROSPECTION_SYSTEM } from "../prompts/roles.js";
 import type { LlmClient } from "../llm/types.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { tryParseJsonWithSchema } from "../action/parse-json.js";
+
+export type IntrospectionOutput = {
+  text: string;
+  importance: number;
+};
+
+const introspectionSchema = z.object({
+  text: z.string(),
+  importance: z.number().int().min(1).max(10),
+});
+
+const introspectionJsonSchema = zodToJsonSchema(introspectionSchema, {
+  name: "IntrospectionOutput",
+  $refStrategy: "none",
+}) as Record<string, unknown>;
 
 export async function runIntrospection(
   llm: LlmClient,
   ctx: TurnContext,
-): Promise<string> {
+): Promise<IntrospectionOutput> {
   const prompt = renderIntrospectionPrompt(ctx);
-  return llm.chat(
+  const raw = await llm.chat(
     [
       { role: "system", content: INTROSPECTION_SYSTEM },
       { role: "user", content: prompt },
     ],
-    { temperature: 0.6 },
+    { format: introspectionJsonSchema, temperature: 0.6 },
   );
+  const parsed = tryParseJsonWithSchema(raw, introspectionSchema);
+  if (parsed.ok) return parsed.value;
+  // フォールバック: テキストがそのまま返ってきた場合
+  return { text: raw.trim(), importance: 5 };
 }
 
 const tagsSchema = z.object({ tags: z.array(z.string()).max(4) });

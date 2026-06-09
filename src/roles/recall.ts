@@ -22,7 +22,7 @@ export async function runRecall(
   const until = action.timeRange?.untilDaysAgo !== undefined
     ? daysAgoToIso(action.timeRange.untilDaysAgo, now)
     : undefined;
-  const hits = await input.episodes.recall(
+  const rawHits = await input.episodes.recall(
     query,
     input.episodeRecallTopK,
     undefined,
@@ -30,6 +30,8 @@ export async function runRecall(
     since,
     until,
   );
+  const maxDist = input.explicitRecallMaxDistance ?? 0.40;
+  const hits = rawHits.filter((h) => h.distance <= maxDist);
 
   if (hits.length === 0) {
     return actionSucceeded(action, "記憶を探してみたが、それらしい記憶は見当たらなかった");

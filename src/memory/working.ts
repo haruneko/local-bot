@@ -57,4 +57,11 @@ export class WorkingMemory {
     }
     return "";
   }
+
+  lastAssistantContent(): string {
+    for (let i = this.turns.length - 1; i >= 0; i--) {
+      if (this.turns[i].role === "assistant") return this.turns[i].content;
+    }
+    return "";
+  }
 }

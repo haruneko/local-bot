@@ -39,7 +39,7 @@ import type {
   ActorName,
   ContextChannel,
   RoleName,
-  StateConfigEntry,
+  StateResolved,
 } from "../config/settings.js";
 import { DEFAULT_ACTOR_CHANNELS } from "../config/settings.js";
 
@@ -77,17 +77,16 @@ export type TurnDeps = {
     mcp?: McpToolProvider;
     toolCatalog?: readonly CatalogTool[];
     expressDryRun?: boolean;
+    explicitRecallMaxDistance?: number;
   };
   memoIndex?: MemoIndexStore;
   memoIndexTopK?: number;
-  /** このターンで有効な actor 名リスト（設定解決済み） */
-  enabledActors?: ActorName[];
+  /** State に応じた設定を毎ターン解決するリゾルバ */
+  resolveForState: (state: string) => StateResolved;
   /** actor ごとの知覚チャンネル（設定解決済み）。未設定は DEFAULT_ACTOR_CHANNELS を使用 */
   actorChannels?: Partial<Record<ActorName, ContextChannel[]>>;
   /** actor ごとの LLM（設定解決済み）。未設定は actionLlm にフォールバック */
   actorLlm?: Partial<Record<ActorName, LlmClient>>;
-  /** State 別コンテキスト設定。TurnContext に載せる量のみ絞る（元データ不変） */
-  stateConfig?: Record<string, StateConfigEntry>;
   /** ロール別 LLM（language / introspection / innerState）。未指定は llm にフォールバック */
   roleLlm?: Partial<Record<RoleName, LlmClient>>;
   onSessionPersist?: (session: {
@@ -98,10 +97,16 @@ export type TurnDeps = {
   verbose?: VerboseLogger;
 };
 
+/** 抑制バッファの有効ターン数 */
+const INHIBITION_WINDOW_TURNS = 4;
+
 export class TurnOrchestrator {
   private turnContext: TurnContext | null = null;
   private innerState: string;
   private readonly recentEpisodeTurnIds: string[] = [];
+  /** 直近ターンで想起済みのベクトル群。INHIBITION_WINDOW_TURNS ターン後に期限切れ */
+  private readonly inhibitionBuffer: { vector: number[]; expiresAtTurn: number }[] = [];
+  private turnCount = 0;
 
   constructor(
     private state: AgentState,
@@ -124,6 +129,23 @@ export class TurnOrchestrator {
     while (this.recentEpisodeTurnIds.length > max) {
       this.recentEpisodeTurnIds.shift();
     }
+  }
+
+  private addToInhibitionBuffer(hits: readonly { vector?: number[] }[]): void {
+    const expires = this.turnCount + INHIBITION_WINDOW_TURNS;
+    for (const hit of hits) {
+      if (hit.vector) this.inhibitionBuffer.push({ vector: hit.vector, expiresAtTurn: expires });
+    }
+  }
+
+  private getActiveInhibitionVectors(): number[][] {
+    const now = this.turnCount;
+    for (let i = this.inhibitionBuffer.length - 1; i >= 0; i--) {
+      if (this.inhibitionBuffer[i]!.expiresAtTurn <= now) {
+        this.inhibitionBuffer.splice(i, 1);
+      }
+    }
+    return this.inhibitionBuffer.map((e) => e.vector);
   }
 
   getState(): AgentState {
@@ -156,10 +178,9 @@ export class TurnOrchestrator {
       ? (log as VerboseLoggerImpl)
       : null;
 
-    // Per-state config overrides
-    const stateEntry = this.deps.stateConfig?.[startState] ?? {};
-    const episodeRecallTopK = stateEntry.episodeRecallTopK ?? this.deps.episodeRecallTopK;
-    const workingMemoryTurns = stateEntry.workingMemoryTurns;
+    // Per-state config: State が変わるたびに再解決される
+    const { enabledActors, episodeRecallTopK, workingMemoryTurns } =
+      this.deps.resolveForState(startState);
 
     // LLM 解決
     const actionLlm = this.deps.actionLlm ?? this.deps.llm;
@@ -168,6 +189,7 @@ export class TurnOrchestrator {
     const introspectionLlm = rl?.introspection ?? this.deps.llm;
     const innerStateLlm = rl?.innerState ?? this.deps.llm;
 
+    this.turnCount++;
     v?.turnBegin(turnId, trigger, startState);
 
     if (trigger.type === "user_message") {
@@ -181,20 +203,10 @@ export class TurnOrchestrator {
 
     const recallQuery = buildRecallQuery(
       trigger,
-      startState,
       this.deps.workingMemory.lastUserContent(),
+      this.deps.workingMemory.lastAssistantContent(),
+      this.innerState,
     );
-    const recallStart = Date.now();
-    const excludeTurnIds = this.excludeTurnIds();
-    const recallHits = await this.deps.episodes.recall(
-      recallQuery,
-      episodeRecallTopK,
-      excludeTurnIds,
-      startState,
-    );
-    v?.recall(recallQuery, recallHits, Date.now() - recallStart, {
-      excludedTurnIds: [...excludeTurnIds],
-    });
 
     const allRecentTurns = this.deps.workingMemory.getRecent();
     const recentTurns = workingMemoryTurns !== undefined
@@ -202,38 +214,60 @@ export class TurnOrchestrator {
       : allRecentTurns;
     const turnNow = new Date();
     const clock = buildContextClock(turnNow, this.deps.timeZone);
-    const filterStart = Date.now();
-    const triggerLabel =
-      trigger.type === "user_message"
-        ? trigger.content
-        : `（ハートビート・${startState}）`;
-    const recalled = await presentRecallEpisodes(
-      this.deps.llm,
-      recallHits,
-      {
-        state: startState,
-        currentDateTime: clock.currentDateTime,
-        triggerLabel,
+
+    let recalled: Awaited<ReturnType<typeof presentRecallEpisodes>> = [];
+    let semanticFacts: ReturnType<typeof presentSemanticFacts> = [];
+    let memoHits: Awaited<ReturnType<NonNullable<typeof this.deps.memoIndex>["recall"]>> = [];
+
+    if (recallQuery !== null) {
+      const recallStart = Date.now();
+      const excludeTurnIds = this.excludeTurnIds();
+      const recallHits = await this.deps.episodes.recall(
         recallQuery,
-      },
-      this.deps.recallDistanceThresholds,
-    );
-    v?.recallFilter(recallHits, recalled, Date.now() - filterStart);
+        episodeRecallTopK,
+        excludeTurnIds,
+        startState,
+      );
+      v?.recall(recallQuery, recallHits, Date.now() - recallStart, {
+        excludedTurnIds: [...excludeTurnIds],
+      });
 
-    const semanticStart = Date.now();
-    const semanticHits = await this.deps.semantic.recall(
-      recallQuery,
-      this.deps.semanticRecallTopK,
-    );
-    const semanticFacts = presentSemanticFacts(
-      semanticHits,
-      this.deps.semanticRecallMaxDistance,
-    );
-    v?.semanticRecall(recallQuery, semanticHits, semanticFacts, Date.now() - semanticStart);
+      this.addToInhibitionBuffer(recallHits);
 
-    const memoHits = this.deps.memoIndex
-      ? await this.deps.memoIndex.recall(recallQuery, this.deps.memoIndexTopK ?? 3)
-      : [];
+      const filterStart = Date.now();
+      const triggerLabel =
+        trigger.type === "user_message"
+          ? trigger.content
+          : `（ハートビート・${startState}）`;
+      recalled = await presentRecallEpisodes(
+        this.deps.llm,
+        recallHits,
+        {
+          state: startState,
+          currentDateTime: clock.currentDateTime,
+          triggerLabel,
+          recallQuery,
+        },
+        this.deps.recallDistanceThresholds,
+        { inhibitionBuffer: this.getActiveInhibitionVectors() },
+      );
+      v?.recallFilter(recallHits, recalled, Date.now() - filterStart);
+
+      const semanticStart = Date.now();
+      const semanticHits = await this.deps.semantic.recall(
+        recallQuery,
+        this.deps.semanticRecallTopK,
+      );
+      semanticFacts = presentSemanticFacts(
+        semanticHits,
+        this.deps.semanticRecallMaxDistance,
+      );
+      v?.semanticRecall(recallQuery, semanticHits, semanticFacts, Date.now() - semanticStart);
+
+      memoHits = this.deps.memoIndex
+        ? await this.deps.memoIndex.recall(recallQuery, this.deps.memoIndexTopK ?? 3)
+        : [];
+    }
 
     let ctx = createTurnContext({
       turnId,
@@ -265,6 +299,7 @@ export class TurnOrchestrator {
     const actionDeps: RunActionDeps = {
       episodes: this.deps.episodes,
       episodeRecallTopK: this.deps.episodeRecallTopK,
+      explicitRecallMaxDistance: this.deps.actionDeps?.explicitRecallMaxDistance,
       mcp: this.deps.actionDeps?.mcp,
       toolCatalog: this.deps.actionDeps?.toolCatalog,
       expressDryRun: this.deps.actionDeps?.expressDryRun,
@@ -272,9 +307,17 @@ export class TurnOrchestrator {
     };
 
     // --- activator → actor pool ---
-    const enabledActors = this.deps.enabledActors ?? [];
     const actorStart = Date.now();
-    const activeSpecs = await runActivator(actionLlm, ctx, enabledActors);
+    const actorSpecs = enabledActors.flatMap((name) => {
+      const actor = getActor(name);
+      if (!actor) return [];
+      return [{
+        actor,
+        llm: this.deps.actorLlm?.[name] ?? actionLlm,
+        channels: this.deps.actorChannels?.[name] ?? DEFAULT_ACTOR_CHANNELS[name],
+      }];
+    });
+    const activeSpecs = await runActivator(ctx, actorSpecs);
 
     const outcomes = await Promise.all(
       activeSpecs.map(async (spec) => {
@@ -348,7 +391,9 @@ export class TurnOrchestrator {
       try {
         v?.introspectionPrompt(renderIntrospectionPrompt(ctx));
         const introStart = Date.now();
-        introspection = await runIntrospection(introspectionLlm, ctx);
+        const introResult = await runIntrospection(introspectionLlm, ctx);
+        introspection = introResult.text;
+        const episodeImportance = introResult.importance;
         v?.introspectionBody(introspection, Date.now() - introStart);
 
         tags = await extractEpisodeTags(introspectionLlm, introspection);
@@ -381,6 +426,7 @@ export class TurnOrchestrator {
           source: "introspection" as const,
           reply: !!ctx.speech?.trim(),
           turnId,
+          importance: episodeImportance,
         };
         await this.deps.episodes.append({ body: introspection, metadata });
         this.pushRecentEpisodeTurnId(turnId);

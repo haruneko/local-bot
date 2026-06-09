@@ -54,9 +54,19 @@ describe("episode persist gate", () => {
     expect(shouldPersistIntrospection(ctx)).toBe(true);
   });
 
-  it("buildRecallQuery uses heartbeat state when no user utterance", () => {
+  it("buildRecallQuery returns null for idle heartbeat with no content", () => {
+    expect(buildRecallQuery({ type: "heartbeat" }, "", "", "")).toBeNull();
+  });
+
+  it("buildRecallQuery uses lastSpeech for heartbeat when no user utterance", () => {
     expect(
-      buildRecallQuery({ type: "heartbeat" }, "静穏", ""),
-    ).toBe("heartbeat 静穏");
+      buildRecallQuery({ type: "heartbeat" }, "", "次は塊魂を調べよう", ""),
+    ).toBe("次は塊魂を調べよう");
+  });
+
+  it("buildRecallQuery uses innerState as mood fallback for heartbeat", () => {
+    expect(
+      buildRecallQuery({ type: "heartbeat" }, "", "", "穏やかな気持ち。"),
+    ).toBe("穏やかな気持ち。");
   });
 });

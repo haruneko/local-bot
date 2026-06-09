@@ -15,16 +15,27 @@ export type UpdateInnerStateInput = {
   currentDateTime: string;
 };
 
+/** 内心テキストの最初の1文（句点区切り）。焼き直し防止のため圧縮して渡す */
+function firstSentence(text: string): string {
+  const t = text.trim();
+  if (!t) return "";
+  const idx = t.indexOf("。");
+  if (idx >= 0) return t.slice(0, idx + 1);
+  return t.length > 80 ? `${t.slice(0, 80)}…` : t;
+}
+
 function buildInnerStateUserContent(input: UpdateInnerStateInput): string {
   const speechBlock = input.speech?.trim()
     ? input.speech
     : silenceLine();
 
+  const prev = firstSentence(input.prevInnerState) || "（まだない）";
+
   const parts = [
     `（日時: ${input.currentDateTime}）`,
     "",
-    "【前の内心】",
-    input.prevInnerState.trim() || "（まだない）",
+    "【前の内心（要約1文）】",
+    prev,
     "",
     "【このターンの内省】",
     input.introspection.trim(),

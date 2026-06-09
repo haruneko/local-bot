@@ -16,6 +16,7 @@ import {
   resolvePresentedMechanical,
   type ClassifiedRecallHit,
   type RecallDistanceThresholds,
+  type RecallScoreOptions,
 } from "./distance.js";
 import type { RecalledEpisode } from "./types.js";
 
@@ -121,8 +122,9 @@ export async function presentRecallEpisodes(
   hits: readonly EpisodeRecallHit[],
   situation: RecallSituation,
   thresholds: RecallDistanceThresholds,
+  scoreOptions: RecallScoreOptions = {},
 ): Promise<RecalledEpisode[]> {
-  const classified = classifyRecallHits(hits, thresholds);
+  const classified = classifyRecallHits(hits, thresholds, scoreOptions);
   const llmSummarized = await llmPresentSummarizeHits(llm, classified, situation);
   return assembleRecalledEpisodes(classified, llmSummarized);
 }

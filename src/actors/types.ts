@@ -13,7 +13,18 @@ export type ActorRunInput = {
   deps: RunActionDeps;
 };
 
+export type ActorActivateResult = {
+  intent: string;
+  timeRange?: { sinceDaysAgo?: number; untilDaysAgo?: number };
+};
+
 export type ActorRunner = {
   readonly name: ActorName;
+  /** このターンで起動すべきか判断する。不要なら null を返す */
+  activate(
+    llm: LlmClient,
+    ctx: TurnContext,
+    channels: ContextChannel[],
+  ): Promise<ActorActivateResult | null>;
   run(llm: LlmClient, input: ActorRunInput): Promise<ActionOutcome>;
 };

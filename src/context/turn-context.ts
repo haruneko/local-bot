@@ -188,6 +188,20 @@ export function formatPriorDialogue(ctx: TurnContext): string {
     .join("\n\n");
 }
 
+/** priorTurns を末尾 maxTurns 件に絞って整形する（actor 向け軽量版） */
+function formatPriorDialogueSliced(ctx: TurnContext, maxTurns: number): string {
+  if (ctx.priorDialogueChannel !== undefined) {
+    return ctx.priorDialogueChannel.trim() || "（このターンの相手発話より前はまだない）";
+  }
+  const turns = ctx.priorTurns.slice(-maxTurns);
+  if (turns.length === 0) {
+    return "（このターンの相手発話より前はまだない）";
+  }
+  return turns
+    .map((t) => formatDialogueTurn(t, ctx.dialogue, ctx.now))
+    .join("\n\n");
+}
+
 export function formatRecalledEpisodes(
   ctx: TurnContext,
   delivery: RecallDelivery = ctx.recallDelivery,
@@ -368,7 +382,7 @@ export function renderIntrospectionPrompt(ctx: TurnContext): string {
 export function buildActorContext(
   ctx: TurnContext,
   channels: import("../config/settings.js").ContextChannel[],
-  opts?: { actorList?: string[] },
+  opts?: { actorList?: string[]; maxTurns?: number },
 ): string {
   const parts: string[] = [
     `（状況: ${ctx.state} / ${ctx.currentDateTime}）`,
@@ -376,7 +390,9 @@ export function buildActorContext(
 
   if (channels.includes("conversation")) {
     parts.push("", "## 今ターンのトリガー", ctx.partnerUtteranceLine);
-    const prior = formatPriorDialogue(ctx);
+    const prior = opts?.maxTurns !== undefined
+      ? formatPriorDialogueSliced(ctx, opts.maxTurns)
+      : formatPriorDialogue(ctx);
     parts.push("", "## 直近の会話", prior);
   }
 

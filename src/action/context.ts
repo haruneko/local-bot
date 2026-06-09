@@ -9,6 +9,8 @@ import type { AbstractAction } from "./types.js";
 export type RunActionDeps = {
   episodes: EpisodeStore;
   episodeRecallTopK: number;
+  /** 明示的 recall actor での距離上限。未設定は 0.40 */
+  explicitRecallMaxDistance?: number;
   mcp?: McpToolProvider;
   toolCatalog?: readonly CatalogTool[];
   expressDryRun?: boolean;

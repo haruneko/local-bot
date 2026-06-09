@@ -1,6 +1,37 @@
 import type { EpisodeRecallHit } from "../memory/episode.js";
 import type { RecalledEpisode, RecallPresentation } from "./types.js";
 
+/** importance の正規化（1-10 → 0-1）。未設定は中立値 0.5 */
+const IMPORTANCE_DEFAULT = 5;
+const IMPORTANCE_MAX = 10;
+
+/** 抑制の強さ（0=無効 〜 1=完全抑制）*/
+const INHIBITION_WEIGHT = 0.7;
+
+/** コサイン類似度（正規化済みベクトル前提でも動く汎用実装）*/
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!;
+    normA += a[i]! * a[i]!;
+    normB += b[i]! * b[i]!;
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+/** 候補ベクトルと抑制バッファの最大コサイン類似度を返す。ベクトルなし時は 0 */
+function maxInhibition(vector: number[] | undefined, buffer: readonly number[][]): number {
+  if (!vector || buffer.length === 0) return 0;
+  let max = 0;
+  for (const bv of buffer) {
+    const sim = cosineSimilarity(vector, bv);
+    if (sim > max) max = sim;
+  }
+  return max;
+}
+
 export const SUMMARIZE_MAX_CHARS = 80;
 
 /** vague は固有名詞・事実を落とすため固定フレーズのみ */
@@ -15,7 +46,7 @@ export type RecallDistanceThresholds = {
 };
 
 export const DEFAULT_RECALL_DISTANCE_THRESHOLDS: RecallDistanceThresholds = {
-  fullMax: 0.55,
+  fullMax: 0.45,
   summarizeMax: 0.72,
   vagueMax: 0.85,
 };
@@ -70,26 +101,41 @@ export type ClassifiedRecallHit = {
   relevance: number;
 };
 
-/** 距離だけで presentation を決める（LLM 提示文は別段階） */
+export type RecallScoreOptions = {
+  /** 抑制バッファ（直近ターンで想起済みのベクトル群）*/
+  inhibitionBuffer?: readonly number[][];
+};
+
+/** 距離・recency・importance・抑制 を合算して relevance を決める（LLM 提示文は別段階） */
 export function classifyRecallHits(
   hits: readonly EpisodeRecallHit[],
   thresholds: RecallDistanceThresholds = DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+  options: RecallScoreOptions = {},
 ): ClassifiedRecallHit[] {
   const result: ClassifiedRecallHit[] = [];
+  const buffer = options.inhibitionBuffer ?? [];
 
   for (let id = 0; id < hits.length; id++) {
     const hit = hits[id]!;
     const presentation = presentationFromDistance(hit.distance, thresholds);
     if (presentation === "omit") continue;
 
+    const baseRelevance =
+      distanceToRelevance(hit.distance, thresholds.vagueMax) *
+      recencyDecay(hit.timestamp);
+
+    const importanceScore =
+      ((hit.importance ?? IMPORTANCE_DEFAULT) / IMPORTANCE_MAX);
+
+    const inhibition = maxInhibition(hit.vector, buffer);
+    const inhibitionPenalty = Math.max(0, 1 - INHIBITION_WEIGHT * inhibition);
+
     result.push({
       id,
       body: hit.body,
       distance: hit.distance,
       presentation,
-      relevance:
-        distanceToRelevance(hit.distance, thresholds.vagueMax) *
-        recencyDecay(hit.timestamp),
+      relevance: baseRelevance * importanceScore * inhibitionPenalty,
     });
   }
 
@@ -109,25 +155,19 @@ export function distanceToRelevance(
 export function filterRecallByDistance(
   hits: readonly EpisodeRecallHit[],
   thresholds: RecallDistanceThresholds = DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+  options: RecallScoreOptions = {},
 ): RecalledEpisode[] {
+  const classified = classifyRecallHits(hits, thresholds, options);
   const result: RecalledEpisode[] = [];
 
-  for (const hit of hits) {
-    const presentation = presentationFromDistance(hit.distance, thresholds);
-    const presented = resolvePresentedMechanical(presentation, hit.body);
+  for (const hit of classified) {
+    const presented = resolvePresentedMechanical(hit.presentation, hit.body);
     if (!presented) continue;
-
-    const validPresentation: RecallPresentation =
-      presentation === "vague" || presentation === "summarize"
-        ? presentation
-        : "full";
 
     result.push({
       presented,
-      relevance:
-        distanceToRelevance(hit.distance, thresholds.vagueMax) *
-        recencyDecay(hit.timestamp),
-      presentation: validPresentation,
+      relevance: hit.relevance,
+      presentation: hit.presentation,
     });
   }
 

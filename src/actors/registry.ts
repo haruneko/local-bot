@@ -5,7 +5,7 @@ import { rememberActor } from "./remember.js";
 import { forgetActor } from "./forget.js";
 import { memoWriteActor } from "./memo-write.js";
 import { memoReadActor } from "./memo-read.js";
-import { webSearchActor } from "./web-search.js";
+import { webSearchActor, urlBrowseActor } from "./web-search.js";
 
 const ACTOR_REGISTRY = new Map<ActorName, ActorRunner>([
   ["recall",    recallActor],
@@ -14,7 +14,7 @@ const ACTOR_REGISTRY = new Map<ActorName, ActorRunner>([
   ["memoWrite", memoWriteActor],
   ["memoRead",  memoReadActor],
   ["webSearch", webSearchActor],
-  ["urlBrowse", webSearchActor], // urlBrowse は webSearch と同じ runner を共有（MCP ツール選択で分岐）
+  ["urlBrowse", urlBrowseActor],
 ]);
 
 export function getActor(name: ActorName): ActorRunner | undefined {

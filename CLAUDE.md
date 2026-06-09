@@ -30,12 +30,11 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 ### 認知の構造（ターン全体のパイプライン）
 
 ```
-[入力] プリプロセス → [自律] memory-agent → research-agent → language-agent → 内省 → 内心更新 → LanceDB
+[入力] プリプロセス（想起） → [自律] actor pool（並列） → language-agent → 内省 → 内心更新 → LanceDB
 ```
 
-- **プリプロセス** (`src/context/preprocess.ts`): センサー・永続記憶・作業記憶から揮発コンテキスト `TurnContext` を組む。アーキテクチャの起点。フィルタは TurnContext に載せる量を絞るだけで元データは変更しない。
-- **memory-agent** (`src/agents/memory.ts`): 記憶操作（LanceDB・notes）を自己判断・実行。1コールで `activate: false` または `{tool, intent}` を出力。
-- **research-agent** (`src/agents/research.ts`): 外部情報取得（MCP）を自己判断・実行。memory facts も参照できる。
+- **プリプロセス** (`src/context/preprocess.ts`): 想起クエリ決定（`lastUserContent → lastSpeech → innerState → null`）→ LanceDB 想起 → `TurnContext` 生成。フィルタは量を絞るだけで元データは変更しない。
+- **actor pool** (`src/actors/`): `recall` `remember` `forget` `memoWrite` `memoRead` `webSearch` `urlBrowse` `webcam` が独立して並列に起動判断・実行。各 actor が `activate()` で自己判断し、起動した actor のみ実行。mini-context（直近3ターン）で判断。
 - **language-agent** (`src/roles/language.ts`): 全 facts を受け取り発話生成 + NEXT_STATE を出力。常に起動し発話するかを内部で決める。
 - **内省** (`src/roles/introspection.ts`) → **内心更新** (`src/roles/inner-state.ts`)。
 
@@ -46,7 +45,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 - 1ターン = **1つの `TurnContext`** を全フェーズで使い回し更新する。ターン終了で破棄（永続化は内省→LanceDB のみ）。
 - 全エージェント・内省は**同じ事実データ**を参照する。`memorySnapshot(ctx)` 経由。**ロールごとに別フォーマットで入力を組み立てない**。
 - 内省は各エージェントの判断プロセスを見ない。`ctx.reply` + `ctx.speech` + `ctx.actions` のみ（ツールログは渡さない）。
-- `ctx.actions: ActionOutcome[]`（memory-agent → research-agent の順で積む）。`summary` の regex 再パースはしない。
+- `ctx.actions: ActionOutcome[]`（actor pool の結果を順不同で追加）。`summary` の regex 再パースはしない。
 - 行動成功時の構造化事実は `ActionFacts` (`src/action/facts.ts`)、表示は `src/action/present.ts`。
 
 ## 記憶の4層（性質が違う・混ぜない）

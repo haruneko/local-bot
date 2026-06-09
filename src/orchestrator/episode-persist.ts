@@ -1,16 +1,19 @@
 import type { TurnContext } from "../context/turn-context.js";
 import type { TurnTrigger } from "./turn.js";
-import type { AgentState } from "../types.js";
 
-/** heartbeat 時のベクトル検索クエリ（直近ユーザー発話がなければ state ベース） */
+/**
+ * ベクトル検索クエリを決定する。null のとき recall をスキップする。
+ * heartbeat 優先順: lastUserContent → lastSpeech（前回発話） → innerState（ムード） → null
+ */
 export function buildRecallQuery(
   trigger: TurnTrigger,
-  state: AgentState,
   lastUserContent: string,
-): string {
+  lastSpeech = "",
+  innerState = "",
+): string | null {
   const last = lastUserContent.trim();
   if (trigger.type === "user_message") return last || ".";
-  return last || `heartbeat ${state}`;
+  return last || lastSpeech.trim() || innerState.trim() || null;
 }
 
 /** 内省を LanceDB に書くか（idle heartbeat は書かない）

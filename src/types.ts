@@ -42,4 +42,6 @@ export type EpisodeMetadata = {
   source: EpisodeSource;
   reply: boolean;
   turnId: string;
+  /** 重要度スコア 1-10。内省 LLM が採点。未設定時は 5（中立）扱い */
+  importance?: number;
 };

@@ -49,6 +49,14 @@ export type StateConfigEntry = {
   actors?: ActorName[];
 };
 
+/** per-turn state 解決済み設定。State が変わるたびに再計算される */
+export type StateResolved = {
+  enabledActors: ActorName[];
+  episodeRecallTopK: number;
+  workingMemoryTurns?: number;
+  // 将来: stateごとに変わる設定をここに追加
+};
+
 export type RoleName =
   | "language"
   | "introspection"
@@ -87,6 +95,8 @@ export type AppSettings = {
   languageNumPredict?: number;
   /** コンテキスト日時のタイムゾーン（IANA） */
   timeZone?: string;
+  /** 明示的 recall actor での距離上限（未設定は 0.40）。背景想起の fullMax より厳しく設定する */
+  explicitRecallMaxDistance?: number;
   /** actor pool の設定（Layer 1: 全 State 共通の enabled/channels） */
   actors?: Partial<Record<ActorName, ActorConfig>>;
   /** State 別コンテキスト設定。存在しない State はグローバル値を使用 */
@@ -166,12 +176,31 @@ export function resolveActorModel(settings: AppSettings, name: ActorName): strin
   return settings.actors?.[name]?.model ?? resolveActionModel(settings);
 }
 
+/** 明示的 recall actor の距離上限を解決する（未設定は 0.40） */
+export function resolveExplicitRecallMaxDistance(settings: AppSettings): number {
+  return settings.explicitRecallMaxDistance ?? 0.40;
+}
+
 /** actor の知覚チャンネルを解決する。settings 未設定はデフォルトにフォールバック */
 export function resolveActorChannels(
   settings: AppSettings,
   name: ActorName,
 ): ContextChannel[] {
   return settings.actors?.[name]?.channels ?? DEFAULT_ACTOR_CHANNELS[name];
+}
+
+/** State に応じた設定を毎ターン解決するクロージャを生成する */
+export function createStateResolver(
+  settings: AppSettings,
+): (state: string) => StateResolved {
+  return (state: string) => {
+    const stateEntry = settings.stateConfig?.[state] ?? {};
+    return {
+      enabledActors: resolveEnabledActors(settings, state),
+      episodeRecallTopK: stateEntry.episodeRecallTopK ?? settings.episodeRecallTopK,
+      workingMemoryTurns: stateEntry.workingMemoryTurns,
+    };
+  };
 }
 
 /** State と設定から有効な ActorName[] を返す。

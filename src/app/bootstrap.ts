@@ -9,11 +9,12 @@ import {
   resolveActionModel,
   resolveActorChannels,
   resolveActorModel,
-  resolveEnabledActors,
+  resolveExplicitRecallMaxDistance,
   resolveRoleModel,
   resolveRoleThink,
   resolveSemanticRecallMaxDistance,
   resolveSemanticRecallTopK,
+  createStateResolver,
   type ActorName,
   type AppSettings,
   type RoleName,
@@ -183,12 +184,13 @@ export async function createApp(
     mcp,
     toolCatalog,
     expressDryRun,
+    explicitRecallMaxDistance: resolveExplicitRecallMaxDistance(settings),
   };
 
   const roleLlm = buildRoleLlm(settings, host, verboseLogger);
 
-  // State ごとの有効 actor リスト（初期 State で解決。実行時は stateConfig で上書き）
-  const enabledActors = resolveEnabledActors(settings, session.state);
+  // per-turn state リゾルバ（State が変わるたびに毎ターン呼ばれる）
+  const resolveForState = createStateResolver(settings);
 
   // actor ごとの知覚チャンネルと LLM
   const ALL_ACTOR_NAMES: ActorName[] = [
@@ -234,8 +236,7 @@ export async function createApp(
     getPersona: async () => personaText,
     dialogue: { resolveUserDisplayName },
     actionDeps,
-    stateConfig: settings.stateConfig,
-    enabledActors,
+    resolveForState,
     actorChannels,
     actorLlm,
     roleLlm,
