@@ -48,8 +48,10 @@ export type TurnContext = {
   recallDelivery: RecallDelivery;
   /** 意味記憶（夢で蒸留した知識）。背景のエピソード想起とは別チャンネル */
   semanticFacts: SemanticFactView[];
-  /** 持ち越す内心（余韻）。空 = 起きたて */
-  innerState: string;
+  /** 感情余韻（旧 innerState）。空 = 起きたて */
+  affect: string;
+  /** 認知的焦点（何に注目しているか）。空 = 特になし */
+  concern: string;
   /** memo_index から想起した関連メモの所在 */
   recalledNotes: MemoIndexHit[];
 
@@ -72,7 +74,8 @@ export type CreateTurnContextInput = {
   recalledEpisodes: RecalledEpisode[];
   semanticFacts?: SemanticFactView[];
   recalledNotes?: MemoIndexHit[];
-  innerState?: string;
+  affect?: string;
+  concern?: string;
   now?: Date;
   timeZone?: string;
 };
@@ -119,7 +122,8 @@ export function createTurnContext(input: CreateTurnContextInput): TurnContext {
     recallDelivery: "full",
     semanticFacts: [...(input.semanticFacts ?? [])],
     recalledNotes: [...(input.recalledNotes ?? [])],
-    innerState: input.innerState ?? "",
+    affect: input.affect ?? "",
+    concern: input.concern ?? "",
     actions: [],
   };
 }
@@ -242,17 +246,18 @@ export function memorySnapshot(ctx: TurnContext) {
     recallDelivery: ctx.recallDelivery,
     semanticFacts: formatSemanticFacts(ctx),
     recalledNotes: formatRecalledNotes(ctx),
-    innerState: ctx.innerState,
+    affect: ctx.affect,
+    concern: ctx.concern,
   };
 }
 
 function appendInnerState(parts: string[], ctx: TurnContext): void {
-  if (!ctx.innerState.trim()) return;
+  if (!ctx.affect.trim()) return;
   parts.push(
     "",
     "## いまの内心",
     "（いま抱えている気持ち。温度の素であって台本ではない）",
-    ctx.innerState,
+    ctx.affect,
   );
 }
 
@@ -396,8 +401,13 @@ export function buildActorContext(
     parts.push("", "## 直近の会話", prior);
   }
 
-  if (channels.includes("inner_state") && ctx.innerState.trim()) {
-    parts.push("", "## いまの内心", ctx.innerState);
+  if (channels.includes("inner_state")) {
+    if (ctx.concern.trim()) {
+      parts.push("", "## 関心事", ctx.concern);
+    }
+    if (ctx.affect.trim()) {
+      parts.push("", "## いまの内心", ctx.affect);
+    }
   }
 
   if (channels.includes("actor_list") && opts?.actorList?.length) {
@@ -432,22 +442,21 @@ export function redactTurnContextForLog(
 
 /**
  * priorTurns を実際の ChatMessage ターンに変換する。
- * - monologue（ハートビート独り言）はスキップ
+ * - monologue（ハートビート独り言）は既定でスキップ。includeMonologue:true で含める
  * - 先頭の孤立 assistant ターン（user より前）はスキップ
  */
-export function buildConversationTurns(ctx: TurnContext): ChatMessage[] {
+export function buildConversationTurns(
+  ctx: TurnContext,
+  opts?: { includeMonologue?: boolean },
+): ChatMessage[] {
   const messages: ChatMessage[] = [];
   let firstUserSeen = false;
   for (const turn of ctx.priorTurns) {
-    if (turn.channel === "monologue") continue;
+    if (turn.channel === "monologue" && !opts?.includeMonologue) continue;
     if (!firstUserSeen && turn.role === "assistant") continue;
     if (turn.role === "user") firstUserSeen = true;
-    if (turn.role === "user") {
-      const name = ctx.dialogue.resolveUserDisplayName(turn.speakerId ?? "");
-      messages.push({ role: "user", content: `${name}: ${turn.content}` });
-    } else {
-      messages.push({ role: "assistant", content: turn.content });
-    }
+    const content = formatDialogueTurn(turn, ctx.dialogue, ctx.now);
+    messages.push({ role: turn.role === "user" ? "user" : "assistant", content });
   }
   return messages;
 }

@@ -74,7 +74,7 @@ export class VerboseLoggerImpl implements VerboseLogger {
     });
   }
 
-  innerStateUpdate(prev: string, next: string, ms: number): void {
+  affectUpdate(prev: string, next: string, ms: number): void {
     this.json("inner_state", {
       ms,
       prev: prev.trim() || "(empty)",

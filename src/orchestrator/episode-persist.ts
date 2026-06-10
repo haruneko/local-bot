@@ -3,17 +3,18 @@ import type { TurnTrigger } from "./turn.js";
 
 /**
  * ベクトル検索クエリを決定する。null のとき recall をスキップする。
- * heartbeat 優先順: lastUserContent → lastSpeech（前回発話） → innerState（ムード） → null
+ * heartbeat 優先順: lastUserContent → lastSpeech（前回発話） → concern（認知的焦点） → affect（ムード） → null
  */
 export function buildRecallQuery(
   trigger: TurnTrigger,
   lastUserContent: string,
   lastSpeech = "",
-  innerState = "",
+  affect = "",
+  concern = "",
 ): string | null {
   const last = lastUserContent.trim();
   if (trigger.type === "user_message") return last || ".";
-  return last || lastSpeech.trim() || innerState.trim() || null;
+  return last || lastSpeech.trim() || concern.trim() || affect.trim() || null;
 }
 
 /** 内省を LanceDB に書くか（idle heartbeat は書かない）

@@ -41,12 +41,13 @@ const ACTOR_CONTEXT_TURNS = 3;
 export function createActivate(
   name: string,
   description: string,
+  opts?: { systemPrompt?: string },
 ): (
   llm: LlmClient,
   ctx: TurnContext,
   channels: ContextChannel[],
 ) => Promise<ActorActivateResult | null> {
-  const system = buildActivateSystem(name, description);
+  const system = opts?.systemPrompt ?? buildActivateSystem(name, description);
   return async (llm, ctx, channels) => {
     const context = buildActorContext(ctx, channels, { maxTurns: ACTOR_CONTEXT_TURNS });
     for (let attempt = 0; attempt < 2; attempt++) {

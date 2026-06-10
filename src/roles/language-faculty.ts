@@ -77,14 +77,21 @@ function buildLanguageDialogueMessages(
   systemPrefix: string,
   persona: string,
 ): ChatMessage[] {
-  const partnerName = ctx.dialogue.resolveUserDisplayName(
-    ctx.trigger.type === "user_message" ? ctx.trigger.speakerId : "",
-  );
-  const speakers = collectUniqueSpeakerNames(ctx);
-  const speakerLabel = speakers.length > 1
-    ? `話者: ${speakers.join(", ")}`
-    : `相手: ${partnerName}`;
-  const situationLine = `\n\n状況: ${ctx.state} / ${ctx.currentDateTime} / ${speakerLabel}`;
+  let situationLine: string;
+  let triggerLine: string;
+  if (ctx.trigger.type === "heartbeat") {
+    situationLine = `\n\n状況: ${ctx.state} / ${ctx.currentDateTime} / ハートビート`;
+    triggerLine = "（ハートビート）";
+  } else {
+    const partnerName = ctx.dialogue.resolveUserDisplayName(ctx.trigger.speakerId);
+    const speakers = collectUniqueSpeakerNames(ctx);
+    const speakerLabel = speakers.length > 1
+      ? `話者: ${speakers.join(", ")}`
+      : `相手: ${partnerName}`;
+    situationLine = `\n\n状況: ${ctx.state} / ${ctx.currentDateTime} / ${speakerLabel}`;
+    triggerLine = `${partnerName}: ${ctx.trigger.content}`;
+  }
+
   const systemContent =
     `${systemPrefix}\n\n## キャラクタールール\n${persona}` +
     situationLine +
@@ -92,13 +99,9 @@ function buildLanguageDialogueMessages(
 
   const messages: ChatMessage[] = [
     { role: "system", content: systemContent },
-    ...buildConversationTurns(ctx),
+    ...buildConversationTurns(ctx, { includeMonologue: ctx.trigger.type === "heartbeat" }),
   ];
 
-  const triggerLine =
-    ctx.trigger.type === "user_message"
-      ? `${partnerName}: ${ctx.trigger.content}`
-      : "（ハートビート）";
   const actionText = formatActionsForLanguage(ctx.actions);
   const hasAction = ctx.actions.some((a) => a.attempted);
   const userContent = hasAction
@@ -155,24 +158,11 @@ export async function generateDialogueSpeech(
 ): Promise<LanguageOutput> {
   const persona = ctx.persona ?? "";
   const format = languageJsonSchema;
-
-  if (ctx.trigger.type === "heartbeat") {
-    const userContent = renderLanguageUserContent(ctx);
-    const raw = await llm.chat(
-      [
-        {
-          role: "system",
-          content: `${LANGUAGE_HEARTBEAT_SYSTEM_PREFIX}\n\n## キャラクタールール\n${persona}`,
-        },
-        { role: "user", content: userContent },
-      ],
-      { temperature: 0.6, format },
-    );
-    return parseLanguageOutput(raw, ctx.state);
-  }
-
+  const systemPrefix = ctx.trigger.type === "heartbeat"
+    ? LANGUAGE_HEARTBEAT_SYSTEM_PREFIX
+    : LANGUAGE_SYSTEM_PREFIX;
   const numPredict = resolveNumPredict(ctx, defaultNumPredict);
-  const messages = buildLanguageDialogueMessages(ctx, LANGUAGE_SYSTEM_PREFIX, persona);
+  const messages = buildLanguageDialogueMessages(ctx, systemPrefix, persona);
   const raw = await llm.chat(messages, { temperature: 0.8, numPredict, format });
   return parseLanguageOutput(raw, ctx.state);
 }

@@ -19,7 +19,7 @@ import { presentSemanticFacts } from "../recall/semantic-present.js";
 import { WorkingMemory } from "../memory/working.js";
 import type { LlmClient } from "../llm/types.js";
 import { runLanguage } from "../roles/language.js";
-import { updateInnerState } from "../roles/inner-state.js";
+import { updateAffectAndConcern } from "../roles/inner-state.js";
 import { extractEpisodeTags, runIntrospection } from "../roles/introspection.js";
 import { applyNextState } from "../state/log.js";
 import {
@@ -67,7 +67,8 @@ export type TurnDeps = {
   semanticRecallMaxDistance: number;
   recencyExclusionTurns: number;
   recallDistanceThresholds: RecallDistanceThresholds;
-  initialInnerState?: string;
+  initialAffect?: string;
+  initialConcern?: string;
   contextTokenBudget: number;
   languageNumPredict?: number;
   timeZone?: string;
@@ -87,12 +88,13 @@ export type TurnDeps = {
   actorChannels?: Partial<Record<ActorName, ContextChannel[]>>;
   /** actor ごとの LLM（設定解決済み）。未設定は actionLlm にフォールバック */
   actorLlm?: Partial<Record<ActorName, LlmClient>>;
-  /** ロール別 LLM（language / introspection / innerState）。未指定は llm にフォールバック */
+  /** ロール別 LLM（language / introspection / affect）。未指定は llm にフォールバック */
   roleLlm?: Partial<Record<RoleName, LlmClient>>;
   onSessionPersist?: (session: {
     state: AgentState;
     workingMemory: readonly ConversationTurn[];
-    innerState: string;
+    affect: string;
+    concern: string;
   }) => Promise<void>;
   verbose?: VerboseLogger;
 };
@@ -102,7 +104,8 @@ const INHIBITION_WINDOW_TURNS = 4;
 
 export class TurnOrchestrator {
   private turnContext: TurnContext | null = null;
-  private innerState: string;
+  private affect: string;
+  private concern: string;
   private readonly recentEpisodeTurnIds: string[] = [];
   /** 直近ターンで想起済みのベクトル群。INHIBITION_WINDOW_TURNS ターン後に期限切れ */
   private readonly inhibitionBuffer: { vector: number[]; expiresAtTurn: number }[] = [];
@@ -112,11 +115,16 @@ export class TurnOrchestrator {
     private state: AgentState,
     private readonly deps: TurnDeps,
   ) {
-    this.innerState = deps.initialInnerState ?? "";
+    this.affect = deps.initialAffect ?? "";
+    this.concern = deps.initialConcern ?? "";
   }
 
-  getInnerState(): string {
-    return this.innerState;
+  getAffect(): string {
+    return this.affect;
+  }
+
+  getConcern(): string {
+    return this.concern;
   }
 
   private excludeTurnIds(): ReadonlySet<string> {
@@ -161,7 +169,8 @@ export class TurnOrchestrator {
     void this.deps.onSessionPersist?.({
       state: this.state,
       workingMemory: this.deps.workingMemory.getRecent(),
-      innerState: this.innerState,
+      affect: this.affect,
+      concern: this.concern,
     });
   }
 
@@ -187,7 +196,7 @@ export class TurnOrchestrator {
     const rl = this.deps.roleLlm;
     const languageLlm = rl?.language ?? this.deps.llm;
     const introspectionLlm = rl?.introspection ?? this.deps.llm;
-    const innerStateLlm = rl?.innerState ?? this.deps.llm;
+    const affectLlm = rl?.affect ?? this.deps.llm;
 
     this.turnCount++;
     v?.turnBegin(turnId, trigger, startState);
@@ -205,7 +214,8 @@ export class TurnOrchestrator {
       trigger,
       this.deps.workingMemory.lastUserContent(),
       this.deps.workingMemory.lastAssistantContent(),
-      this.innerState,
+      this.affect,
+      this.concern,
     );
 
     const allRecentTurns = this.deps.workingMemory.getRecent();
@@ -278,7 +288,8 @@ export class TurnOrchestrator {
       recalledEpisodes: recalled,
       semanticFacts,
       recalledNotes: memoHits,
-      innerState: this.innerState,
+      affect: this.affect,
+      concern: this.concern,
       now: turnNow,
       timeZone: this.deps.timeZone,
     });
@@ -398,16 +409,19 @@ export class TurnOrchestrator {
 
         tags = await extractEpisodeTags(introspectionLlm, introspection);
 
-        const prevInner = this.innerState;
+        const prevAffect = this.affect;
         const innerStart = Date.now();
-        this.innerState = await updateInnerState(innerStateLlm, {
-          prevInnerState: prevInner,
+        const affectResult = await updateAffectAndConcern(affectLlm, {
+          prevAffect,
+          prevConcern: this.concern,
           introspection,
           speech: ctx.speech ?? null,
           actions: ctx.actions,
           currentDateTime: ctx.currentDateTime,
         });
-        v?.innerStateUpdate(prevInner, this.innerState, Date.now() - innerStart);
+        this.affect = affectResult.affect;
+        this.concern = affectResult.concern;
+        v?.affectUpdate(prevAffect, this.affect, Date.now() - innerStart);
 
         const participants =
           trigger.type === "user_message" ? [trigger.speakerId] : [];
@@ -446,7 +460,8 @@ export class TurnOrchestrator {
     await this.deps.onSessionPersist?.({
       state: this.state,
       workingMemory: this.deps.workingMemory.getRecent(),
-      innerState: this.innerState,
+      affect: this.affect,
+      concern: this.concern,
     });
     v?.stateTransition(prevState, this.state);
 

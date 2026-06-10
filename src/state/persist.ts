@@ -7,8 +7,10 @@ export const DEFAULT_AGENT_STATE: AgentState = "対話";
 export type PersistedSession = {
   state: AgentState;
   workingMemory: ConversationTurn[];
-  /** 持ち越す内心（空 = 起きたて） */
-  innerState: string;
+  /** 感情余韻（旧 innerState）。空 = 起きたて */
+  affect: string;
+  /** 認知的焦点。空 = 特になし */
+  concern: string;
   updatedAt: string;
 };
 
@@ -41,20 +43,27 @@ function parseWorkingMemory(raw: unknown): ConversationTurn[] {
 export async function loadSession(
   filePath: string,
   fallbackState: AgentState = DEFAULT_AGENT_STATE,
-): Promise<Pick<PersistedSession, "state" | "workingMemory" | "innerState">> {
+): Promise<Pick<PersistedSession, "state" | "workingMemory" | "affect" | "concern">> {
   try {
     const raw = await readFile(filePath, "utf8");
-    const parsed = JSON.parse(raw) as Partial<PersistedSession>;
+    const parsed = JSON.parse(raw) as Partial<PersistedSession & { innerState?: string }>;
     const state =
       typeof parsed.state === "string" && parsed.state.trim()
         ? parsed.state.trim()
         : fallbackState;
-    const innerState =
-      typeof parsed.innerState === "string" ? parsed.innerState : "";
+    const affect =
+      typeof parsed.affect === "string"
+        ? parsed.affect
+        : typeof parsed.innerState === "string"
+          ? parsed.innerState
+          : "";
+    const concern =
+      typeof parsed.concern === "string" ? parsed.concern : "";
     return {
       state,
       workingMemory: parseWorkingMemory(parsed.workingMemory),
-      innerState,
+      affect,
+      concern,
     };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
@@ -62,7 +71,7 @@ export async function loadSession(
       console.warn("[session] load failed, using defaults", err);
     }
   }
-  return { state: fallbackState, workingMemory: [], innerState: "" };
+  return { state: fallbackState, workingMemory: [], affect: "", concern: "" };
 }
 
 /** @deprecated loadSession を使う */
@@ -78,14 +87,16 @@ export async function saveSession(
   session: {
     state: AgentState;
     workingMemory: readonly ConversationTurn[];
-    innerState?: string;
+    affect?: string;
+    concern?: string;
   },
 ): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
   const payload: PersistedSession = {
     state: session.state,
     workingMemory: [...session.workingMemory],
-    innerState: session.innerState ?? "",
+    affect: session.affect ?? "",
+    concern: session.concern ?? "",
     updatedAt: new Date().toISOString(),
   };
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
@@ -100,6 +111,7 @@ export async function saveAgentState(
   await saveSession(filePath, {
     state,
     workingMemory: existing.workingMemory,
-    innerState: existing.innerState,
+    affect: existing.affect,
+    concern: existing.concern,
   });
 }

@@ -212,15 +212,15 @@ describe("TurnOrchestrator", () => {
       '{"tags":["会話"]}',
       "さっき二度言っちゃった、ちょっと恥ずかしい",
     ]);
-    let savedInner = "";
+    let savedAffect = "";
     const orch = new TurnOrchestrator(
       "対話",
       baseTurnDeps({
         llm,
         workingMemory: new WorkingMemory(20),
-        initialInnerState: "",
+        initialAffect: "",
         onSessionPersist: async (s) => {
-          savedInner = s.innerState;
+          savedAffect = s.affect;
         },
       }),
     );
@@ -231,11 +231,11 @@ describe("TurnOrchestrator", () => {
       speakerId: "user_001",
     });
 
-    expect(orch.getInnerState()).toBe(
+    expect(orch.getAffect()).toBe(
       "さっき二度言っちゃった、ちょっと恥ずかしい",
     );
-    expect(savedInner).toBe("さっき二度言っちゃった、ちょっと恥ずかしい");
-    // inner-state は 4 番目の呼び出し (index 3)
+    expect(savedAffect).toBe("さっき二度言っちゃった、ちょっと恥ずかしい");
+    // affect は 4 番目の呼び出し (index 3)
     expect(llm.calls[3]!.messages[0].content).toContain("前の内心");
   });
 

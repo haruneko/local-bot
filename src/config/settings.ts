@@ -60,7 +60,7 @@ export type StateResolved = {
 export type RoleName =
   | "language"
   | "introspection"
-  | "innerState";
+  | "affect";
 
 /** ロール別モデル設定 */
 export type RoleConfig = {
@@ -101,7 +101,7 @@ export type AppSettings = {
   actors?: Partial<Record<ActorName, ActorConfig>>;
   /** State 別コンテキスト設定。存在しない State はグローバル値を使用 */
   stateConfig?: Record<string, StateConfigEntry>;
-  /** ロール別モデル設定（language / introspection / innerState）。未指定は chatModel / ollamaThink を使用 */
+  /** ロール別モデル設定（language / introspection / affect）。未指定は chatModel / ollamaThink を使用 */
   roles?: Partial<Record<RoleName, RoleConfig>>;
 };
 

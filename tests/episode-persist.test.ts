@@ -69,4 +69,28 @@ describe("episode persist gate", () => {
       buildRecallQuery({ type: "heartbeat" }, "", "", "穏やかな気持ち。"),
     ).toBe("穏やかな気持ち。");
   });
+
+  it("T-IS04: buildRecallQuery uses concern before affect for heartbeat", () => {
+    expect(
+      buildRecallQuery(
+        { type: "heartbeat" },
+        "",
+        "",
+        "穏やかな気持ち。",
+        "記憶アーキテクチャの実装方法",
+      ),
+    ).toBe("記憶アーキテクチャの実装方法");
+  });
+
+  it("T-IS04: buildRecallQuery falls back to affect when concern is empty", () => {
+    expect(
+      buildRecallQuery(
+        { type: "heartbeat" },
+        "",
+        "",
+        "穏やかな気持ち。",
+        "",
+      ),
+    ).toBe("穏やかな気持ち。");
+  });
 });

@@ -33,7 +33,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 [入力] プリプロセス（想起） → [自律] actor pool（並列） → language-agent → 内省 → 内心更新 → LanceDB
 ```
 
-- **プリプロセス** (`src/context/preprocess.ts`): 想起クエリ決定（`lastUserContent → lastSpeech → innerState → null`）→ LanceDB 想起 → `TurnContext` 生成。フィルタは量を絞るだけで元データは変更しない。
+- **プリプロセス** (`src/context/preprocess.ts`): 想起クエリ決定（`lastUserContent → lastSpeech → concern → affect → null`）→ LanceDB 想起 → `TurnContext` 生成。フィルタは量を絞るだけで元データは変更しない。
 - **actor pool** (`src/actors/`): `recall` `remember` `forget` `memoWrite` `memoRead` `webSearch` `urlBrowse` `webcam` が独立して並列に起動判断・実行。各 actor が `activate()` で自己判断し、起動した actor のみ実行。mini-context（直近3ターン）で判断。
 - **language-agent** (`src/roles/language.ts`): 全 facts を受け取り発話生成 + NEXT_STATE を出力。常に起動し発話するかを内部で決める。
 - **内省** (`src/roles/introspection.ts`) → **内心更新** (`src/roles/inner-state.ts`)。
@@ -57,7 +57,8 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 | メモインデックス | `data/lancedb/` `memo_index` | 「どこに何を書いたか」の所在管理。`memo_write` 成功時に機械的 upsert。減衰しない |
 | 共有メモ本文 | `data/notes/**/*.md` | **既存本文を LLM で要約・改変しない**。全文を `facts.body` に載せる。階層ディレクトリ可 |
 | 作業記憶 | `data/state.json` | ユーザーとボットの**表面発話のみ**。各エージェントの判断・ツール結果は含めない |
-| 内心ステート | `data/state.json` `innerState` | 持ち越す生の感情（余韻）。内省が毎ターン書き換える。空＝起きたて |
+| affect（感情余韻） | `data/state.json` `affect` | 持ち越す生の感情（余韻）。旧 `innerState`。内省後に毎ターン書き換え。空＝起きたて |
+| concern（関心事） | `data/state.json` `concern` | 認知的焦点（何に注目しているか）。affect と同じ LLM 呼び出しで更新。actor activate / recall クエリに使う |
 
 `memo_index` はエピソード記憶・意味記憶とは別テーブル（情報源記憶）。`episodes` に書かない（DECISIONS.md §メモインデックスの設計 参照）。  
 想起グラデーションは `src/recall/distance.ts`（距離分類）+ `src/recall/llm-present.ts`（LLM 提示）。閾値は `DEFAULT_RECALL_DISTANCE_THRESHOLDS`。

@@ -42,6 +42,50 @@
 
 ---
 
+## 自律動作の既知問題（設計上の構造欠陥）
+
+実装が進んで観察できてきた、**会話らしくならない・続けての行動が苦手・ドライブされていない**という問題群。ROADMAPの優先順を決める際にこれらを念頭に置くこと。
+
+### 問題A: 認知的焦点の欠如 ✅ 設計済み（実装待ち）
+
+~~`state.json` は `{ state, workingMemory, innerState }` の3フィールドのみ。`innerState` は感情余韻であり「何に取り組んでいるか」という行動的な意図を持たない。~~
+
+**設計**: `innerState` を `affect`（感情余韻）に改名し、`concern`（認知的焦点）を別フィールドとして追加する。`affect` と `concern` は 1 回の LLM 呼び出し（`updateAffectAndConcern`）で同時更新される。
+
+- `affect`: 感情余韻。言語野の温度素材
+- `concern`: 「何に注目しているか」。actor activate の inner_state チャンネルに含まれ、recall クエリにも使われる（`concern → affect → null` の優先順）
+- 前回 concern を入力として渡すことで、「同じ concern が続いている＝何かが行き詰まっている」を LLM が自然に認識できる（構造ドリブン）
+
+詳細は DECISIONS.md §affect/concern 分離設計 参照。
+
+### 問題B: 行動の結果が次ターンに「名刺」として残らない
+
+1ターン内の多段（`MAX_SUBAGENT_STEPS=5`）は実装済みだが、**クロスターンの連続行動**の設計がない。
+
+例: webSearch でAを調べた → 次のハートビートで「Aの結果を踏まえてBを深掘りしよう」が成立するには、workingMemory 内の独り言「次はBを調べよう」が actor の activate に届く必要がある。これは現在 ACTOR_CONTEXT_TURNS=3 で機能する可能性があるが、独り言が「調べたい気持ち」という感情的表現だと具体的なクエリにならない。
+
+**現状の伝達経路**: webSearch 結果 → 独り言（workingMemory）→ 次のhartbeat の recall クエリ → webSearch activate（conversation + inner_state チャンネル）。理論上は繋がっているが、actionModel=8B で innerState の感情表現から具体的な検索意図を抽出するには情報が粗い。
+
+**解決の方向**: agenda フィールドに「調べ終えたこと・次のクエリ」を明示的に書き込めば接続性が上がる。
+
+### 問題C: language-agent の format:JSON が口調を抑制する可能性
+
+`generateDialogueSpeech` が Ollama の `format: languageJsonSchema` を使って `{speech, nextState}` を structured output で取得している。Ollama の JSON フォーマット強制はモデルを JSON 生成モードに傾けるため、会話の温度感・自然な言い回しが失われやすい。
+
+特に qwen3.6 系は structured output への制約が強く、「人間らしい雑談」より「情報を整理した返答」になりがち。
+
+**現在の緩和策**: `parseLanguageOutput` のフォールバックで raw テキストをそのまま speech として使う（JSON パース失敗時）。構造化出力が壊れても会話は継続する。
+
+**観察ポイント**: `--verbose` で language-agent の raw 出力が JSON 準拠かどうかを確認する。JSON バリデーション率が高い = format 強制が効いている = 口調が硬くなっている可能性。
+
+### 問題D: heartbeat の会話文脈が multi-turn を使わない ✅ 対処済み
+
+~~user_message トリガーは `buildLanguageDialogueMessages` で会話履歴を Ollama multi-turn messages として渡す。heartbeat は `renderLanguageUserContent` で全コンテキストを1つの user message に詰め込む。直近の独り言が過去ターンに埋もれやすい。~~
+
+`generateDialogueSpeech` のハートビート専用分岐を削除し、両トリガーとも `buildLanguageDialogueMessages` を経由するよう統一。heartbeat は `buildConversationTurns({ includeMonologue: true })` で直前の独り言が `role: "assistant"` として multi-turn に入る。詳細は DECISIONS.md §ハートビート言語野のフォーマット統一。
+
+---
+
 ## 次にやること（おすすめ順）
 
 ### 1. filesystem MCP の導入（1-B の残り）
@@ -91,7 +135,7 @@
 
 **制約**: タスクの「次に何をすべきか」を実行前に予測してディスパッチしない（予測ゲートの罠）。  
 heartbeat がタスク状態（実行済みの結果）を読んで次ステップを決める、事後判断の設計にすること。  
-詳細は `docs/tmp_deliberation-plan.md` §8「得られた知見」参照。
+詳細は `docs/archive/deliberation-plan-deprecated.md` §8「得られた知見」参照。
 
 ### 5. Google Home 連携（フェーズ 2）
 
@@ -139,4 +183,4 @@ express MCP サーバに追加し、express サブエージェントがカタロ
 
 | 項目 | 理由 |
 |------|------|
-| `selfStatus` / `runUntilSettled`（クロスターンループ） | サブエージェント内部ループ（`done=false` 多段ステップ）で原理的に解決可能。暴走リスクの方が高かった。詳細: `docs/tmp_deliberation-plan.md` |
+| `selfStatus` / `runUntilSettled`（クロスターンループ） | サブエージェント内部ループ（`done=false` 多段ステップ）で原理的に解決可能。暴走リスクの方が高かった。詳細: `docs/archive/deliberation-plan-deprecated.md` |

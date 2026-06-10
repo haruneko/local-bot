@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildActorContext,
   createTurnContext,
   memorySnapshot,
   renderLanguageUserContent,
@@ -84,7 +85,7 @@ describe("TurnContext", () => {
         { role: "user", speakerId: "user_001", content: "元気？" },
       ],
       recalledEpisodes: [],
-      innerState: "さっき少し恥ずかしかった",
+      affect: "さっき少し恥ずかしかった",
     });
 
     const rendered = renderLanguageUserContent(ctx);
@@ -107,13 +108,13 @@ describe("TurnContext", () => {
         { role: "user", speakerId: "user_001", content: "おはよう" },
       ],
       recalledEpisodes: [],
-      innerState: "",
+      affect: "",
     });
 
     expect(renderLanguageUserContent(ctx)).not.toContain("## いまの内心");
   });
 
-  it("includes innerState in memory snapshot", () => {
+  it("includes affect in memory snapshot", () => {
     const ctx = createTurnContext({
       turnId: "t-snap-inner",
       state: "対話",
@@ -127,11 +128,11 @@ describe("TurnContext", () => {
         { role: "user", speakerId: "user_001", content: "こんにちは" },
       ],
       recalledEpisodes: [],
-      innerState: "穏やか",
+      affect: "穏やか",
     });
 
     const snap = memorySnapshot(ctx);
-    expect(snap.innerState).toBe("穏やか");
+    expect(snap.affect).toBe("穏やか");
   });
 
   it("memory snapshot and language share the same recalled episodes before action", () => {
@@ -265,5 +266,37 @@ describe("TurnContext", () => {
     expect(snap.semanticFacts).toEqual(["ユーザーは夏目漱石を好む"]);
     expect(langBody).toContain("## 知っていること（意味記憶）");
     expect(langBody).toContain("1. ユーザーは夏目漱石を好む");
+  });
+
+  it("T-IS05: inner_state channel includes concern when non-empty", () => {
+    const ctx = createTurnContext({
+      turnId: "t-is05",
+      state: "静穏",
+      trigger: { type: "heartbeat" },
+      dialogue,
+      recentTurns: [],
+      recalledEpisodes: [],
+      affect: "少し落ち着いた気分",
+      concern: "記憶アーキテクチャの実装方法",
+    });
+
+    const actorCtx = buildActorContext(ctx, ["inner_state"]);
+    expect(actorCtx).toContain("記憶アーキテクチャの実装方法");
+  });
+
+  it("T-IS05: inner_state channel includes affect when non-empty", () => {
+    const ctx = createTurnContext({
+      turnId: "t-is05b",
+      state: "静穏",
+      trigger: { type: "heartbeat" },
+      dialogue,
+      recentTurns: [],
+      recalledEpisodes: [],
+      affect: "穏やかな気持ち",
+      concern: "",
+    });
+
+    const actorCtx = buildActorContext(ctx, ["inner_state"]);
+    expect(actorCtx).toContain("穏やかな気持ち");
   });
 });

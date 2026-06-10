@@ -71,7 +71,7 @@ function resolveOllamaHost(settings: AppSettings): string {
   return process.env.OLLAMA_HOST ?? settings.ollamaHost;
 }
 
-const ROLE_NAMES: RoleName[] = ["language", "introspection", "innerState"];
+const ROLE_NAMES: RoleName[] = ["language", "introspection", "affect"];
 
 function buildRoleLlm(
   settings: AppSettings,
@@ -166,7 +166,8 @@ export async function createApp(
     : {
         state: "対話" as AgentState,
         workingMemory: [] as const,
-        innerState: "",
+        affect: "",
+        concern: "",
       };
   const wm = new WorkingMemory(
     settings.workingMemoryTurns,
@@ -176,7 +177,8 @@ export async function createApp(
     ? async (next: {
         state: AgentState;
         workingMemory: readonly ConversationTurn[];
-        innerState: string;
+        affect: string;
+        concern: string;
       }) => saveSession(statePath, next)
     : undefined;
 
@@ -229,7 +231,8 @@ export async function createApp(
     semanticRecallMaxDistance: resolveSemanticRecallMaxDistance(settings),
     recencyExclusionTurns: resolveRecencyExclusionTurns(settings),
     recallDistanceThresholds: resolveRecallDistanceThresholds(settings),
-    initialInnerState: session.innerState,
+    initialAffect: session.affect,
+    initialConcern: session.concern,
     contextTokenBudget: settings.contextTokenBudget,
     languageNumPredict: settings.languageNumPredict ?? 400,
     timeZone: settings.timeZone ?? "Asia/Tokyo",
@@ -258,7 +261,7 @@ export async function createApp(
     statePath: statePath ?? "(in-memory)",
     initialState: session.state,
     workingMemoryTurnsLoaded: session.workingMemory.length,
-    initialInnerState: session.innerState || "(empty)",
+    initialAffect: session.affect || "(empty)",
     recencyExclusionTurns: resolveRecencyExclusionTurns(settings),
     expressDryRun,
     toolCatalogSize: toolCatalog.length,
