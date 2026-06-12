@@ -11,6 +11,7 @@
 - **意味記憶**（夢バッチでエピソード + 夢のタネから蒸留）
 - 内省だけをエピソード記憶に蓄積（`remember` は別途ファクト追記）
 - **話者対応**: `config/users.yaml` の `note`（関係性）を言語野に注入し、誰と話すかで反応が変わる。想起も話者一致エピソードを重み付け
+- **集中モード**: State `集中` で取り組み中の構造化plan（`data/plans/`）が計画チャンネルとして毎ターン常駐。`plan` actor が op（complete/log 等）で進捗を更新——構造はコードが保証し LLM は op を1つ出すだけ（`data/notes/goals/` に markdown ビューをミラー。長期計画の自律進行 v1）
 - **3 段階ログ**: `quiet`（発話のみ）/ `info`（1ターン十数行の構造化サマリ・常駐の既定）/ `debug`（全 LLM 入出力。`-v`）
 
 ## アーキテクチャ（1ターン）
@@ -44,6 +45,7 @@
 
 - Node.js 20+
 - Ollama（チャット用・埋め込み用モデル）
+- web 検索（研究 actor）を使うなら **Tavily** の無料 API キーを `.env` に `TAVILY_API_KEY=...`（Docker 不要。未設定でも会話は動く）
 - デフォルト設定（`config/settings.json`）:
   - チャット / actor: `qwen3.6:35b-a3b`
   - 埋め込み: `nomic-embed-text:latest`
@@ -87,7 +89,7 @@ npm run dev      # 同上
 |----------|------|
 | `/quit` | 終了 |
 | `/heartbeat` | ユーザー発話なしのターン（静穏時など） |
-| `/state <値>` | エージェント状態を手動変更（例: `対話`, `静穏`） |
+| `/state <値>` | エージェント状態を手動変更（例: `対話`, `静穏`, `集中`） |
 
 ### 別プロセス（cron 向け）
 
@@ -143,10 +145,11 @@ npm run dream -- --seed --force-seed  # タネを再蒸留
 
 | パス | 内容 |
 |------|------|
-| `data/state.json` | State・作業記憶・内心ステート |
+| `data/state.json` | State・作業記憶・内心（affect/concern）・focusNote（取り組み中のゴールノート） |
 | `data/dream-state.json` | 夢の進捗（`lastDreamAt` / `seedAppliedAt`） |
 | `data/lancedb/` | エピソード記憶・意味記憶・メモインデックス |
-| `data/notes/` | 共有メモ（階層ディレクトリ対応・Obsidian 互換） |
+| `data/notes/` | 共有メモ（階層ディレクトリ対応・Obsidian 互換）。`goals/` は plan の markdown ビュー |
+| `data/plans/` | 構造化plan（`<id>.json`・集中モードの真実の源） |
 
 記憶をリセットする場合:
 

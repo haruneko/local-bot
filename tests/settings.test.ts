@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  loadSettings,
   resolveActivatorModel,
+  resolveEnabledActors,
   resolveOllamaThink,
 } from "../src/config/settings.js";
+
+describe("集中 State の actor 解決", () => {
+  it("実 config で全 State が plan actor を含む（静穏からの計画再開のため）", async () => {
+    const s = await loadSettings();
+    expect(resolveEnabledActors(s, "集中")).toContain("plan");
+    expect(resolveEnabledActors(s, "対話")).toContain("plan");
+    expect(resolveEnabledActors(s, "静穏")).toContain("plan");
+  });
+});
 
 describe("resolveActivatorModel", () => {
   it("uses activatorModel when set", () => {

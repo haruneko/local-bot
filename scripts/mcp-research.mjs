@@ -1,14 +1,28 @@
 /**
- * MCP stdio server: web_search (SearXNG JSON API) + browse_url
- * Node 20+ fetch のみ使用。SearXNG: docker compose up -d
- * SEARXNG_URL 環境変数で接続先を変更可能（デフォルト: http://localhost:8080）
+ * MCP stdio server: web_search (Tavily API) + browse_url
+ * Node 20+ fetch のみ使用。Docker 不要。
+ * TAVILY_API_KEY をプロジェクト直下の .env（または親 env）から読む。
  */
+import { readFileSync } from "node:fs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+
+// MCP 子プロセスは親 env を全部は継がないので、プロジェクト直下の .env を自前で読む
+try {
+  const envText = readFileSync(new URL("../.env", import.meta.url), "utf8");
+  for (const line of envText.split("\n")) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (m && process.env[m[1]] === undefined) {
+      process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+    }
+  }
+} catch {
+  /* .env が無ければ親 env のみ */
+}
 
 const server = new Server(
   { name: "mcp-research", version: "0.1.0" },
@@ -78,38 +92,65 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // ---- 実装 ----
 
-const SEARXNG_URL = process.env.SEARXNG_URL ?? "http://localhost:8080";
+const TAVILY_API_KEY = process.env.TAVILY_API_KEY ?? "";
+
+/** 応答しない外部 I/O でターンが固まらないよう、必ず時間で打ち切る fetch */
+async function fetchWithTimeout(url, options = {}, ms = 15000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: ctrl.signal });
+  } catch (err) {
+    if (ctrl.signal.aborted) throw new Error(`timeout（${ms}ms 応答なし）: ${url}`);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function webSearch(query, limit) {
-  const url = new URL("/search", SEARXNG_URL);
-  url.searchParams.set("q", query);
-  url.searchParams.set("format", "json");
-  url.searchParams.set("language", "ja-JP");
+  if (!TAVILY_API_KEY) {
+    throw new Error("TAVILY_API_KEY が未設定です（.env に TAVILY_API_KEY=... を追加してください）");
+  }
 
   let res;
   try {
-    res = await fetch(url.toString(), {
-      headers: { "Accept": "application/json" },
-    });
+    res = await fetchWithTimeout("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: TAVILY_API_KEY,
+        query,
+        max_results: limit,
+        search_depth: "basic",
+        include_answer: true,
+      }),
+    }, 15000);
   } catch (err) {
-    throw new Error(`SearXNG に接続できません（${SEARXNG_URL}）: ${err.message}`);
+    throw new Error(`Tavily に接続できません: ${err.message}`);
   }
-  if (!res.ok) throw new Error(`SearXNG エラー: ${res.status}`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Tavily エラー: ${res.status} ${detail.slice(0, 200)}`);
+  }
 
   const data = await res.json();
   const items = (data.results ?? []).slice(0, limit);
-
   if (items.length === 0) {
     return `「${query}」の検索結果が見つかりませんでした。`;
   }
 
-  return items
-    .map((r, i) => `[${i + 1}] ${r.title ?? ""}\n${r.url ?? ""}\n${r.content ?? ""}`)
-    .join("\n\n");
+  const head = data.answer ? `要約: ${data.answer}\n\n` : "";
+  return (
+    head +
+    items
+      .map((r, i) => `[${i + 1}] ${r.title ?? ""}\n${r.url ?? ""}\n${r.content ?? ""}`)
+      .join("\n\n")
+  );
 }
 
 async function browseUrl(url, maxChars) {
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: {
       "User-Agent":
         "Mozilla/5.0 (compatible; local-bot/0.1; +https://github.com/local-bot)",

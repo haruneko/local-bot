@@ -34,6 +34,8 @@ export function formatActionSummary(facts: ActionFacts): string {
       return `${facts.tool} で調べた結果: ${truncateBody(facts.body, 500)}`;
     case "express":
       return `${facts.tool} に送った: ${truncateBody(facts.body, 500)}`;
+    case "plan":
+      return `${noteDisplayPath(facts.filename)} の計画を更新した:\n${truncateBody(facts.body)}`;
   }
 }
 
@@ -85,6 +87,8 @@ export function formatActionFactContent(action: ActionOutcome): string {
       ]
         .filter(Boolean)
         .join("\n");
+    case "plan":
+      return [`${facts.filename} の計画ノートを更新した:`, facts.body].join("\n");
   }
 }
 

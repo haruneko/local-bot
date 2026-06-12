@@ -51,6 +51,7 @@ flowchart TD
 | `webSearch` | research | MCP 経由 Web 検索（指示ベース・内心ベース両対応） |
 | `urlBrowse` | research | MCP 経由 URL 閲覧 |
 | `webcam` | research | カメラ映像取得（未実装） |
+| `plan` | memory | ゴールノート（`goals/*.md`）の作成/更新。集中モードの計画進行管理（追記保全・状態と履歴のみ） |
 
 ### 記憶 vs メモの鮮明さ
 
@@ -62,6 +63,7 @@ flowchart TD
 
 ## 探索・発信（MCP）
 
+- web 検索は **Tavily API**（`scripts/mcp-research.mjs`、Docker 不要。`.env` の `TAVILY_API_KEY` を使用）。`browse_url` は素の fetch。旧 searxng は legacy
 - 設定: [config/mcp.json](../config/mcp.json)
 - クライアント: `src/mcp/client.ts`（`@modelcontextprotocol/sdk`）
 - MCP サーバ未接続時: `FakeMcpToolProvider` のスタブ（`web_search`, `browse_url` 等）

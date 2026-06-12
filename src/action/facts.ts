@@ -5,4 +5,5 @@ export type ActionFacts =
   | { kind: "recall"; bullets: string[] }
   | { kind: "forget"; body: string }
   | { kind: "research"; tool: string; title: string; body: string }
-  | { kind: "express"; tool: string; title: string; body: string };
+  | { kind: "express"; tool: string; title: string; body: string }
+  | { kind: "plan"; planId: string; filename: string; body: string; achieved: boolean };

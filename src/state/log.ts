@@ -1,6 +1,6 @@
 import type { AgentState } from "../types.js";
 
-const KNOWN_STATES = new Set(["対話", "静穏"]);
+const KNOWN_STATES = new Set(["対話", "静穏", "集中"]);
 
 export function applyNextState(
   _current: AgentState,

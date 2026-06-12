@@ -14,6 +14,7 @@ describe("session persist", () => {
         workingMemory: [],
         affect: "",
         concern: "",
+        focusPlan: "",
       });
 
       await saveSession(file, {
@@ -24,6 +25,7 @@ describe("session persist", () => {
         ],
         affect: "少し落ち着いた気分",
         concern: "買い物リストの整理",
+        focusPlan: "shopping",
       });
 
       expect(await loadSession(file)).toEqual({
@@ -34,6 +36,7 @@ describe("session persist", () => {
         ],
         affect: "少し落ち着いた気分",
         concern: "買い物リストの整理",
+        focusPlan: "shopping",
       });
 
       const raw = JSON.parse(await readFile(file, "utf8")) as {
@@ -67,6 +70,7 @@ describe("session persist", () => {
         workingMemory: [],
         affect: "",
         concern: "",
+        focusPlan: "",
       });
     } finally {
       await rm(dir, { recursive: true, force: true });

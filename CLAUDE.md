@@ -36,7 +36,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 ```
 
 - **プリプロセス** (`src/context/preprocess.ts`): 想起クエリ決定（`lastUserContent → lastSpeech → concern → affect → null`）→ LanceDB 想起 → `TurnContext` 生成。フィルタは量を絞るだけで元データは変更しない。
-- **actor pool** (`src/actors/`): `recall` `remember` `forget` `memoWrite` `memoRead` `webSearch` `urlBrowse` `webcam` が独立して並列に起動判断・実行。各 actor が `activate()` で自己判断し、起動した actor のみ実行。mini-context（直近3ターン）で判断。
+- **actor pool** (`src/actors/`): `recall` `remember` `forget` `memoWrite` `memoRead` `webSearch` `urlBrowse` `webcam` `plan` が独立して並列に起動判断・実行。各 actor が `activate()` で自己判断し、起動した actor のみ実行。mini-context（直近3ターン）で判断。`plan` は集中モードの**構造化plan**（`data/plans/<id>.json`）を op で更新する（構造はコードが保証・LLM は op を1つ出すだけ。markdown は `data/notes/goals/` への派生ビュー）。
 - **language-agent** (`src/roles/language.ts`): 全 facts を受け取り発話生成 + NEXT_STATE を出力。常に起動し発話するかを内部で決める。
 - **内省** (`src/roles/introspection.ts`) → **内心更新** (`src/roles/inner-state.ts`)。
 
@@ -61,6 +61,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 | 作業記憶 | `data/state.json` | ユーザーとボットの**表面発話のみ**。各エージェントの判断・ツール結果は含めない |
 | affect（感情余韻） | `data/state.json` `affect` | 持ち越す生の感情（余韻）。旧 `innerState`。内省後に毎ターン書き換え。空＝起きたて |
 | concern（関心事） | `data/state.json` `concern` | 認知的焦点（何に注目しているか）。affect と同じ LLM 呼び出しで更新。actor activate / recall クエリに使う |
+| focusPlan（取り組み中の計画） | `data/state.json` `focusPlan` | 集中 State で取り組み中の plan id（`data/plans/<id>.json`）。`state==="集中"` のとき renderPlan して計画チャンネルに常駐注入。`plan` actor が差し替え |
 
 `memo_index` はエピソード記憶・意味記憶とは別テーブル（情報源記憶）。`episodes` に書かない（DECISIONS.md §メモインデックスの設計 参照）。  
 想起グラデーションは `src/recall/distance.ts`（距離分類）+ `src/recall/llm-present.ts`（LLM 提示）。閾値は `DEFAULT_RECALL_DISTANCE_THRESHOLDS`。
@@ -75,7 +76,9 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 | `persona/character.md` | キャラクター・口調・一人称 |
 | `data/semantic-seed.json` | 夢のタネ（内省風断片） |
 
-環境変数: `OLLAMA_HOST`（settings より優先）, `OLLAMA_THINK`（`roles[*].think` より低優先）, `EXPRESS_DRY_RUN`。
+環境変数: `OLLAMA_HOST`（settings より優先）, `OLLAMA_THINK`（`roles[*].think` より低優先）, `EXPRESS_DRY_RUN`, `TAVILY_API_KEY`（web 検索＝研究 actor 用。`.env` に置く）。
+
+研究の web 検索は **Tavily API**（`scripts/mcp-research.mjs`、Docker 不要・`browse_url` は素の fetch）。旧 searxng/Docker は不要（`docker-compose.yml` と `searxng:*` スクリプトは legacy）。`mcp-research.mjs` は `.env` から `TAVILY_API_KEY` を自前読み込みする。
 
 ランタイム: TypeScript / Node 20+ / npm / Vitest。LLM は Ollama（`LlmClient` アダプタで差し替え可、`src/llm/`）。
 

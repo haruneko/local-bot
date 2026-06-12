@@ -11,6 +11,8 @@ export type PersistedSession = {
   affect: string;
   /** 認知的焦点。空 = 特になし */
   concern: string;
+  /** 集中モードで取り組み中の計画 id（data/plans/<id>.json）。空 = 取り組み中の計画なし */
+  focusPlan: string;
   updatedAt: string;
 };
 
@@ -43,7 +45,7 @@ function parseWorkingMemory(raw: unknown): ConversationTurn[] {
 export async function loadSession(
   filePath: string,
   fallbackState: AgentState = DEFAULT_AGENT_STATE,
-): Promise<Pick<PersistedSession, "state" | "workingMemory" | "affect" | "concern">> {
+): Promise<Pick<PersistedSession, "state" | "workingMemory" | "affect" | "concern" | "focusPlan">> {
   try {
     const raw = await readFile(filePath, "utf8");
     const parsed = JSON.parse(raw) as Partial<PersistedSession & { innerState?: string }>;
@@ -59,11 +61,14 @@ export async function loadSession(
           : "";
     const concern =
       typeof parsed.concern === "string" ? parsed.concern : "";
+    const focusPlan =
+      typeof parsed.focusPlan === "string" ? parsed.focusPlan : "";
     return {
       state,
       workingMemory: parseWorkingMemory(parsed.workingMemory),
       affect,
       concern,
+      focusPlan,
     };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
@@ -71,7 +76,7 @@ export async function loadSession(
       console.warn("[session] load failed, using defaults", err);
     }
   }
-  return { state: fallbackState, workingMemory: [], affect: "", concern: "" };
+  return { state: fallbackState, workingMemory: [], affect: "", concern: "", focusPlan: "" };
 }
 
 /** @deprecated loadSession を使う */
@@ -89,6 +94,7 @@ export async function saveSession(
     workingMemory: readonly ConversationTurn[];
     affect?: string;
     concern?: string;
+    focusPlan?: string;
   },
 ): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -97,6 +103,7 @@ export async function saveSession(
     workingMemory: [...session.workingMemory],
     affect: session.affect ?? "",
     concern: session.concern ?? "",
+    focusPlan: session.focusPlan ?? "",
     updatedAt: new Date().toISOString(),
   };
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");

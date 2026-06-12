@@ -27,6 +27,8 @@ import {
 } from "./episode-persist.js";
 import { runActivator } from "./activator.js";
 import { getActor } from "../actors/registry.js";
+import { loadPlan } from "../plan/state.js";
+import { renderPlan } from "../plan/render.js";
 import type { VerboseLogger, VerboseLoggerImpl } from "../util/verbose.js";
 import { noopVerbose } from "../util/verbose.js";
 import { formatActionMeta } from "../action/types.js";
@@ -71,6 +73,7 @@ export type TurnDeps = {
   recallDistanceThresholds: RecallDistanceThresholds;
   initialAffect?: string;
   initialConcern?: string;
+  initialFocusPlan?: string;
   contextTokenBudget: number;
   languageNumPredict?: number;
   timeZone?: string;
@@ -97,6 +100,7 @@ export type TurnDeps = {
     workingMemory: readonly ConversationTurn[];
     affect: string;
     concern: string;
+    focusPlan: string;
   }) => Promise<void>;
   verbose?: VerboseLogger;
 };
@@ -108,6 +112,7 @@ export class TurnOrchestrator {
   private turnContext: TurnContext | null = null;
   private affect: string;
   private concern: string;
+  private focusPlan: string;
   private readonly recentEpisodeTurnIds: string[] = [];
   /** 直近ターンで想起済みのベクトル群。INHIBITION_WINDOW_TURNS ターン後に期限切れ */
   private readonly inhibitionBuffer: { vector: number[]; expiresAtTurn: number }[] = [];
@@ -119,6 +124,7 @@ export class TurnOrchestrator {
   ) {
     this.affect = deps.initialAffect ?? "";
     this.concern = deps.initialConcern ?? "";
+    this.focusPlan = deps.initialFocusPlan ?? "";
   }
 
   getAffect(): string {
@@ -173,6 +179,7 @@ export class TurnOrchestrator {
       workingMemory: this.deps.workingMemory.getRecent(),
       affect: this.affect,
       concern: this.concern,
+      focusPlan: this.focusPlan,
     });
   }
 
@@ -185,6 +192,13 @@ export class TurnOrchestrator {
   private get vlog(): VerboseLoggerImpl | null {
     const log = this.deps.verbose ?? noopVerbose;
     return log.enabled ? (log as VerboseLoggerImpl) : null;
+  }
+
+  /** 計画チャンネル: 集中 State かつ取り組み中の計画があれば、その plan を render して返す */
+  private async loadPlanChannel(state: AgentState): Promise<string> {
+    if (state !== "集中" || !this.focusPlan) return "";
+    const plan = await loadPlan(this.focusPlan);
+    return plan ? renderPlan(plan) : "";
   }
 
   async run(trigger: TurnTrigger): Promise<TurnResult> {
@@ -231,6 +245,9 @@ export class TurnOrchestrator {
       clock.currentDateTime,
     );
 
+    // 計画チャンネル: 集中 State のときだけ取り組み中のゴールノート全文を常駐させる
+    const plan = await this.loadPlanChannel(startState);
+
     let ctx = createTurnContext({
       turnId,
       state: startState,
@@ -242,6 +259,8 @@ export class TurnOrchestrator {
       recalledNotes: memoHits,
       affect: this.affect,
       concern: this.concern,
+      plan,
+      planId: this.focusPlan,
       now: turnNow,
       timeZone: this.deps.timeZone,
     });
@@ -267,8 +286,33 @@ export class TurnOrchestrator {
     // --- activate → actor pool ---
     ctx = await this.runActorPool(ctx, enabledActors, actionLlm, activatorLlm, actionDeps);
 
+    // plan actor が計画ノートを更新したら、取り組み中のゴールポインタを差し替える
+    let planAchieved = false;
+    for (const a of ctx.actions) {
+      if (a.attempted && a.status === "succeeded" && a.facts?.kind === "plan") {
+        if (a.facts.achieved) {
+          // ゴール達成 → 集中対象から外す（言語野が次の State を選ぶ。集中に固定しない）
+          this.focusPlan = "";
+          planAchieved = true;
+        } else {
+          this.focusPlan = a.facts.planId;
+        }
+      }
+    }
+
     // --- language-agent（常に起動） ---
     ctx = await this.generateSpeech(ctx, trigger, languageLlm, startState);
+
+    // 事後ルール: 取り組み中の計画（focusPlan）が未達成のあいだは集中を維持する。
+    // 集中の維持を「毎ターン plan が更新されたか」に依存させると、doer が燃料を出さない
+    // ターン（例: 創作系で何も外部探索が要らないターン）で集中が剥がれ、計画チャンネルが
+    // 注入されなくなって二度と戻れなくなる。「未達の目標を持っている」という事実そのものへの
+    // 反応として集中を保つ（言語野の NEXT_STATE を上書き）。抜けるのはゴール達成で
+    // focusPlan が空になったとき（その後の State は言語野が選ぶ）。
+    if (this.focusPlan && !planAchieved) {
+      ctx = { ...ctx, nextState: "集中" };
+      this.turnContext = ctx;
+    }
 
     // --- 内省・内心更新 ---
     const { introspection, episodePersisted } = await this.persistReflection(
@@ -288,6 +332,7 @@ export class TurnOrchestrator {
       workingMemory: this.deps.workingMemory.getRecent(),
       affect: this.affect,
       concern: this.concern,
+      focusPlan: this.focusPlan,
     });
     v?.stateTransition(prevState, this.state);
 
@@ -402,31 +447,36 @@ export class TurnOrchestrator {
     const activeSpecs = await runActivator(ctx, actorSpecs);
     v?.actorsActivated(activeSpecs, actorSpecs.length, Date.now() - actorStart);
 
-    const outcomes = await Promise.all(
-      activeSpecs.map(async (spec) => {
-        const actor = getActor(spec.name);
-        if (!actor) return null;
-        const channels =
-          this.deps.actorChannels?.[spec.name] ??
-          DEFAULT_ACTOR_CHANNELS[spec.name];
-        const actorLlm = this.deps.actorLlm?.[spec.name] ?? actionLlm;
-        return actor.run(actorLlm, {
-          ctx,
-          intent: spec.intent,
-          timeRange: spec.timeRange,
-          channels,
-          deps: actionDeps,
-        });
-      }),
-    );
-
-    for (const outcome of outcomes) {
+    const runOne = (spec: (typeof activeSpecs)[number]) => {
+      const actor = getActor(spec.name);
+      if (!actor) return Promise.resolve(null);
+      const channels =
+        this.deps.actorChannels?.[spec.name] ?? DEFAULT_ACTOR_CHANNELS[spec.name];
+      const actorLlm = this.deps.actorLlm?.[spec.name] ?? actionLlm;
+      return actor.run(actorLlm, {
+        ctx,
+        intent: spec.intent,
+        timeRange: spec.timeRange,
+        channels,
+        deps: actionDeps,
+      });
+    };
+    const append = (outcome: Awaited<ReturnType<typeof runOne>>) => {
       if (outcome?.attempted) {
         ctx = withAction(ctx, outcome);
         this.turnContext = ctx;
         v?.actionResult(outcome, Date.now() - actorStart);
       }
-    }
+    };
+
+    // plan は「実際に何が起きたか」を見て事後に記録する（意図でなく結果でグラウンディング）ため、
+    // 他の actor を先に並列実行して ctx.actions に積んでから最後に走らせる。
+    const others = activeSpecs.filter((s) => s.name !== "plan");
+    const planSpec = activeSpecs.find((s) => s.name === "plan");
+
+    for (const o of await Promise.all(others.map(runOne))) append(o);
+    if (planSpec) append(await runOne(planSpec));
+
     return ctx;
   }
 

@@ -20,7 +20,7 @@ import { SUBAGENT_STEP_SYSTEM } from "../prompts/roles.js";
 import { runMemorySubagent } from "./agents/memory.js";
 import { generateExpressText } from "./language-faculty.js";
 
-export const MAX_SUBAGENT_STEPS = 5;
+export const MAX_SUBAGENT_STEPS = 3;
 
 export const subagentStepSchema = z.object({
   done: z.boolean(),

@@ -7,7 +7,12 @@ import { DEFAULT_RECALL_DISTANCE_THRESHOLDS } from "../recall/distance.js";
 export type OllamaThinkSetting = boolean | "high" | "medium" | "low";
 
 /** actor が参照できる TurnContext のチャンネル */
-export type ContextChannel = "conversation" | "inner_state" | "actor_list" | "image_feed";
+export type ContextChannel =
+  | "conversation"
+  | "inner_state"
+  | "actor_list"
+  | "image_feed"
+  | "plan";
 
 /** フラット actor pool のアクター名 */
 export type ActorName =
@@ -18,7 +23,8 @@ export type ActorName =
   | "memoRead"
   | "webSearch"
   | "urlBrowse"
-  | "webcam";
+  | "webcam"
+  | "plan";
 
 /** 各 actor の設定 */
 export type ActorConfig = {
@@ -36,9 +42,10 @@ export const DEFAULT_ACTOR_CHANNELS: Record<ActorName, ContextChannel[]> = {
   forget:    ["conversation", "inner_state"],
   memoWrite: ["conversation", "inner_state"],
   memoRead:  ["conversation", "inner_state"],
-  webSearch: ["conversation", "inner_state"],
-  urlBrowse: ["conversation", "inner_state"],
+  webSearch: ["conversation", "inner_state", "plan"],
+  urlBrowse: ["conversation", "inner_state", "plan"],
   webcam:    ["conversation", "inner_state", "image_feed"],
+  plan:      ["conversation", "inner_state", "plan"],
 };
 
 /** State 別のコンテキスト設定（元データは変更しない・TurnContext に載せる量のみ絞る） */
@@ -220,7 +227,7 @@ export function resolveEnabledActors(
 ): ActorName[] {
   const ALL_ACTORS: ActorName[] = [
     "recall", "remember", "forget", "memoWrite", "memoRead",
-    "webSearch", "urlBrowse", "webcam",
+    "webSearch", "urlBrowse", "webcam", "plan",
   ];
   const stateActors = settings.stateConfig?.[state]?.actors;
   const candidates = stateActors ?? ALL_ACTORS;

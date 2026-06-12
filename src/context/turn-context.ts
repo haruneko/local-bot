@@ -52,6 +52,10 @@ export type TurnContext = {
   affect: string;
   /** 認知的焦点（何に注目しているか）。空 = 特になし */
   concern: string;
+  /** 計画チャンネル: 集中 State で取り組み中の計画のレンダリング済みビュー。空 = 取り組み中の計画なし */
+  plan: string;
+  /** 取り組み中の計画 id（focusPlan）。plan actor がその計画を更新するため。空 = なし */
+  planId: string;
   /** memo_index から想起した関連メモの所在 */
   recalledNotes: MemoIndexHit[];
 
@@ -76,6 +80,8 @@ export type CreateTurnContextInput = {
   recalledNotes?: MemoIndexHit[];
   affect?: string;
   concern?: string;
+  plan?: string;
+  planId?: string;
   now?: Date;
   timeZone?: string;
 };
@@ -124,6 +130,8 @@ export function createTurnContext(input: CreateTurnContextInput): TurnContext {
     recalledNotes: [...(input.recalledNotes ?? [])],
     affect: input.affect ?? "",
     concern: input.concern ?? "",
+    plan: input.plan ?? "",
+    planId: input.planId ?? "",
     actions: [],
   };
 }
@@ -248,7 +256,19 @@ export function memorySnapshot(ctx: TurnContext) {
     recalledNotes: formatRecalledNotes(ctx),
     affect: ctx.affect,
     concern: ctx.concern,
+    plan: ctx.plan,
   };
+}
+
+/** 計画チャンネル（集中 State で取り組み中のゴールノート全文）を注入する */
+function appendPlan(parts: string[], ctx: TurnContext): void {
+  if (!ctx.plan.trim()) return;
+  parts.push(
+    "",
+    "## 取り組み中の計画",
+    "（いま集中して進めているゴールの現状。状態と履歴の記録であって、次の手順の指示書ではない。次の一手は自分で決める）",
+    ctx.plan,
+  );
 }
 
 function appendInnerState(parts: string[], ctx: TurnContext): void {
@@ -322,6 +342,7 @@ export function renderLanguageUserContent(ctx: TurnContext): string {
       snap.priorDialogue,
     ];
 
+    appendPlan(parts, ctx);
     appendInnerState(parts, ctx);
     appendSemanticFacts(parts, ctx);
     appendRecalledEpisodes(parts, ctx);
@@ -345,6 +366,7 @@ export function renderLanguageUserContent(ctx: TurnContext): string {
     snap.priorDialogue,
   ];
 
+  appendPlan(parts, ctx);
   appendInnerState(parts, ctx);
   appendSemanticFacts(parts, ctx);
   appendRecalledEpisodes(parts, ctx);
@@ -382,6 +404,10 @@ export function buildActorContext(
 
   if (channels.includes("actor_list") && opts?.actorList?.length) {
     parts.push("", "## 利用可能なアクター", opts.actorList.join(", "));
+  }
+
+  if (channels.includes("plan") && ctx.plan.trim()) {
+    parts.push("", "## 取り組み中の計画", ctx.plan);
   }
 
   return parts.join("\n");
@@ -478,6 +504,7 @@ export function buildReflectionMessages(ctx: TurnContext): ChatMessage[] {
 /** 言語野の system メッセージに追記するコンテキスト部分（内心・意味記憶・背景の記憶） */
 export function buildLanguageContextSuffix(ctx: TurnContext): string {
   const parts: string[] = [];
+  appendPlan(parts, ctx);
   appendInnerState(parts, ctx);
   appendSemanticFacts(parts, ctx);
   appendRecalledEpisodes(parts, ctx);

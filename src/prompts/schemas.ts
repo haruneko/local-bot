@@ -25,6 +25,27 @@ export const memoWriteJsonSchema = zodToJsonSchema(memoWriteOutputSchema, {
 export const memoReadPickOutputSchema = z.object({
   filename: z.string().nullable(),
 });
+
+export const planOpSchema = z.object({
+  op: z.enum([
+    "new_goal",
+    "complete",
+    "reopen",
+    "set_current",
+    "add_milestone",
+    "log",
+    "noop",
+  ]),
+  id: z.string().optional(),
+  text: z.string().optional(),
+  title: z.string().optional(),
+  goal: z.string().optional(),
+  milestones: z.array(z.string()).optional(),
+});
+export const planOpJsonSchema = zodToJsonSchema(planOpSchema, {
+  name: "PlanOp",
+  ...jsonSchemaOptions,
+});
 export const memoReadPickJsonSchema = zodToJsonSchema(memoReadPickOutputSchema, {
   name: "MemoReadPickOutput",
   ...jsonSchemaOptions,

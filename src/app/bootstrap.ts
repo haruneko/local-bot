@@ -193,6 +193,7 @@ export async function createApp(
         workingMemory: [] as const,
         affect: "",
         concern: "",
+        focusPlan: "",
       };
   const wm = new WorkingMemory(
     settings.workingMemoryTurns,
@@ -204,6 +205,7 @@ export async function createApp(
         workingMemory: readonly ConversationTurn[];
         affect: string;
         concern: string;
+        focusPlan: string;
       }) => saveSession(statePath, next)
     : undefined;
 
@@ -222,7 +224,7 @@ export async function createApp(
   // actor ごとの知覚チャンネルと LLM
   const ALL_ACTOR_NAMES: ActorName[] = [
     "recall", "remember", "forget", "memoWrite", "memoRead",
-    "webSearch", "urlBrowse", "webcam",
+    "webSearch", "urlBrowse", "webcam", "plan",
   ];
   const actorChannels = Object.fromEntries(
     ALL_ACTOR_NAMES.map((name) => [name, resolveActorChannels(settings, name)]),
@@ -259,6 +261,7 @@ export async function createApp(
     recallDistanceThresholds: resolveRecallDistanceThresholds(settings),
     initialAffect: session.affect,
     initialConcern: session.concern,
+    initialFocusPlan: session.focusPlan,
     contextTokenBudget: settings.contextTokenBudget,
     languageNumPredict: settings.languageNumPredict ?? 400,
     timeZone: settings.timeZone ?? "Asia/Tokyo",
