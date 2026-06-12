@@ -181,13 +181,16 @@ export class TurnOrchestrator {
     return this.turnContext;
   }
 
+  /** debug ログ用ロガー（quiet/info-only のときは null）。verbose メソッド呼び出しは v?. で行う */
+  private get vlog(): VerboseLoggerImpl | null {
+    const log = this.deps.verbose ?? noopVerbose;
+    return log.enabled ? (log as VerboseLoggerImpl) : null;
+  }
+
   async run(trigger: TurnTrigger): Promise<TurnResult> {
     const turnId = randomUUID();
     const startState = this.state;
-    const log = this.deps.verbose ?? noopVerbose;
-    const v: VerboseLoggerImpl | null = log.enabled
-      ? (log as VerboseLoggerImpl)
-      : null;
+    const v = this.vlog;
 
     // Per-state config: State が変わるたびに再解決される
     const { enabledActors, episodeRecallTopK, workingMemoryTurns } =
@@ -213,78 +216,20 @@ export class TurnOrchestrator {
     }
     v?.workingMemory(this.deps.workingMemory.getRecent());
 
-    const recallQuery = buildRecallQuery(
-      trigger,
-      this.deps.workingMemory.lastUserContent(),
-      this.deps.workingMemory.lastAssistantContent(),
-      this.affect,
-      this.concern,
-    );
-
+    const turnNow = new Date();
+    const clock = buildContextClock(turnNow, this.deps.timeZone);
     const allRecentTurns = this.deps.workingMemory.getRecent();
     const recentTurns = workingMemoryTurns !== undefined
       ? allRecentTurns.slice(-workingMemoryTurns)
       : allRecentTurns;
-    const turnNow = new Date();
-    const clock = buildContextClock(turnNow, this.deps.timeZone);
 
-    let recalled: Awaited<ReturnType<typeof presentRecallEpisodes>> = [];
-    let semanticFacts: ReturnType<typeof presentSemanticFacts> = [];
-    let memoHits: Awaited<ReturnType<NonNullable<typeof this.deps.memoIndex>["recall"]>> = [];
-
-    if (recallQuery !== null) {
-      const recallStart = Date.now();
-      const excludeTurnIds = this.excludeTurnIds();
-      const recallHits = await this.deps.episodes.recall(
-        recallQuery,
-        episodeRecallTopK,
-        excludeTurnIds,
-        startState,
-      );
-      v?.recall(recallQuery, recallHits, Date.now() - recallStart, {
-        excludedTurnIds: [...excludeTurnIds],
-      });
-
-      this.addToInhibitionBuffer(recallHits);
-
-      const filterStart = Date.now();
-      const triggerLabel =
-        trigger.type === "user_message"
-          ? trigger.content
-          : `（ハートビート・${startState}）`;
-      recalled = await presentRecallEpisodes(
-        this.deps.llm,
-        recallHits,
-        {
-          state: startState,
-          currentDateTime: clock.currentDateTime,
-          triggerLabel,
-          recallQuery,
-        },
-        this.deps.recallDistanceThresholds,
-        {
-          inhibitionBuffer: this.getActiveInhibitionVectors(),
-          currentSpeaker:
-            trigger.type === "user_message" ? trigger.speakerId : undefined,
-        },
-      );
-      v?.recallFilter(recallHits, recalled, Date.now() - filterStart);
-
-      const semanticStart = Date.now();
-      const semanticHits = await this.deps.semantic.recall(
-        recallQuery,
-        this.deps.semanticRecallTopK,
-      );
-      semanticFacts = presentSemanticFacts(
-        semanticHits,
-        this.deps.semanticRecallMaxDistance,
-      );
-      v?.semanticRecall(recallQuery, semanticHits, semanticFacts, Date.now() - semanticStart);
-
-      memoHits = this.deps.memoIndex
-        ? await this.deps.memoIndex.recall(recallQuery, this.deps.memoIndexTopK ?? 3)
-        : [];
-    }
+    // --- プリプロセス: 想起 ---
+    const { recalled, semanticFacts, memoHits } = await this.recallMemories(
+      trigger,
+      startState,
+      episodeRecallTopK,
+      clock.currentDateTime,
+    );
 
     let ctx = createTurnContext({
       turnId,
@@ -305,15 +250,10 @@ export class TurnOrchestrator {
 
     const preprocessStart = Date.now();
     const draft = ctx;
-    ctx = await fitTurnContext(
-      this.deps.llm,
-      ctx,
-      this.deps.contextTokenBudget,
-    );
+    ctx = await fitTurnContext(this.deps.llm, ctx, this.deps.contextTokenBudget);
     this.turnContext = ctx;
     v?.preprocess(draft, ctx, this.deps.contextTokenBudget, Date.now() - preprocessStart);
 
-    // --- 共通 action deps ---
     const actionDeps: RunActionDeps = {
       episodes: this.deps.episodes,
       episodeRecallTopK: this.deps.episodeRecallTopK,
@@ -324,7 +264,130 @@ export class TurnOrchestrator {
       memoIndex: this.deps.memoIndex,
     };
 
-    // --- activator → actor pool ---
+    // --- activate → actor pool ---
+    ctx = await this.runActorPool(ctx, enabledActors, actionLlm, activatorLlm, actionDeps);
+
+    // --- language-agent（常に起動） ---
+    ctx = await this.generateSpeech(ctx, trigger, languageLlm, startState);
+
+    // --- 内省・内心更新 ---
+    const { introspection, episodePersisted } = await this.persistReflection(
+      ctx,
+      trigger,
+      startState,
+      turnId,
+      introspectionLlm,
+      affectLlm,
+    );
+
+    // --- State 遷移・永続化 ---
+    const prevState = this.state;
+    this.state = applyNextState(this.state, ctx.nextState ?? this.state);
+    await this.deps.onSessionPersist?.({
+      state: this.state,
+      workingMemory: this.deps.workingMemory.getRecent(),
+      affect: this.affect,
+      concern: this.concern,
+    });
+    v?.stateTransition(prevState, this.state);
+
+    const result: TurnResult = {
+      turnId,
+      speech: ctx.speech ?? null,
+      introspection,
+      episodeSaved: episodePersisted,
+      nextState: this.state,
+    };
+
+    this.turnContext = null;
+    v?.contextDestroyed();
+    v?.turnEnd(this.state);
+
+    return result;
+  }
+
+  /** プリプロセス: 想起クエリ決定 → エピソード/意味記憶/memoIndex 想起。null クエリは全スキップ */
+  private async recallMemories(
+    trigger: TurnTrigger,
+    startState: AgentState,
+    episodeRecallTopK: number,
+    currentDateTime: string,
+  ): Promise<{
+    recalled: Awaited<ReturnType<typeof presentRecallEpisodes>>;
+    semanticFacts: ReturnType<typeof presentSemanticFacts>;
+    memoHits: Awaited<ReturnType<MemoIndexStore["recall"]>>;
+  }> {
+    const v = this.vlog;
+    const recallQuery = buildRecallQuery(
+      trigger,
+      this.deps.workingMemory.lastUserContent(),
+      this.deps.workingMemory.lastAssistantContent(),
+      this.affect,
+      this.concern,
+    );
+    if (recallQuery === null) {
+      return { recalled: [], semanticFacts: [], memoHits: [] };
+    }
+
+    const recallStart = Date.now();
+    const excludeTurnIds = this.excludeTurnIds();
+    const recallHits = await this.deps.episodes.recall(
+      recallQuery,
+      episodeRecallTopK,
+      excludeTurnIds,
+      startState,
+    );
+    v?.recall(recallQuery, recallHits, Date.now() - recallStart, {
+      excludedTurnIds: [...excludeTurnIds],
+    });
+
+    this.addToInhibitionBuffer(recallHits);
+
+    const filterStart = Date.now();
+    const triggerLabel =
+      trigger.type === "user_message"
+        ? trigger.content
+        : `（ハートビート・${startState}）`;
+    const recalled = await presentRecallEpisodes(
+      this.deps.llm,
+      recallHits,
+      { state: startState, currentDateTime, triggerLabel, recallQuery },
+      this.deps.recallDistanceThresholds,
+      {
+        inhibitionBuffer: this.getActiveInhibitionVectors(),
+        currentSpeaker:
+          trigger.type === "user_message" ? trigger.speakerId : undefined,
+      },
+    );
+    v?.recallFilter(recallHits, recalled, Date.now() - filterStart);
+
+    const semanticStart = Date.now();
+    const semanticHits = await this.deps.semantic.recall(
+      recallQuery,
+      this.deps.semanticRecallTopK,
+    );
+    const semanticFacts = presentSemanticFacts(
+      semanticHits,
+      this.deps.semanticRecallMaxDistance,
+    );
+    v?.semanticRecall(recallQuery, semanticHits, semanticFacts, Date.now() - semanticStart);
+
+    const memoHits = this.deps.memoIndex
+      ? await this.deps.memoIndex.recall(recallQuery, this.deps.memoIndexTopK ?? 3)
+      : [];
+
+    return { recalled, semanticFacts, memoHits };
+  }
+
+  /** activate（各 actor 並列）→ 起動した actor を並列実行し ctx.actions に積む */
+  private async runActorPool(
+    ctx: TurnContext,
+    enabledActors: ActorName[],
+    actionLlm: LlmClient,
+    activatorLlm: LlmClient,
+    actionDeps: RunActionDeps,
+  ): Promise<TurnContext> {
+    const v = this.vlog;
     const actorStart = Date.now();
     const actorSpecs = enabledActors.flatMap((name) => {
       const actor = getActor(name);
@@ -364,8 +427,17 @@ export class TurnOrchestrator {
         v?.actionResult(outcome, Date.now() - actorStart);
       }
     }
+    return ctx;
+  }
 
-    // --- language-agent（常に起動） ---
+  /** language-agent（常に起動）。発話と NEXT_STATE を ctx に載せ、発話を作業記憶へ追加 */
+  private async generateSpeech(
+    ctx: TurnContext,
+    trigger: TurnTrigger,
+    languageLlm: LlmClient,
+    startState: AgentState,
+  ): Promise<TurnContext> {
+    const v = this.vlog;
     const langStart = Date.now();
     ctx = withPersona(ctx, await this.deps.getPersona());
     try {
@@ -386,107 +458,83 @@ export class TurnOrchestrator {
     }
 
     if (ctx.speech) {
-      if (trigger.type === "user_message") {
-        this.deps.workingMemory.append({
-          role: "assistant",
-          content: ctx.speech,
-        });
-      } else {
-        this.deps.workingMemory.append({
-          role: "assistant",
-          channel: "monologue",
-          content: ctx.speech,
-        });
-      }
+      this.deps.workingMemory.append(
+        trigger.type === "user_message"
+          ? { role: "assistant", content: ctx.speech }
+          : { role: "assistant", channel: "monologue", content: ctx.speech },
+      );
     }
+    return ctx;
+  }
 
-    // --- 内省・内心更新 ---
-    const persistEpisode = shouldPersistIntrospection(ctx);
-
-    let introspection = "";
-    let tags: string[] = [];
-    let episodePersisted = false;
-
-    if (persistEpisode) {
-      try {
-        // 内省の実プロンプト（role 構造のマルチターン）は withVerboseLlm が
-        // debug レベルで実メッセージごとダンプするので、ここで再レンダリングしない。
-        const introStart = Date.now();
-        const introResult = await runIntrospection(introspectionLlm, ctx);
-        introspection = introResult.text;
-        const episodeImportance = introResult.importance;
-        v?.introspectionBody(introspection, Date.now() - introStart);
-
-        tags = await extractEpisodeTags(introspectionLlm, introspection);
-
-        const prevAffect = this.affect;
-        const innerStart = Date.now();
-        const affectResult = await updateAffectAndConcern(affectLlm, {
-          prevAffect,
-          prevConcern: this.concern,
-          introspection,
-          speech: ctx.speech ?? null,
-          actions: ctx.actions,
-          currentDateTime: ctx.currentDateTime,
-        });
-        this.affect = affectResult.affect;
-        this.concern = affectResult.concern;
-        v?.affectUpdate(prevAffect, this.affect, Date.now() - innerStart);
-
-        const participants =
-          trigger.type === "user_message" ? [trigger.speakerId] : [];
-        const actionMeta = ctx.actions
-          .filter((a): a is Extract<typeof a, { attempted: true }> => a.attempted)
-          .map((a) => formatActionMeta(a))
-          .filter(Boolean)
-          .join("; ");
-
-        const metadata = {
-          timestamp: new Date().toISOString(),
-          participants,
-          tags: trigger.type === "heartbeat" ? ["heartbeat", ...tags] : tags,
-          state: startState,
-          action: actionMeta,
-          source: "introspection" as const,
-          reply: !!ctx.speech?.trim(),
-          turnId,
-          importance: episodeImportance,
-        };
-        await this.deps.episodes.append({ body: introspection, metadata });
-        this.pushRecentEpisodeTurnId(turnId);
-        v?.episodeSaved(metadata);
-        episodePersisted = true;
-      } catch (err) {
-        v?.introspectionSkipped(`LLM 失敗: ${err instanceof Error ? err.message : err}`);
-        v?.episodeSkipped("内省 LLM 失敗");
-      }
-    } else {
+  /** 内省 → タグ抽出 → 内心更新 → エピソード追記。idle heartbeat はスキップ */
+  private async persistReflection(
+    ctx: TurnContext,
+    trigger: TurnTrigger,
+    startState: AgentState,
+    turnId: string,
+    introspectionLlm: LlmClient,
+    affectLlm: LlmClient,
+  ): Promise<{ introspection: string; episodePersisted: boolean }> {
+    const v = this.vlog;
+    if (!shouldPersistIntrospection(ctx)) {
       v?.introspectionSkipped("idle heartbeat — actions 空 & speech 空");
       v?.episodeSkipped("idle heartbeat");
+      return { introspection: "", episodePersisted: false };
     }
 
-    const prevState = this.state;
-    this.state = applyNextState(this.state, ctx.nextState ?? this.state);
-    await this.deps.onSessionPersist?.({
-      state: this.state,
-      workingMemory: this.deps.workingMemory.getRecent(),
-      affect: this.affect,
-      concern: this.concern,
-    });
-    v?.stateTransition(prevState, this.state);
+    // 内省の実プロンプト（role 構造のマルチターン）は withVerboseLlm が
+    // debug レベルで実メッセージごとダンプするので、ここで再レンダリングしない。
+    let introspection = "";
+    try {
+      const introStart = Date.now();
+      const introResult = await runIntrospection(introspectionLlm, ctx);
+      introspection = introResult.text;
+      v?.introspectionBody(introspection, Date.now() - introStart);
 
-    const result: TurnResult = {
-      turnId,
-      speech: ctx.speech ?? null,
-      introspection,
-      episodeSaved: episodePersisted,
-      nextState: this.state,
-    };
+      const tags = await extractEpisodeTags(introspectionLlm, introspection);
 
-    this.turnContext = null;
-    v?.contextDestroyed();
-    v?.turnEnd(this.state);
+      const prevAffect = this.affect;
+      const innerStart = Date.now();
+      const affectResult = await updateAffectAndConcern(affectLlm, {
+        prevAffect,
+        prevConcern: this.concern,
+        introspection,
+        speech: ctx.speech ?? null,
+        actions: ctx.actions,
+        currentDateTime: ctx.currentDateTime,
+      });
+      this.affect = affectResult.affect;
+      this.concern = affectResult.concern;
+      v?.affectUpdate(prevAffect, this.affect, Date.now() - innerStart);
 
-    return result;
+      const participants =
+        trigger.type === "user_message" ? [trigger.speakerId] : [];
+      const actionMeta = ctx.actions
+        .filter((a): a is Extract<typeof a, { attempted: true }> => a.attempted)
+        .map((a) => formatActionMeta(a))
+        .filter(Boolean)
+        .join("; ");
+
+      const metadata = {
+        timestamp: new Date().toISOString(),
+        participants,
+        tags: trigger.type === "heartbeat" ? ["heartbeat", ...tags] : tags,
+        state: startState,
+        action: actionMeta,
+        source: "introspection" as const,
+        reply: !!ctx.speech?.trim(),
+        turnId,
+        importance: introResult.importance,
+      };
+      await this.deps.episodes.append({ body: introspection, metadata });
+      this.pushRecentEpisodeTurnId(turnId);
+      v?.episodeSaved(metadata);
+      return { introspection, episodePersisted: true };
+    } catch (err) {
+      v?.introspectionSkipped(`LLM 失敗: ${err instanceof Error ? err.message : err}`);
+      v?.episodeSkipped("内省 LLM 失敗");
+      return { introspection, episodePersisted: false };
+    }
   }
 }

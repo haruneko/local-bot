@@ -351,14 +351,50 @@ function oneLine(text: string, max: number): string {
   return flat.length <= max ? flat : `${flat.slice(0, max)}…`;
 }
 
+/**
+ * system プロンプトの特徴文字列から LLM コールのロールを推定する（debug ログ用）。
+ * 判定順は重要: 「内省」を含むプロンプトが複数あるため（tags・内心・夢）、
+ * それらを内省の前に判定する。
+ */
 export function detectLlmRole(messages: ChatMessage[]): string {
   const sys = messages.find((m) => m.role === "system")?.content ?? "";
-  if (sys.includes("行動くん")) return "action";
+
+  // 言語野（対話・heartbeat・express 文面生成）
   if (sys.includes("キャラクタールールに従い")) return "language";
+
+  // actor の起動判定（activate）— actor 名まで出す
+  const act = sys.match(/あなたは\s*(\S+?)\s*の起動判定係/);
+  if (act) return `activate.${act[1]}`;
+
+  // サブエージェントのツール選択
+  if (sys.includes("カテゴリ内のツールを1つ選び")) return "subagent.pick";
+
+  // memory 系 actor 本体
+  if (sys.includes("後で思い出せる短いファクト")) return "remember";
+  if (sys.includes("本文とファイル名を決め")) return "memo_write";
+  if (sys.includes("記憶候補から")) return "forget.pick";
+  if (sys.includes("冒頭抜粋")) return "memo_read.pick";
+
+  // 内省テキストからのタグ抽出（「内省」を含むので introspection より先）
+  if (sys.includes("名詞タグ")) return "tags";
+
+  // 想起の提示・行動要約
   if (sys.includes("エピソード記憶の断片")) return "recall.present";
   if (sys.includes("記憶（LanceDB）の検索結果")) return "recall.action";
+
+  // 夢の蒸留（「内省断片」を含むので introspection より先）
+  if (sys.includes("蒸留")) return "dream.distill";
+
+  // 旧 v0.6 束ねエージェント（現行未使用・保険）
+  if (sys.includes("記憶エージェント")) return "memory_agent";
+  if (sys.includes("探索エージェント")) return "research_agent";
+
+  // 内心更新 → 内省（内心が先。両方「内省」を含む）
   if (sys.includes("前の内心")) return "inner_state";
   if (sys.includes("内省")) return "introspection";
+
+  // preprocess のチャンネル要約
   if (sys.includes("要約機")) return "preprocess.summarize";
+
   return "unknown";
 }
