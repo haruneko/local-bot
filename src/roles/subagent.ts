@@ -6,7 +6,9 @@ import {
 } from "../action/parse-json.js";
 import { ACTION_ERROR_CODES } from "../action/error.js";
 import { errorFromLlmAttempts } from "../action/error.js";
+import type { ActionErrorInfo } from "../action/error.js";
 import { actionFailed, actionSucceeded } from "../action/outcome.js";
+import { coerceToolArgs } from "../action/coerce-args.js";
 import type { RunActionInput } from "../action/context.js";
 import type { ActionOutcome } from "../types.js";
 import type { CatalogTool, ToolCategory } from "../tools/catalog.js";
@@ -45,6 +47,9 @@ export type SubagentPickResult = {
   tool?: string;
   arguments?: Record<string, unknown>;
   reason?: string;
+  /** ツール選択自体が LLM 失敗（パース不能等）だったときの構造化エラー。
+   *  これがあるとき done=true は「完了」ではなく「失敗」を意味する */
+  error?: ActionErrorInfo;
 };
 
 export async function runSubagentToolPick(
@@ -100,14 +105,12 @@ export async function runSubagentToolPick(
     return parsed.value;
   }
 
-  return {
-    done: true,
-    reason: errorFromLlmAttempts(
-      attempts,
-      lastFailure?.reason,
-      lastFailure?.zodMessage,
-    ).message,
-  };
+  const error = errorFromLlmAttempts(
+    attempts,
+    lastFailure?.reason,
+    lastFailure?.zodMessage,
+  );
+  return { done: true, reason: error.message, error };
 }
 
 async function executeMcpStep(
@@ -118,7 +121,11 @@ async function executeMcpStep(
   if (tool.source !== "mcp" || !tool.server) {
     return { ok: false, summary: "MCPツールではない", content: "" };
   }
-  const result = await mcp.callTool(tool.server, tool.name, args);
+  const coerced = coerceToolArgs(tool.parameters, args);
+  if (!coerced.ok) {
+    return { ok: false, summary: coerced.message, content: "" };
+  }
+  const result = await mcp.callTool(tool.server, tool.name, coerced.args);
   return {
     ok: result.ok,
     summary: result.summary,
@@ -127,7 +134,9 @@ async function executeMcpStep(
 }
 
 function isNetworkError(summary: string): boolean {
-  return /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|に接続できません|-32603/i.test(summary);
+  // -32603 は JSON-RPC の汎用 Internal error（引数不正でも出る）なので含めない。
+  // ネットワーク障害だけを即失敗扱いにし、それ以外はクエリ変更でのリトライ余地を残す。
+  return /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|に接続できません/i.test(summary);
 }
 
 function findCatalogTool(
@@ -169,6 +178,10 @@ export async function runResearchSubagent(
 
     if (pick.done || !pick.tool) {
       if (lastContent) break;
+      // ツール選択自体が LLM 失敗（パース不能等）→ 成功扱いにしない
+      if (pick.error) {
+        return actionFailed(action, "探索ツールを選べなかった", pick.error);
+      }
       if (lastFailure) {
         return actionFailed(action, "探索ツールの実行に失敗した", {
           code: ACTION_ERROR_CODES.TOOL_FAILED,
@@ -261,10 +274,14 @@ export async function runExpressSubagent(
   });
 
   if (pick.done || !pick.tool) {
-    return actionFailed(action, "発信ツールを選べなかった", {
-      code: ACTION_ERROR_CODES.PICK_FAILED,
-      message: pick.reason ?? "ツール未選択",
-    });
+    return actionFailed(
+      action,
+      "発信ツールを選べなかった",
+      pick.error ?? {
+        code: ACTION_ERROR_CODES.PICK_FAILED,
+        message: pick.reason ?? "ツール未選択",
+      },
+    );
   }
 
   const tool = findCatalogTool(tools, pick.tool);

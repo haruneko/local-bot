@@ -13,6 +13,8 @@
 ```bash
 npm run dev          # REPL 起動（= npm start, tsx 実行・build 不要）
 npm run heartbeat    # 1 ターンだけ heartbeat して終了（cron 向け）
+npm run say -- "メッセージ"        # 1 ターンだけ user_message を送って終了。既定話者=クロ(claude_kuro)
+npm run say -- --user user_001 --memory-only "..."  # 話者・使い捨て指定
 npm run dream        # 夢バッチ: エピソード/タネを意味記憶へ蒸留
 npm run dream -- --seed          # 初回: 夢のタネを蒸留（エピソード 0 件でも可）
 npm run dream -- --seed --force-seed  # タネを再蒸留
@@ -22,7 +24,7 @@ npm run build        # tsc
 npm run smoke        # Ollama 疎通確認
 ```
 
-CLI 共通オプション: `-v`/`--verbose`（stderr 詳細ログ）, `--user <id>`, `--memory-only`（インメモリ記憶・テスト用）。
+CLI 共通オプション: `-v`/`--verbose`（debug=全文ダンプ）, `-q`/`--quiet`（サマリ無し）, `--user <id>`, `--memory-only`（インメモリ記憶・テスト用）。ログは3段階（`src/util/verbose.ts`）: `quiet`（発話＋state のみ）/ `info`（1ターン十数行の構造化サマリ・stderr）/ `debug`（全 LLM prompt/response・context 全文）。既定は REPL=`quiet`・Slack/heartbeat=`info`。
 REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 
 ## アーキテクチャ
@@ -69,7 +71,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 |----------|------|
 | `config/settings.json` | モデル名・Ollama ホスト・記憶件数・トークン予算・`stateConfig`・`roles` |
 | `config/mcp.json` | MCP サーバ定義・`expressDryRun` |
-| `config/users.yaml` | 話者 ID → 表示名 |
+| `config/users.yaml` | 話者 ID → 表示名＋任意の `note`（関係性の一文）。note は言語野の「## 相手について」に注入され、誰と話すかで反応が変わる。recall は話者一致エピソードを重み付け（`SPEAKER_MATCH_BOOST`） |
 | `persona/character.md` | キャラクター・口調・一人称 |
 | `data/semantic-seed.json` | 夢のタネ（内省風断片） |
 

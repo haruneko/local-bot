@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import type { DialogueFormatOptions } from "../context/dialogue.js";
 import {
   createTurnContext,
-  renderIntrospectionPrompt,
   withAction,
   withPersona,
   withSpeech,
@@ -57,8 +56,11 @@ export type TurnResult = {
 
 export type TurnDeps = {
   llm: LlmClient;
-  /** activator + 全実行 actors 用モデル。未設定は llm にフォールバック */
+  /** 全実行 actors 用モデル。未設定は llm にフォールバック */
   actionLlm?: LlmClient;
+  /** actor の起動判定（activate）用モデル。未設定は actionLlm にフォールバック。
+   *  RUN 用の重いモデルと分離し、起動判定を常に軽く保つ */
+  activatorLlm?: LlmClient;
   episodes: EpisodeStore;
   semantic: SemanticStore;
   workingMemory: WorkingMemory;
@@ -193,6 +195,7 @@ export class TurnOrchestrator {
 
     // LLM 解決
     const actionLlm = this.deps.actionLlm ?? this.deps.llm;
+    const activatorLlm = this.deps.activatorLlm ?? actionLlm;
     const rl = this.deps.roleLlm;
     const languageLlm = rl?.language ?? this.deps.llm;
     const introspectionLlm = rl?.introspection ?? this.deps.llm;
@@ -259,7 +262,11 @@ export class TurnOrchestrator {
           recallQuery,
         },
         this.deps.recallDistanceThresholds,
-        { inhibitionBuffer: this.getActiveInhibitionVectors() },
+        {
+          inhibitionBuffer: this.getActiveInhibitionVectors(),
+          currentSpeaker:
+            trigger.type === "user_message" ? trigger.speakerId : undefined,
+        },
       );
       v?.recallFilter(recallHits, recalled, Date.now() - filterStart);
 
@@ -324,11 +331,13 @@ export class TurnOrchestrator {
       if (!actor) return [];
       return [{
         actor,
-        llm: this.deps.actorLlm?.[name] ?? actionLlm,
+        // 起動判定は専用の軽量モデルで（RUN 用の actorLlm とは分離）
+        llm: activatorLlm,
         channels: this.deps.actorChannels?.[name] ?? DEFAULT_ACTOR_CHANNELS[name],
       }];
     });
     const activeSpecs = await runActivator(ctx, actorSpecs);
+    v?.actorsActivated(activeSpecs, actorSpecs.length, Date.now() - actorStart);
 
     const outcomes = await Promise.all(
       activeSpecs.map(async (spec) => {
@@ -400,7 +409,8 @@ export class TurnOrchestrator {
 
     if (persistEpisode) {
       try {
-        v?.introspectionPrompt(renderIntrospectionPrompt(ctx));
+        // 内省の実プロンプト（role 構造のマルチターン）は withVerboseLlm が
+        // debug レベルで実メッセージごとダンプするので、ここで再レンダリングしない。
         const introStart = Date.now();
         const introResult = await runIntrospection(introspectionLlm, ctx);
         introspection = introResult.text;

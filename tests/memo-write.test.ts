@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { rm } from "node:fs/promises";
+import path from "node:path";
 import { runMemoWrite } from "../src/roles/memo-write.js";
 import { FakeLlmClient } from "../src/llm/fake.js";
 import { InMemoryEpisodeStore } from "../src/memory/episode.js";
 import { InMemoryMemoIndexStore } from "../src/memory/memo-index.js";
 import { createTurnContext } from "../src/context/turn-context.js";
+import { NOTES_DIR, readNoteContent } from "../src/tools/notes.js";
 
 const dialogue = { resolveUserDisplayName: () => "HAL" };
 
@@ -58,6 +61,31 @@ describe("runMemoWrite", () => {
 
     const list = await memoIndex.list();
     expect(list).toHaveLength(0);
+  });
+
+  it("既存ファイルは上書きせず追記する（既存本文を失わない）", async () => {
+    const fname = "__test-append__.md";
+    const fpath = path.join(NOTES_DIR, fname);
+    await rm(fpath, { force: true });
+    try {
+      // 1回目: 新規作成
+      const llm1 = new FakeLlmClient([
+        JSON.stringify({ content: "1行目の大事な原文", filename: fname }),
+      ]);
+      await runMemoWrite(llm1, makeInput());
+
+      // 2回目: 同名へ。LLM が append:false と言っても、既存があるので上書きしない
+      const llm2 = new FakeLlmClient([
+        JSON.stringify({ content: "2行目の追記", filename: fname, append: false }),
+      ]);
+      await runMemoWrite(llm2, makeInput());
+
+      const content = await readNoteContent(fname);
+      expect(content).toContain("1行目の大事な原文"); // 既存が消えていない
+      expect(content).toContain("2行目の追記"); // 追記もされている
+    } finally {
+      await rm(fpath, { force: true });
+    }
   });
 
   it("memoIndex が undefined でもクラッシュしない", async () => {

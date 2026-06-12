@@ -10,7 +10,8 @@
 - **記憶**（LanceDB + ベクトル想起）と **メモ**（`data/notes/`）の二系統 + メモインデックス
 - **意味記憶**（夢バッチでエピソード + 夢のタネから蒸留）
 - 内省だけをエピソード記憶に蓄積（`remember` は別途ファクト追記）
-- `--verbose` で各 actor・言語野・内省の入出力を追跡
+- **話者対応**: `config/users.yaml` の `note`（関係性）を言語野に注入し、誰と話すかで反応が変わる。想起も話者一致エピソードを重み付け
+- **3 段階ログ**: `quiet`（発話のみ）/ `info`（1ターン十数行の構造化サマリ・常駐の既定）/ `debug`（全 LLM 入出力。`-v`）
 
 ## アーキテクチャ（1ターン）
 
@@ -23,11 +24,11 @@
 
 | モジュール | 役割 |
 |------------|------|
-| activator | mini-context を読み起動すべき actor を選定 |
-| actor pool | 各 actor が並列に自律判断・実行し `ctx.actions` に積む |
+| activate | 単一の選定者は無し。各 actor が mini-context を読み**自分の起動可否を並列に判断** |
+| actor pool | 起動した各 actor が並列に自律実行し `ctx.actions` に積む |
 | 言語野 | `TurnContext` 全チャンネル + `ctx.actions` を受け取り発話生成 |
 | 内省 | 発話と行動結果から一人称で振り返り → エピソード記憶へ |
-| 内心更新 | 内省を受けて `innerState` を書き換え |
+| 内心更新 | 内省を受けて `affect`（感情余韻）と `concern`（認知的焦点）を書き換え |
 
 詳細は [docs/CONCEPT.md](docs/CONCEPT.md)、行動設計は [docs/ACTION-DESIGN.md](docs/ACTION-DESIGN.md)、実装仕様は [docs/SPEC.md](docs/SPEC.md)、設計決定は [docs/DECISIONS.md](docs/DECISIONS.md)。
 
@@ -73,9 +74,12 @@ npm run dev      # 同上
 
 | オプション | 説明 |
 |------------|------|
-| `-v`, `--verbose` | 詳細ログを stderr に出力 |
+| `-v`, `--verbose` | `debug` レベル（全 LLM 入出力）を stderr に出力 |
+| `-q`, `--quiet` | サマリログなし（REPL の既定） |
 | `--user <id>` | 話者 ID（`config/users.yaml`） |
-| `--memory-only` | LanceDB を使わずインメモリ記憶（テスト用） |
+| `--memory-only` | LanceDB を使わずインメモリ記憶（テスト用。`say` では state.json も使わず完全使い捨て） |
+
+ログ既定は REPL=`quiet`・Slack/heartbeat=`info`。
 
 ### 対話中コマンド
 
@@ -89,6 +93,8 @@ npm run dev      # 同上
 
 ```bash
 npm run heartbeat   # 1ターンだけ heartbeat して終了
+npm run say -- "メッセージ"            # 1ターンだけ user_message を送って終了（既定話者=クロ）
+npm run say -- --user user_001 "..."   # 話者指定
 ```
 
 State・作業記憶・内心ステートは `data/state.json` に永続化される（REPL も heartbeat も同じファイルを共有）。
@@ -117,7 +123,7 @@ npm run dream -- --seed --force-seed  # タネを再蒸留
 |----------|------|
 | [config/settings.json](config/settings.json) | モデル名、Ollama ホスト、記憶件数、トークン予算など |
 | [config/mcp.json](config/mcp.json) | MCP サーバ定義、`expressDryRun` |
-| [config/users.yaml](config/users.yaml) | 話者 ID → 表示名 |
+| [config/users.yaml](config/users.yaml) | 話者 ID → 表示名 ＋ 任意の `note`（関係性。言語野へ注入） |
 | [persona/character.md](persona/character.md) | キャラクター・口調・一人称 |
 | [data/semantic-seed.json](data/semantic-seed.json) | 夢のタネ（`npm run dream -- --seed` で蒸留） |
 
@@ -126,7 +132,8 @@ npm run dream -- --seed --force-seed  # タネを再蒸留
 | チャンネル | 保存先 | 性格 |
 |------------|--------|------|
 | 作業記憶 | `data/state.json` | 直近の表面発話のみ |
-| 内心ステート | `data/state.json` の `innerState` | 持ち越す生の感情（余韻）。内省が毎ターン更新 |
+| 内心 affect | `data/state.json` の `affect` | 持ち越す生の感情（余韻）。内省が毎ターン更新 |
+| 内心 concern | `data/state.json` の `concern` | 認知的焦点。actor の起動判断・想起クエリに使う |
 | 意味記憶 | LanceDB `semantic` | 夢で蒸留した知識 |
 | エピソード記憶 | LanceDB `episodes` | 内省のふんわり想起 |
 | メモインデックス | LanceDB `memo_index` | 「どこに何を書いたか」の所在管理 |

@@ -9,6 +9,7 @@
     "dev": "tsx src/cli/main.ts",
     "start": "tsx src/cli/main.ts",
     "heartbeat": "tsx src/cli/heartbeat.ts",
+    "say": "tsx src/cli/say.ts",
     "dream": "tsx src/cli/dream.ts",
     "test": "vitest run",
     "test:watch": "vitest",

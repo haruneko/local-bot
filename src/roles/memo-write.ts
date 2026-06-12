@@ -15,7 +15,7 @@ import {
 import type { LlmClient } from "../llm/types.js";
 import { executeTool } from "../tools/registry.js";
 import { listNotesSummary } from "../tools/registry.js";
-import { normalizeWriteArgs } from "../tools/notes.js";
+import { normalizeWriteArgs, readNoteContent } from "../tools/notes.js";
 
 export async function runMemoWrite(
   llm: LlmClient,
@@ -23,12 +23,20 @@ export async function runMemoWrite(
 ): Promise<ActionOutcome> {
   const action = input.action;
   const lastUserMessage = lastUserMessageFromContext(input.ctx);
+  const { currentDateTime } = input.ctx;
+  const speakerId =
+    input.ctx.trigger.type === "user_message"
+      ? input.ctx.trigger.speakerId
+      : undefined;
+  const speaker = speakerId
+    ? input.ctx.dialogue.resolveUserDisplayName(speakerId)
+    : "相手";
   const existingNotes = await listNotesSummary();
 
   const llmAttempts: string[] = [];
   let lastParseFailure: ParseJsonFailure | undefined;
 
-  let choice: { content: string; filename?: string } | null = null;
+  let choice: { content: string; filename?: string; append?: boolean } | null = null;
   const format = memoWriteJsonSchema as Record<string, unknown>;
   for (let attempt = 0; attempt < 2; attempt++) {
     const raw = await llm.chat(
@@ -37,8 +45,10 @@ export async function runMemoWrite(
         {
           role: "user",
           content: [
+            `基準日時: ${currentDateTime}`,
+            speakerId ? `あなたに話しかけている相手: ${speaker}（あなた自身ではない）` : "",
             `意図: ${action.intent}`,
-            lastUserMessage ? `直近のユーザー発話: ${lastUserMessage}` : "",
+            lastUserMessage ? `${speaker}があなたに言ったこと: ${lastUserMessage}` : "",
             "",
             "既存メモ:",
             existingNotes,
@@ -74,6 +84,7 @@ export async function runMemoWrite(
     {
       content: choice.content,
       filename: choice.filename,
+      append: choice.append,
     },
     lastUserMessage,
   );
@@ -87,6 +98,11 @@ export async function runMemoWrite(
       }),
     });
   }
+
+  // 既存メモは絶対に上書きしない（DECISIONS: 既存本文を改変しない）。
+  // 同名ファイルが既にあるなら、LLM の判断に関わらず append を強制する。
+  const exists = (await readNoteContent(args.filename)) !== null;
+  if (exists) args.append = true;
 
   const result = await executeTool({
     name: "write_note",

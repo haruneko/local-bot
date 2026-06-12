@@ -14,14 +14,17 @@ import type { SemanticRecallHit } from "../memory/semantic.js";
 import type { SemanticFactView } from "../recall/semantic-present.js";
 import { estimateTokens } from "./tokens.js";
 
+/** ログ詳細度。quiet=サマリ出力なし、info=1ターン十数行の構造化サマリ、debug=全文ダンプ */
+export type LogLevel = "quiet" | "info" | "debug";
+
 export interface VerboseLogger {
   readonly enabled: boolean;
 }
 
 export const noopVerbose: VerboseLogger = { enabled: false };
 
-export function createVerboseLogger(): VerboseLoggerImpl {
-  return new VerboseLoggerImpl();
+export function createVerboseLogger(level: "info" | "debug" = "debug"): VerboseLoggerImpl {
+  return new VerboseLoggerImpl(level);
 }
 
 export class VerboseLoggerImpl implements VerboseLogger {
@@ -30,6 +33,13 @@ export class VerboseLoggerImpl implements VerboseLogger {
   private turnId = "";
   private turnStartedAt = 0;
 
+  constructor(readonly level: "info" | "debug" = "debug") {}
+
+  private get isDebug(): boolean {
+    return this.level === "debug";
+  }
+
+  /** debug 用: タイトル＋本文の全文ダンプ */
   private write(title: string, body?: string): void {
     const ts = new Date().toISOString().slice(11, 23);
     console.error(`\n[verbose ${ts}] ${title}`);
@@ -40,20 +50,41 @@ export class VerboseLoggerImpl implements VerboseLogger {
     this.write(label, JSON.stringify(value, null, 2));
   }
 
+  /** info 用: 1行コンパクトログ（タイムスタンプ＋ターン短縮ID付き） */
+  private line(msg: string): void {
+    const ts = new Date().toISOString().slice(11, 19);
+    const tid = this.turnId ? this.turnId.slice(0, 8) : "--------";
+    console.error(`[${ts} ${tid}] ${msg}`);
+  }
+
   startup(info: Record<string, unknown>): void {
-    this.write("══════ local-bot verbose ══════");
-    this.json("boot", info);
+    if (this.isDebug) {
+      this.write("══════ local-bot verbose ══════");
+      this.json("boot", info);
+      return;
+    }
+    this.line(
+      `local-bot up — chat=${info.chatModel} memory=${info.memory} state=${info.initialState}`,
+    );
   }
 
   turnBegin(turnId: string, trigger: TurnTrigger, state: AgentState): void {
     this.turnId = turnId;
     this.turnStartedAt = Date.now();
-    this.write("────── TURN BEGIN ──────");
-    this.json("turn", { turnId, trigger, stateAtStart: state });
+    if (this.isDebug) {
+      this.write("────── TURN BEGIN ──────");
+      this.json("turn", { turnId, trigger, stateAtStart: state });
+      return;
+    }
+    const desc =
+      trigger.type === "user_message"
+        ? `user(${trigger.speakerId}): "${oneLine(trigger.content, 40)}"`
+        : "heartbeat";
+    this.line(`▶ ${desc} [state=${state}]`);
   }
 
   workingMemory(turns: unknown): void {
-    this.json("working_memory", turns);
+    if (this.isDebug) this.json("working_memory", turns);
   }
 
   recall(
@@ -62,24 +93,30 @@ export class VerboseLoggerImpl implements VerboseLogger {
     ms: number,
     extra?: { excludedTurnIds?: string[] },
   ): void {
-    this.json("episode_recall", {
-      query: query || "(empty)",
-      count: hits.length,
-      excludedTurnIds: extra?.excludedTurnIds ?? [],
-      ms,
-      hits: hits.map((h) => ({
-        distance: h.distance,
-        bodyPreview: h.body.slice(0, 120),
-      })),
-    });
+    if (this.isDebug) {
+      this.json("episode_recall", {
+        query: query || "(empty)",
+        count: hits.length,
+        excludedTurnIds: extra?.excludedTurnIds ?? [],
+        ms,
+        hits: hits.map((h) => ({
+          distance: h.distance,
+          bodyPreview: h.body.slice(0, 120),
+        })),
+      });
+      return;
+    }
+    this.line(`recall ep hits=${hits.length} q="${oneLine(query, 30)}" (${ms}ms)`);
   }
 
   affectUpdate(prev: string, next: string, ms: number): void {
-    this.json("inner_state", {
-      ms,
-      prev: prev.trim() || "(empty)",
-      next: next.trim() || "(empty)",
-    });
+    if (this.isDebug) {
+      this.json("inner_state", {
+        ms,
+        prev: prev.trim() || "(empty)",
+        next: next.trim() || "(empty)",
+      });
+    }
   }
 
   semanticRecall(
@@ -88,18 +125,22 @@ export class VerboseLoggerImpl implements VerboseLogger {
     presented: SemanticFactView[],
     ms: number,
   ): void {
-    this.json("semantic_recall", {
-      query: query || "(empty)",
-      hitCount: hits.length,
-      keptCount: presented.length,
-      ms,
-      hits: hits.map((h) => ({
-        distance: h.distance,
-        confidence: h.confidence,
-        bodyPreview: h.body.slice(0, 120),
-      })),
-      presented: presented.map((f) => f.body),
-    });
+    if (this.isDebug) {
+      this.json("semantic_recall", {
+        query: query || "(empty)",
+        hitCount: hits.length,
+        keptCount: presented.length,
+        ms,
+        hits: hits.map((h) => ({
+          distance: h.distance,
+          confidence: h.confidence,
+          bodyPreview: h.body.slice(0, 120),
+        })),
+        presented: presented.map((f) => f.body),
+      });
+      return;
+    }
+    this.line(`recall sem kept=${presented.length}/${hits.length} (${ms}ms)`);
   }
 
   recallFilter(
@@ -107,20 +148,46 @@ export class VerboseLoggerImpl implements VerboseLogger {
     filtered: { presented: string; relevance: number; presentation: string }[],
     ms: number,
   ): void {
-    this.json("recall_distance.filter", {
-      rawCount: raw.length,
-      keptCount: filtered.length,
-      ms,
-      raw: raw.map((h) => ({
-        distance: h.distance,
-        bodyPreview: h.body.slice(0, 120),
-      })),
-      kept: filtered.map((e) => ({
-        relevance: e.relevance,
-        presentation: e.presentation,
-        presentedPreview: e.presented.slice(0, 120),
-      })),
-    });
+    if (this.isDebug) {
+      this.json("recall_distance.filter", {
+        rawCount: raw.length,
+        keptCount: filtered.length,
+        ms,
+        raw: raw.map((h) => ({
+          distance: h.distance,
+          bodyPreview: h.body.slice(0, 120),
+        })),
+        kept: filtered.map((e) => ({
+          relevance: e.relevance,
+          presentation: e.presentation,
+          presentedPreview: e.presented.slice(0, 120),
+        })),
+      });
+      return;
+    }
+    this.line(`  ep kept=${filtered.length}/${raw.length} (${ms}ms)`);
+  }
+
+  /** activator: 起動した actor とその件数 */
+  actorsActivated(
+    active: { name: string; intent: string }[],
+    total: number,
+    ms: number,
+  ): void {
+    if (this.isDebug) {
+      this.json("activator", {
+        total,
+        activeCount: active.length,
+        ms,
+        active: active.map((a) => ({ name: a.name, intent: a.intent })),
+      });
+      return;
+    }
+    const names =
+      active.length === 0
+        ? "(なし)"
+        : active.map((a) => `${a.name}「${oneLine(a.intent, 24)}」`).join(", ");
+    this.line(`actors ${active.length}/${total}: ${names} (${ms}ms)`);
   }
 
   contextPhase(
@@ -128,6 +195,7 @@ export class VerboseLoggerImpl implements VerboseLogger {
     ctx: TurnContext,
     extra?: Record<string, unknown>,
   ): void {
+    if (!this.isDebug) return;
     const redacted = redactTurnContextForLog(ctx);
     const serialized = JSON.stringify(ctx);
     this.json(`context.${label}`, {
@@ -145,72 +213,96 @@ export class VerboseLoggerImpl implements VerboseLogger {
   ): void {
     const b = estimateTokens(JSON.stringify(before));
     const a = estimateTokens(JSON.stringify(after));
-    this.json("preprocess", {
-      tokenBudget: budget,
-      tokensBefore: b,
-      tokensAfter: a,
-      summarized:
-        b !== a ||
-        JSON.stringify(before) !== JSON.stringify(after),
-      ms,
-    });
-    if (b !== a) {
-      this.contextPhase("after_preprocess", after);
+    const summarized =
+      b !== a || JSON.stringify(before) !== JSON.stringify(after);
+    if (this.isDebug) {
+      this.json("preprocess", {
+        tokenBudget: budget,
+        tokensBefore: b,
+        tokensAfter: a,
+        summarized,
+        ms,
+      });
+      if (b !== a) {
+        this.contextPhase("after_preprocess", after);
+      }
+      return;
+    }
+    if (summarized) {
+      this.line(`preprocess summarized ${b}→${a}tok / budget=${budget} (${ms}ms)`);
     }
   }
 
   actionSkipped(): void {
-    this.write("action", "(skipped — ACTION.kind is none)");
+    if (this.isDebug) this.write("action", "(skipped — ACTION.kind is none)");
   }
 
   actionResult(outcome: ActionOutcome, ms: number): void {
-    this.json("action", { ms, ...outcome });
+    if (this.isDebug) {
+      this.json("action", { ms, ...outcome });
+      return;
+    }
+    if (!outcome.attempted) return;
+    const tag = outcome.status === "succeeded" ? "ok" : "FAIL";
+    this.line(`action ${outcome.kind} ${tag} — ${oneLine(outcome.summary, 60)}`);
   }
 
   languageSkipped(reason: string): void {
-    this.write("language", `(skipped — ${reason})`);
+    if (this.isDebug) this.write("language", `(skipped — ${reason})`);
+    else this.line(`language skipped — ${oneLine(reason, 80)}`);
   }
 
   languageSpeech(speech: string, ms: number): void {
-    this.json("language", {
-      ms,
-      chars: speech.length,
-      speech,
-    });
-  }
-
-  introspectionPrompt(prompt: string): void {
-    this.write("introspection.input", prompt);
+    if (this.isDebug) {
+      this.json("language", { ms, chars: speech.length, speech });
+      return;
+    }
+    this.line(
+      speech
+        ? `language spoke ${speech.length}字 (${ms}ms)`
+        : `language silent (${ms}ms)`,
+    );
   }
 
   introspectionBody(body: string, ms: number): void {
-    this.json("introspection.output", { ms, body });
+    if (this.isDebug) this.json("introspection.output", { ms, body });
+    else this.line(`introspection ${body.length}字 (${ms}ms)`);
   }
 
   introspectionSkipped(reason: string): void {
-    this.write("introspection", `(skipped — ${reason})`);
+    if (this.isDebug) this.write("introspection", `(skipped — ${reason})`);
+    else this.line(`introspection skipped — ${oneLine(reason, 60)}`);
   }
 
   episodeSaved(meta: EpisodeMetadata): void {
-    this.json("episode.append", meta);
+    if (this.isDebug) {
+      this.json("episode.append", meta);
+      return;
+    }
+    this.line(`episode saved imp=${meta.importance ?? "-"} tags=[${meta.tags.join(",")}]`);
   }
 
   episodeSkipped(reason: string): void {
-    this.write("episode.append", `(skipped — ${reason})`);
+    if (this.isDebug) this.write("episode.append", `(skipped — ${reason})`);
   }
 
   stateTransition(from: AgentState, to: AgentState): void {
-    this.json("state", { from, to });
+    if (this.isDebug) this.json("state", { from, to });
+    else if (from !== to) this.line(`state ${from}→${to}`);
   }
 
   contextDestroyed(): void {
-    this.write("context", "turn context destroyed");
+    if (this.isDebug) this.write("context", "turn context destroyed");
   }
 
   turnEnd(nextState: AgentState): void {
     const ms = Date.now() - this.turnStartedAt;
-    this.json("turn.complete", { turnId: this.turnId, nextState, totalMs: ms });
-    this.write("────── TURN END ──────");
+    if (this.isDebug) {
+      this.json("turn.complete", { turnId: this.turnId, nextState, totalMs: ms });
+      this.write("────── TURN END ──────");
+      return;
+    }
+    this.line(`■ done ${ms}ms`);
   }
 
   llm(
@@ -220,6 +312,9 @@ export class VerboseLoggerImpl implements VerboseLogger {
     response: string,
     ms: number,
   ): void {
+    // info ではフェーズ単位の ms（recall / actors / language / introspection）で
+    // レイテンシを追えるため、呼び出しごとの llm 行は出さない（debug のみ全文）。
+    if (!this.isDebug) return;
     this.write(`llm.${role} (${ms}ms)`);
     console.error(
       "--- request ---\n" +
@@ -240,13 +335,20 @@ export class VerboseLoggerImpl implements VerboseLogger {
 
   error(phase: string, err: unknown): void {
     const msg = err instanceof Error ? err.message : String(err);
-    this.write(`ERROR @ ${phase}`, msg);
+    if (this.isDebug) this.write(`ERROR @ ${phase}`, msg);
+    else this.line(`ERROR @ ${phase}: ${oneLine(msg, 120)}`);
   }
 }
 
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
   return `${text.slice(0, max)}\n…(${text.length - max} more chars)`;
+}
+
+/** 改行を潰して1行に収め、max 超過は … で切る（info ログ用） */
+function oneLine(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length <= max ? flat : `${flat.slice(0, max)}…`;
 }
 
 export function detectLlmRole(messages: ChatMessage[]): string {

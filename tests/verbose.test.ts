@@ -3,15 +3,24 @@ import { parseArgs } from "../src/cli/args.js";
 import { detectLlmRole } from "../src/util/verbose.js";
 
 describe("verbose CLI", () => {
-  it("parseArgs enables verbose with --verbose", () => {
-    expect(parseArgs(["--verbose"])).toEqual({ verbose: true });
+  it("parseArgs sets debug level with --verbose", () => {
+    expect(parseArgs(["--verbose"])).toEqual({ logLevel: "debug" });
   });
 
-  it("parseArgs enables verbose with -v", () => {
+  it("parseArgs sets debug level with -v", () => {
     expect(parseArgs(["-v", "--user", "u2"])).toEqual({
-      verbose: true,
+      logLevel: "debug",
       speakerId: "u2",
     });
+  });
+
+  it("parseArgs sets quiet level with --quiet / -q", () => {
+    expect(parseArgs(["--quiet"])).toEqual({ logLevel: "quiet" });
+    expect(parseArgs(["-q"])).toEqual({ logLevel: "quiet" });
+  });
+
+  it("parseArgs leaves logLevel undefined by default (entrypoint decides)", () => {
+    expect(parseArgs([])).toEqual({});
   });
 });
 

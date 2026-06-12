@@ -351,36 +351,6 @@ export function renderLanguageUserContent(ctx: TurnContext): string {
   return parts.join("\n");
 }
 
-export function renderIntrospectionPrompt(ctx: TurnContext): string {
-  const speechBlock = ctx.speech?.trim() || silenceLine();
-
-  const parts = [
-    `（状況: ${ctx.state} / ${ctx.currentDateTime}）`,
-    "",
-    "【直近の会話】",
-    formatWorkingMemoryChannel(ctx),
-    "",
-    "【いま自分が言ったこと】",
-    speechBlock,
-  ];
-
-  const attempted = ctx.actions.filter(
-    (a): a is Extract<ActionOutcome, { attempted: true }> => a.attempted,
-  );
-  if (attempted.length > 0) {
-    parts.push("", "【行動】");
-    for (const action of attempted) {
-      const label = actionLabelJa(action.kind);
-      parts.push(
-        `やろうとしたこと: ${label} — ${action.intent}`,
-        formatActionForIntrospection(action),
-      );
-    }
-  }
-
-  return parts.join("\n");
-}
-
 /** actor / activator 向けの軽量コンテキスト文字列を組み立てる。
  *  知識チャンネル（recalledEpisodes / semanticFacts / recalledNotes）は含めない。
  *  activator と actor は同じチャンネルセットを宣言し、判断の一貫性を保つこと。 */
@@ -453,11 +423,55 @@ export function buildConversationTurns(
   let firstUserSeen = false;
   for (const turn of ctx.priorTurns) {
     if (turn.channel === "monologue" && !opts?.includeMonologue) continue;
-    if (!firstUserSeen && turn.role === "assistant") continue;
+    // 対話では先頭の孤立 assistant をスキップして user 始まりにする。
+    // ただし独白取り込み時（heartbeat）は自分の独り言を落とさない＝静穏連続でも
+    // 自己連続性を保つため role:assistant として残す（Ollama は assistant 始まりを許容）。
+    if (!opts?.includeMonologue && !firstUserSeen && turn.role === "assistant") {
+      continue;
+    }
     if (turn.role === "user") firstUserSeen = true;
     const content = formatDialogueTurn(turn, ctx.dialogue, ctx.now);
     messages.push({ role: turn.role === "user" ? "user" : "assistant", content });
   }
+  return messages;
+}
+
+/**
+ * 内省・内心など「ターン後の振り返り」ロール向けに、このターンのやり取りを
+ * role 構造（自分=assistant / 相手=user）で組み立てる。テキストラベル頼みにせず
+ * 自他境界を構造で示すのが狙い。末尾は自分の行動・発話（assistant）。
+ */
+export function buildReflectionMessages(ctx: TurnContext): ChatMessage[] {
+  const messages = buildConversationTurns(ctx, { includeMonologue: true });
+
+  if (ctx.trigger.type === "user_message") {
+    messages.push({
+      role: "user",
+      content: formatDialogueTurn(
+        {
+          role: "user",
+          speakerId: ctx.trigger.speakerId,
+          content: ctx.trigger.content,
+        },
+        ctx.dialogue,
+        ctx.now,
+      ),
+    });
+  }
+
+  // このターンに自分がやったこと・言ったこと（すべて自分 = assistant）
+  const selfParts: string[] = [];
+  for (const action of ctx.actions) {
+    if (!action.attempted) continue;
+    selfParts.push(
+      `（行動）${actionLabelJa(action.kind)} — ${action.intent}`,
+      formatActionForIntrospection(action),
+    );
+  }
+  const speech = ctx.speech?.trim();
+  selfParts.push(speech || silenceLine());
+  messages.push({ role: "assistant", content: selfParts.join("\n") });
+
   return messages;
 }
 

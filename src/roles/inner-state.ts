@@ -4,7 +4,7 @@ import {
 } from "../action/present.js";
 import { actionLabelJa } from "../action/types.js";
 import { AFFECT_CONCERN_SYSTEM } from "../prompts/roles.js";
-import type { LlmClient } from "../llm/types.js";
+import type { ChatMessage, LlmClient } from "../llm/types.js";
 import type { ActionOutcome } from "../types.js";
 
 export type UpdateAffectAndConcernInput = {
@@ -30,13 +30,32 @@ function firstSentence(text: string): string {
   return t.length > 80 ? `${t.slice(0, 80)}…` : t;
 }
 
-function buildUserContent(input: UpdateAffectAndConcernInput): string {
+/** このターンの自分の動き（内省・行動・発話）を 1 つの assistant メッセージにまとめる。
+ *  すべて自分のものなので role:assistant で渡し、自他境界を構造で示す。 */
+function buildSelfMessage(input: UpdateAffectAndConcernInput): string {
   const speechBlock = input.speech?.trim() ? input.speech : silenceLine();
+  const parts: string[] = [];
 
+  const attempted = input.actions.filter(
+    (a): a is Extract<ActionOutcome, { attempted: true }> => a.attempted,
+  );
+  for (const action of attempted) {
+    parts.push(
+      `（行動）${actionLabelJa(action.kind)} — ${action.intent}`,
+      formatActionForIntrospection(action),
+    );
+  }
+
+  parts.push("（内省）", input.introspection.trim(), "（いま自分が言ったこと）", speechBlock);
+  return parts.join("\n");
+}
+
+/** 前の内心・関心事と指示を user メッセージにまとめる。 */
+function buildInstruction(input: UpdateAffectAndConcernInput): string {
   const prevAffect = firstSentence(input.prevAffect) || "（まだない）";
   const prevConcern = input.prevConcern.trim() || "（まだない）";
 
-  const parts = [
+  return [
     `（日時: ${input.currentDateTime}）`,
     "",
     "【前の内心（affect/要約1文）】",
@@ -45,28 +64,8 @@ function buildUserContent(input: UpdateAffectAndConcernInput): string {
     "【前の関心事（concern/1文）】",
     prevConcern,
     "",
-    "【このターンの内省】",
-    input.introspection.trim(),
-    "",
-    "【いま自分が言ったこと】",
-    speechBlock,
-  ];
-
-  const attempted = input.actions.filter(
-    (a): a is Extract<ActionOutcome, { attempted: true }> => a.attempted,
-  );
-  if (attempted.length > 0) {
-    parts.push("", "【行動】");
-    for (const action of attempted) {
-      const label = actionLabelJa(action.kind);
-      parts.push(
-        `やろうとしたこと: ${label} — ${action.intent}`,
-        formatActionForIntrospection(action),
-      );
-    }
-  }
-
-  return parts.join("\n");
+    "上はあなた自身のこのターンの振り返り。これと前の内心を踏まえ、いまの内心と関心事を書いて。",
+  ].join("\n");
 }
 
 function parseAffectAndConcern(raw: string): AffectAndConcern {
@@ -85,12 +84,11 @@ export async function updateAffectAndConcern(
   llm: LlmClient,
   input: UpdateAffectAndConcernInput,
 ): Promise<AffectAndConcern> {
-  const raw = await llm.chat(
-    [
-      { role: "system", content: AFFECT_CONCERN_SYSTEM },
-      { role: "user", content: buildUserContent(input) },
-    ],
-    { temperature: 0.6 },
-  );
+  const messages: ChatMessage[] = [
+    { role: "system", content: AFFECT_CONCERN_SYSTEM },
+    { role: "assistant", content: buildSelfMessage(input) },
+    { role: "user", content: buildInstruction(input) },
+  ];
+  const raw = await llm.chat(messages, { temperature: 0.6 });
   return parseAffectAndConcern(raw);
 }

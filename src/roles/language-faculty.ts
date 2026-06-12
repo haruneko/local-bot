@@ -33,14 +33,17 @@ const languageJsonSchema = zodToJsonSchema(languageOutputSchema, {
 }) as Record<string, unknown>;
 
 function parseLanguageOutput(raw: string, fallbackState: string): LanguageOutput {
-  try {
-    const obj = JSON.parse(raw) as unknown;
-    const parsed = languageOutputSchema.safeParse(obj);
-    if (parsed.success) return parsed.data;
-  } catch {
-    // fall through
+  const trimmed = raw.trim();
+  for (const candidate of [trimmed, `{${trimmed}}`]) {
+    try {
+      const obj = JSON.parse(candidate) as unknown;
+      const parsed = languageOutputSchema.safeParse(obj);
+      if (parsed.success) return parsed.data;
+    } catch {
+      // fall through
+    }
   }
-  return { speech: raw.trim(), nextState: fallbackState };
+  return { speech: trimmed, nextState: fallbackState };
 }
 
 export async function generateLanguageText(
@@ -79,6 +82,7 @@ function buildLanguageDialogueMessages(
 ): ChatMessage[] {
   let situationLine: string;
   let triggerLine: string;
+  let partnerBlock = "";
   if (ctx.trigger.type === "heartbeat") {
     situationLine = `\n\n状況: ${ctx.state} / ${ctx.currentDateTime} / ハートビート`;
     triggerLine = "（ハートビート）";
@@ -90,11 +94,18 @@ function buildLanguageDialogueMessages(
       : `相手: ${partnerName}`;
     situationLine = `\n\n状況: ${ctx.state} / ${ctx.currentDateTime} / ${speakerLabel}`;
     triggerLine = `${partnerName}: ${ctx.trigger.content}`;
+
+    // 相手の関係性プロフィール（あれば）。誰と話しているかで反応を変える材料。
+    const profile = ctx.dialogue.resolveUserProfile?.(ctx.trigger.speakerId);
+    if (profile?.note?.trim()) {
+      partnerBlock = `\n\n## 相手について\n${profile.displayName}。${profile.note.trim()}`;
+    }
   }
 
   const systemContent =
     `${systemPrefix}\n\n## キャラクタールール\n${persona}` +
     situationLine +
+    partnerBlock +
     buildLanguageContextSuffix(ctx);
 
   const messages: ChatMessage[] = [

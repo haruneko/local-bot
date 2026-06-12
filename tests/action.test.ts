@@ -52,10 +52,11 @@ describe("runAction dispatch", () => {
       expect(outcome.status).toBe("succeeded");
       expect(outcome.kind).toBe("memory");
     }
-    expect(llm.calls[1].messages[1].content).toContain("基準日時:");
-    expect(llm.calls[1].messages[1].content).toContain(
-      input.ctx.currentDateTime,
-    );
+    const rememberPrompt = llm.calls[1].messages
+      .map((m) => m.content)
+      .join("\n");
+    expect(rememberPrompt).toContain("基準日時:");
+    expect(rememberPrompt).toContain(input.ctx.currentDateTime);
     const all = input.episodes.getAll();
     expect(all).toHaveLength(1);
     expect(all[0].body).toBe("太郎はコーヒーが好き");

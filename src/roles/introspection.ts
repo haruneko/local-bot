@@ -1,9 +1,9 @@
 import {
-  renderIntrospectionPrompt,
+  buildReflectionMessages,
   type TurnContext,
 } from "../context/turn-context.js";
 import { INTROSPECTION_SYSTEM } from "../prompts/roles.js";
-import type { LlmClient } from "../llm/types.js";
+import type { ChatMessage, LlmClient } from "../llm/types.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { tryParseJsonWithSchema } from "../action/parse-json.js";
@@ -27,14 +27,22 @@ export async function runIntrospection(
   llm: LlmClient,
   ctx: TurnContext,
 ): Promise<IntrospectionOutput> {
-  const prompt = renderIntrospectionPrompt(ctx);
-  const raw = await llm.chat(
-    [
-      { role: "system", content: INTROSPECTION_SYSTEM },
-      { role: "user", content: prompt },
-    ],
-    { format: introspectionJsonSchema, temperature: 0.6 },
-  );
+  const messages: ChatMessage[] = [
+    {
+      role: "system",
+      content: `${INTROSPECTION_SYSTEM}\n\n（状況: ${ctx.state} / ${ctx.currentDateTime}）`,
+    },
+    ...buildReflectionMessages(ctx),
+    {
+      role: "user",
+      content:
+        "上のやり取り（あなた自身=assistant の発言・行動と、相手=user の発言）を振り返り、一人称の内省を書いてください。",
+    },
+  ];
+  const raw = await llm.chat(messages, {
+    format: introspectionJsonSchema,
+    temperature: 0.6,
+  });
   const parsed = tryParseJsonWithSchema(raw, introspectionSchema);
   if (parsed.ok) return parsed.value;
   // フォールバック: テキストがそのまま返ってきた場合

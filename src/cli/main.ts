@@ -10,7 +10,7 @@ async function main(): Promise<void> {
   const app = await createApp({
     speakerId: args.speakerId,
     memory: args.memory,
-    verbose: args.verbose,
+    logLevel: args.logLevel ?? "quiet",
   });
   const { orchestrator, speakerId, settings, verbose } = app;
 
@@ -22,7 +22,7 @@ async function main(): Promise<void> {
     `${verboseHint}local-bot (${settings.chatModel}, speaker: ${speakerId}, state: ${orchestrator.getState()})\n` +
       "コマンド: /quit /heartbeat /state <値>\n" +
       "別プロセス: npm run heartbeat\n" +
-      "起動オプション: --verbose (-v) --user <id> --memory-only",
+      "起動オプション: --verbose (-v, 全文ログ) --quiet (-q, 既定) --user <id> --memory-only",
   );
 
   try {

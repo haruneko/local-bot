@@ -19,9 +19,9 @@
   センサー・永続記憶・作業記憶から TurnContext を組み上げる
        ↓
 [自律エージェントフェーズ]
-  activator: mini-context を読み起動すべき actor を選定
+  activate（各 actor 並列）: 各 actor が mini-context を読み自分の起動可否を判断
        ↓
-  actor pool（並列）: 選ばれた各 actor が自律判断・実行 → ctx.actions に積む
+  actor pool（並列）: 起動した各 actor が自律実行 → ctx.actions に積む
        ↓
   language-agent: 全 facts を受け取り発話生成 + NEXT_STATE 決定
        ↓
@@ -32,8 +32,8 @@
 
 ```mermaid
 flowchart TD
-    Input["プリプロセス<br/>(センサー/記憶/作業記憶 → TurnContext)"] --> Act["activator<br/>(起動 actor 選定)"]
-    Act --> Pool["actor pool（並列）<br/>recall / remember / webSearch / ..."]
+    Input["プリプロセス<br/>(センサー/記憶/作業記憶 → TurnContext)"] --> Act["activate（各 actor 並列）<br/>(各 actor が自分の起動を判断)"]
+    Act --> Pool["actor pool（並列）<br/>起動した recall / remember / webSearch / ..."]
     Pool --> Lang["language-agent<br/>(発話生成 + NEXT_STATE)"]
     Lang --> Intro["内省 → LanceDB"]
     Intro --> Inner["内心更新 → state.json"]

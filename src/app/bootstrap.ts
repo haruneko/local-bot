@@ -7,6 +7,7 @@ import {
   resolveRecallDistanceThresholds,
   resolveRecencyExclusionTurns,
   resolveActionModel,
+  resolveActivatorModel,
   resolveActorChannels,
   resolveActorModel,
   resolveExplicitRecallMaxDistance,
@@ -20,7 +21,11 @@ import {
   type RoleName,
 } from "../config/settings.js";
 import { loadMcpConfig, resolveExpressDryRun } from "../config/mcp.js";
-import { createUserResolver, loadUsers } from "../config/users.js";
+import {
+  createUserProfileResolver,
+  createUserResolver,
+  loadUsers,
+} from "../config/users.js";
 import { TurnOrchestrator } from "../orchestrator/turn.js";
 import { WorkingMemory } from "../memory/working.js";
 import { LanceEpisodeStore } from "../memory/lancedb.js";
@@ -35,7 +40,7 @@ import { withVerboseLlm } from "../llm/logging.js";
 import type { EpisodeStore } from "../memory/episode.js";
 import type { LlmClient } from "../llm/types.js";
 import { createVerboseLogger } from "../util/verbose.js";
-import type { VerboseLogger } from "../util/verbose.js";
+import type { LogLevel, VerboseLogger } from "../util/verbose.js";
 import {
   defaultStatePath,
   loadSession,
@@ -61,7 +66,8 @@ export type AppContext = {
 export type BootstrapOptions = {
   speakerId?: string;
   memory?: "lance" | "memory";
-  verbose?: boolean;
+  /** 省略時 quiet。quiet はサマリ Logger を生成しない */
+  logLevel?: LogLevel;
   /** 省略時 data/state.json。false で永続化しない */
   statePath?: string | false;
   mcp?: McpToolProvider;
@@ -116,7 +122,10 @@ export async function createApp(
   const toolCatalog: CatalogTool[] = await buildToolCatalog(mcp);
 
   const host = resolveOllamaHost(settings);
-  const verboseLogger = options.verbose ? createVerboseLogger() : null;
+  const verboseLogger =
+    options.logLevel && options.logLevel !== "quiet"
+      ? createVerboseLogger(options.logLevel)
+      : null;
   const think = resolveOllamaThink(settings);
   let llm: LlmClient = new OllamaLlmClient({
     host,
@@ -140,6 +149,21 @@ export async function createApp(
     actionLlm = withVerboseLlm(actionLlm, verboseLogger);
   }
 
+  // activator（起動判定）専用クライアント。actionModel と同じならクライアントを共用
+  const activatorModelName = resolveActivatorModel(settings);
+  let activatorLlm: LlmClient;
+  if (activatorModelName === actionModelName) {
+    activatorLlm = actionLlm;
+  } else {
+    activatorLlm = new OllamaLlmClient({
+      host,
+      model: activatorModelName,
+      think: false,
+      numCtx: settings.ollamaNumCtx,
+    });
+    if (verboseLogger) activatorLlm = withVerboseLlm(activatorLlm, verboseLogger);
+  }
+
   let episodes: EpisodeStore;
   let semantic: SemanticStore;
   let memoIndex: MemoIndexStore;
@@ -159,6 +183,7 @@ export async function createApp(
   const personaText = await readFile(personaPath, "utf8");
   const users = await loadUsers();
   const resolveUserDisplayName = createUserResolver(users);
+  const resolveUserProfile = createUserProfileResolver(users);
   const statePath =
     options.statePath === false ? null : (options.statePath ?? defaultStatePath());
   const session = statePath
@@ -222,6 +247,7 @@ export async function createApp(
   const orchestrator = new TurnOrchestrator(session.state, {
     llm,
     actionLlm,
+    activatorLlm,
     episodes,
     semantic,
     memoIndex,
@@ -237,7 +263,7 @@ export async function createApp(
     languageNumPredict: settings.languageNumPredict ?? 400,
     timeZone: settings.timeZone ?? "Asia/Tokyo",
     getPersona: async () => personaText,
-    dialogue: { resolveUserDisplayName },
+    dialogue: { resolveUserDisplayName, resolveUserProfile },
     actionDeps,
     resolveForState,
     actorChannels,

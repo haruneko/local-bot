@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   const app = await createApp({
     speakerId: args.speakerId,
     memory: args.memory,
-    verbose: args.verbose,
+    logLevel: args.logLevel ?? "quiet",
     mcp: new FakeMcpToolProvider(),
   });
 

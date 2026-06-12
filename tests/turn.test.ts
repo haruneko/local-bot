@@ -95,7 +95,10 @@ describe("TurnOrchestrator", () => {
     expect(result.speech).toBeNull();
     expect(llm.calls).toHaveLength(4);
     const introCall = llm.calls[1]; // introspection is 2nd call (index 1)
-    expect(introCall.messages[1].content).toContain("（返答はしなかった）");
+    // 無言は自分(assistant)メッセージに入る（role 構造化後）
+    expect(introCall.messages.map((m) => m.content).join("\n")).toContain(
+      "（返答はしなかった）",
+    );
     expect(wm.getRecent().some((t) => t.role === "assistant")).toBe(false);
   });
 

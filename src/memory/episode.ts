@@ -17,6 +17,8 @@ export type EpisodeRecallHit = {
   vector?: number[];
   /** 重要度スコア 1-10。importance カラムが存在しない場合は undefined */
   importance?: number;
+  /** このエピソードの参加話者 ID。話者バイアスのリランクに使う */
+  participants?: string[];
 };
 
 export interface EpisodeStore {
@@ -76,6 +78,7 @@ export class InMemoryEpisodeStore implements EpisodeStore {
         body: r.body,
         distance: IN_MEMORY_FAKE_DISTANCES[i] ?? 1.5,
         timestamp: r.metadata.timestamp,
+        participants: r.metadata.participants,
       }));
   }
 

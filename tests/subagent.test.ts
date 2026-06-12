@@ -50,6 +50,57 @@ describe("category subagents", () => {
     expect(input.mcp.calls[0]?.name).toBe("web_search");
   });
 
+  it("research recovers an object-wrapped url arg before calling MCP", async () => {
+    // 小型モデルが url: string のところへ {url: "..."} を入れてしまうケース
+    const pick = JSON.stringify({
+      done: false,
+      tool: "browse_url",
+      arguments: { url: { url: "https://example.com" } },
+    });
+    const done = JSON.stringify({ done: true, reason: "十分" });
+    const llm = new FakeLlmClient([pick, done]);
+    const input = await makeInput("そのページを見て", "research");
+    const outcome = await runAction(llm, input);
+    expect(outcome.attempted).toBe(true);
+    if (outcome.attempted) expect(outcome.status).toBe("succeeded");
+    // MCP には平坦な文字列 url が渡る
+    expect(input.mcp.calls[0]?.name).toBe("browse_url");
+    expect(input.mcp.calls[0]?.args).toEqual({ url: "https://example.com" });
+  });
+
+  it("research fails gracefully (not as network error) on unrecoverable args", async () => {
+    // url を復元できない → MCP を叩かず、リトライ余地を残して最終的に失敗
+    const bad = JSON.stringify({
+      done: false,
+      tool: "browse_url",
+      arguments: { url: { a: 1, b: 2 } },
+    });
+    const llm = new FakeLlmClient([bad, bad, bad, bad, bad]);
+    const input = await makeInput("そのページを見て", "research");
+    const outcome = await runAction(llm, input);
+    expect(outcome.attempted).toBe(true);
+    if (outcome.attempted) {
+      expect(outcome.status).toBe("failed");
+      expect(outcome.error?.message).toContain("url");
+    }
+    // 引数不正で MCP は一度も呼ばれない
+    expect(input.mcp.calls).toHaveLength(0);
+  });
+
+  it("research returns failed (not succeeded) when tool-pick LLM output is unparseable", async () => {
+    // ツール選択の LLM が JSON にならない（2回とも失敗）→ 偽成功にしない
+    const llm = new FakeLlmClient(["これはJSONじゃない", "やっぱりJSONじゃない"]);
+    const input = await makeInput("何か調べて", "research");
+    const outcome = await runAction(llm, input);
+    expect(outcome.attempted).toBe(true);
+    if (outcome.attempted) {
+      expect(outcome.status).toBe("failed");
+      expect(outcome.error?.code).toBe("llm_parse_failed");
+    }
+    // ツールは一度も呼ばれない
+    expect(input.mcp.calls).toHaveLength(0);
+  });
+
   it("express dry-run composes text without MCP call", async () => {
     const pick = JSON.stringify({
       done: false,

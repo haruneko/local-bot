@@ -4,8 +4,15 @@ import { formatRelativeTime } from "../sensor/datetime.js";
 /** 作業記憶・コンテキスト上のボット発話ラベル（一人称ではない） */
 export const BOT_SPEAKER_LABEL = "自分";
 
+export type SpeakerProfile = {
+  displayName: string;
+  note?: string;
+};
+
 export type DialogueFormatOptions = {
   resolveUserDisplayName: (speakerId: string) => string;
+  /** 話者の関係性プロフィール（言語野の「## 相手について」用）。未設定なら注入しない */
+  resolveUserProfile?: (speakerId: string) => SpeakerProfile;
 };
 
 export function formatDialogueTurn(

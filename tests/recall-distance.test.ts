@@ -161,3 +161,73 @@ describe("inhibition scoring", () => {
     ).not.toThrow();
   });
 });
+
+describe("speaker match boost", () => {
+  const hit = (turnId: string, participants?: string[]) => ({
+    turnId,
+    body: turnId,
+    distance: 0.4,
+    participants,
+  });
+
+  it("currentSpeaker が participants に含まれると relevance が上がる", () => {
+    const base = classifyRecallHits(
+      [hit("a", ["claude_kuro"])],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+      {},
+    );
+    const boosted = classifyRecallHits(
+      [hit("a", ["claude_kuro"])],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+      { currentSpeaker: "claude_kuro" },
+    );
+    expect(boosted[0]!.relevance).toBeGreaterThan(base[0]!.relevance);
+  });
+
+  it("currentSpeaker が participants にいないと不変", () => {
+    const base = classifyRecallHits(
+      [hit("b", ["HAL"])],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+      {},
+    );
+    const same = classifyRecallHits(
+      [hit("b", ["HAL"])],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+      { currentSpeaker: "claude_kuro" },
+    );
+    expect(same[0]!.relevance).toBeCloseTo(base[0]!.relevance, 6);
+  });
+
+  it("participants 無しのヒットは currentSpeaker があっても不変・エラーにならない", () => {
+    const base = classifyRecallHits(
+      [hit("c")],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+      {},
+    );
+    const same = classifyRecallHits(
+      [hit("c")],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+      { currentSpeaker: "claude_kuro" },
+    );
+    expect(same[0]!.relevance).toBeCloseTo(base[0]!.relevance, 6);
+  });
+
+  it("話者一致ヒットは同距離の不一致ヒットより上位に並ぶ", () => {
+    const result = classifyRecallHits(
+      [hit("other", ["HAL"]), hit("mine", ["claude_kuro"])],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+      { currentSpeaker: "claude_kuro" },
+    );
+    expect(result[0]!.id).toBe(1); // "mine"
+  });
+
+  it("omit 判定（距離ゲーティング）は currentSpeaker で変わらない", () => {
+    // vagueMax 超過は currentSpeaker でも復活しない
+    const result = classifyRecallHits(
+      [{ turnId: "far", body: "遠い", distance: 0.95, participants: ["claude_kuro"] }],
+      DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+      { currentSpeaker: "claude_kuro" },
+    );
+    expect(result).toHaveLength(0);
+  });
+});

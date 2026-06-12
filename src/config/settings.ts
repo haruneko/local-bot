@@ -83,8 +83,11 @@ export type AppSettings = {
   /** LanceDB L2 距離による想起の濃さ（省略時は厳しめ既定値） */
   recallDistance?: Partial<RecallDistanceThresholds>;
   chatModel: string;
-  /** activator と全実行 actors が使うモデル。未設定は chatModel にフォールバック */
+  /** 全実行 actors が使うモデル。未設定は chatModel にフォールバック */
   actionModel?: string;
+  /** actor の起動判定（activate）が使うモデル。未設定は actionModel にフォールバック。
+   *  起動判定は軽い判断なので小型・高速モデルを充て、actor 数が増えても安く保つ。 */
+  activatorModel?: string;
   embedModel: string;
   ollamaHost: string;
   /** 未指定時は false（thinking off） */
@@ -169,6 +172,12 @@ export function resolveRoleThink(
 /** activator + 全実行 actors のデフォルトモデル名を解決する */
 export function resolveActionModel(settings: AppSettings): string {
   return settings.actionModel ?? settings.chatModel;
+}
+
+/** activator（actor の起動判定）が使うモデル。未設定は actionModel にフォールバック。
+ *  起動判定は actor の RUN 用モデル（35B 等）と分離し、常に小型・高速に保つ。 */
+export function resolveActivatorModel(settings: AppSettings): string {
+  return settings.activatorModel ?? resolveActionModel(settings);
 }
 
 /** actor のモデル名を解決する。actor 個別設定 → actionModel → chatModel の順でフォールバック */

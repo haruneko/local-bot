@@ -36,7 +36,7 @@ describe("updateAffectAndConcern (T-IS01, T-IS02)", () => {
     expect(result.concern).toBe("");
   });
 
-  it("T-IS02: prevConcern is included in the user prompt", async () => {
+  it("T-IS02: 自分の内省は assistant、前の内心/関心事は user メッセージに入る", async () => {
     const llm = new FakeLlmClient([
       '{"affect":"謝って落ち着いた","concern":"記憶実装の具体例"}',
     ]);
@@ -49,10 +49,14 @@ describe("updateAffectAndConcern (T-IS01, T-IS02)", () => {
       currentDateTime: "2026-06-10 10:05",
     });
 
-    const user = llm.calls[0]!.messages[1].content;
+    const msgs = llm.calls[0]!.messages;
+    const self = msgs.find((m) => m.role === "assistant")!.content;
+    const user = msgs.find((m) => m.role === "user")!.content;
+    // 自分のこのターンの振り返り（内省）は自分=assistant 側
+    expect(self).toContain("謝ったら少し楽になった");
+    // 前の内心・関心事は指示=user 側
     expect(user).toContain("恥ずかしかった");
     expect(user).toContain("記憶アーキテクチャの実装方法");
-    expect(user).toContain("謝ったら少し楽になった");
   });
 
   it("T-IS02: prevAffect and prevConcern show placeholder when empty", async () => {
@@ -66,7 +70,7 @@ describe("updateAffectAndConcern (T-IS01, T-IS02)", () => {
       currentDateTime: "2026-06-10 10:00",
     });
 
-    const user = llm.calls[0]!.messages[1].content;
+    const user = llm.calls[0]!.messages.find((m) => m.role === "user")!.content;
     expect(user).toContain("（まだない）");
   });
 });

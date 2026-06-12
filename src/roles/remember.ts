@@ -21,10 +21,20 @@ export async function runRemember(
   const action = input.action;
   const lastUserMessage = lastUserMessageFromContext(input.ctx);
   const { turnId, state, currentDateTime } = input.ctx;
+  const speakerId =
+    input.ctx.trigger.type === "user_message"
+      ? input.ctx.trigger.speakerId
+      : undefined;
+  const speakerName = speakerId
+    ? input.ctx.dialogue.resolveUserDisplayName(speakerId)
+    : undefined;
+  // 「誰が」を明示し、その人の発話として渡す（自他反転防止）。あなた=エバ自身ではない。
+  const speaker = speakerName ?? "相手";
   const userLines = [
     `基準日時: ${currentDateTime}`,
+    speakerName ? `あなたに話しかけている相手: ${speakerName}（あなた自身ではない）` : "",
     `意図: ${action.intent}`,
-    lastUserMessage ? `直近のユーザー発話: ${lastUserMessage}` : "",
+    lastUserMessage ? `${speaker}があなたに言ったこと: ${lastUserMessage}` : "",
   ].filter(Boolean);
 
   const llmAttempts: string[] = [];
@@ -67,7 +77,7 @@ export async function runRemember(
     body,
     metadata: {
       timestamp: new Date().toISOString(),
-      participants: [],
+      participants: speakerId ? [speakerId] : [],
       tags: [],
       state,
       action: formatActionMeta(action),

@@ -8,6 +8,9 @@ const IMPORTANCE_MAX = 10;
 /** 抑制の強さ（0=無効 〜 1=完全抑制）*/
 const INHIBITION_WEIGHT = 0.7;
 
+/** いま話している相手が参加したエピソードの relevance ボーナス（重み付けのみ。omit 判定には影響しない）*/
+export const SPEAKER_MATCH_BOOST = 1.3;
+
 /** コサイン類似度（正規化済みベクトル前提でも動く汎用実装）*/
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0;
@@ -104,6 +107,8 @@ export type ClassifiedRecallHit = {
 export type RecallScoreOptions = {
   /** 抑制バッファ（直近ターンで想起済みのベクトル群）*/
   inhibitionBuffer?: readonly number[][];
+  /** いま話している相手の話者 ID。participants に含むヒットを重み付けする */
+  currentSpeaker?: string;
 };
 
 /** 距離・recency・importance・抑制 を合算して relevance を決める（LLM 提示文は別段階） */
@@ -130,12 +135,18 @@ export function classifyRecallHits(
     const inhibition = maxInhibition(hit.vector, buffer);
     const inhibitionPenalty = Math.max(0, 1 - INHIBITION_WEIGHT * inhibition);
 
+    const speakerBoost =
+      options.currentSpeaker && hit.participants?.includes(options.currentSpeaker)
+        ? SPEAKER_MATCH_BOOST
+        : 1;
+
     result.push({
       id,
       body: hit.body,
       distance: hit.distance,
       presentation,
-      relevance: baseRelevance * importanceScore * inhibitionPenalty,
+      relevance:
+        baseRelevance * importanceScore * inhibitionPenalty * speakerBoost,
     });
   }
 

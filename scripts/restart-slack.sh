@@ -16,6 +16,6 @@ if [ -n "$EXISTING" ]; then
   sleep 1
 fi
 
-# 起動
-nohup npm run slack -- --verbose > /tmp/local-bot-slack.log 2>&1 &
+# 起動（既定は info レベル。プロンプト全文を追う時は -- --verbose を付ける）
+nohup npm run slack -- "$@" > /tmp/local-bot-slack.log 2>&1 &
 echo "起動完了: PID $!"

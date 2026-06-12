@@ -14,6 +14,8 @@ export const rememberJsonSchema = zodToJsonSchema(rememberOutputSchema, {
 export const memoWriteOutputSchema = z.object({
   content: z.string().min(1),
   filename: z.string().optional(),
+  /** true=既存メモへ追記（content は追記分のみ）。省略/false=新規作成 */
+  append: z.boolean().optional(),
 });
 export const memoWriteJsonSchema = zodToJsonSchema(memoWriteOutputSchema, {
   name: "MemoWriteOutput",

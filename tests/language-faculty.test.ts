@@ -69,16 +69,16 @@ describe("generateDialogueSpeech — heartbeat/dialogue 統一フォーマット
     expect(assistantMsgs.some((m) => m.content.includes("〇〇を調べた"))).toBe(true);
   });
 
-  it("heartbeat: prior の独り言が届く（user ターンなしでは届かない）", async () => {
+  it("heartbeat: user ターンなしでも自分の独り言は assistant として届く（自己連続性）", async () => {
     const llm = new FakeLlmClient(['{"speech":"","nextState":"静穏"}']);
-    // user ターンなし → 先頭 assistant スキップ規則で monologue も届かない
+    // 静穏連続（user ターンなし）でも、エバ自身の直近の独り言を落とさない
     const ctx = makeHeartbeatCtx([
       { role: "assistant", channel: "monologue", content: "独り言だけ" },
     ]);
     await generateDialogueSpeech(llm, ctx);
     const msgs = llm.calls[0].messages;
     const assistantMsgs = msgs.filter((m) => m.role === "assistant");
-    expect(assistantMsgs).toHaveLength(0);
+    expect(assistantMsgs.some((m) => m.content.includes("独り言だけ"))).toBe(true);
   });
 
   it("heartbeat: 最終メッセージが role:user で「（ハートビート）」", async () => {
@@ -88,6 +88,59 @@ describe("generateDialogueSpeech — heartbeat/dialogue 統一フォーマット
     const last = msgs[msgs.length - 1];
     expect(last.role).toBe("user");
     expect(last.content).toContain("（ハートビート）");
+  });
+
+  it("user_message: note ありの話者では「## 相手について」が system に注入される", async () => {
+    const llm = new FakeLlmClient(['{"speech":"やあクロ","nextState":"対話"}']);
+    const ctx = withPersona(
+      createTurnContext({
+        turnId: "t-prof",
+        state: "対話",
+        trigger: { type: "user_message", content: "調子どう？", speakerId: "kuro" },
+        dialogue: {
+          resolveUserDisplayName: () => "クロ",
+          resolveUserProfile: () => ({
+            displayName: "クロ",
+            note: "開発を手伝う相棒のAI。",
+          }),
+        },
+        recentTurns: [],
+        recalledEpisodes: [],
+      }),
+      "キャラクター設定",
+    );
+    await generateDialogueSpeech(llm, ctx);
+    const sys = llm.calls[0].messages.find((m) => m.role === "system");
+    expect(sys?.content).toContain("## 相手について");
+    expect(sys?.content).toContain("開発を手伝う相棒のAI");
+  });
+
+  it("user_message: note 無しの話者では「## 相手について」を注入しない", async () => {
+    const llm = new FakeLlmClient(['{"speech":"はい","nextState":"対話"}']);
+    const ctx = withPersona(
+      createTurnContext({
+        turnId: "t-noprof",
+        state: "対話",
+        trigger: { type: "user_message", content: "やあ", speakerId: "x" },
+        dialogue: {
+          resolveUserDisplayName: () => "名無し",
+          resolveUserProfile: () => ({ displayName: "名無し" }),
+        },
+        recentTurns: [],
+        recalledEpisodes: [],
+      }),
+      "キャラクター設定",
+    );
+    await generateDialogueSpeech(llm, ctx);
+    const sys = llm.calls[0].messages.find((m) => m.role === "system");
+    expect(sys?.content).not.toContain("## 相手について");
+  });
+
+  it("heartbeat: 「## 相手について」は注入されない", async () => {
+    const llm = new FakeLlmClient(['{"speech":"","nextState":"静穏"}']);
+    await generateDialogueSpeech(llm, makeHeartbeatCtx());
+    const sys = llm.calls[0].messages.find((m) => m.role === "system");
+    expect(sys?.content).not.toContain("## 相手について");
   });
 
   it("user_message: prior の独り言は multi-turn に含まれない", async () => {

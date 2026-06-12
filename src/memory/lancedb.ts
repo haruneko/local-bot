@@ -10,6 +10,17 @@ import type {
 
 const TABLE_NAME = "episodes";
 
+/** participants は JSON 文字列で保存されている。壊れていたら空配列。 */
+function parseParticipants(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 type EpisodeRow = {
   id: string;
   body: string;
@@ -174,6 +185,7 @@ export class LanceEpisodeStore implements EpisodeStore {
         timestamp: r.timestamp,
         vector: Array.isArray(r.vector) ? (r.vector as number[]) : undefined,
         importance: typeof r.importance === "number" ? r.importance : undefined,
+        participants: parseParticipants(r.participants),
       }));
   }
 

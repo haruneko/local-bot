@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { resolveOllamaThink } from "../src/config/settings.js";
+import {
+  resolveActivatorModel,
+  resolveOllamaThink,
+} from "../src/config/settings.js";
+
+describe("resolveActivatorModel", () => {
+  it("uses activatorModel when set", () => {
+    expect(
+      resolveActivatorModel({ activatorModel: "tiny", actionModel: "8b", chatModel: "35b" } as never),
+    ).toBe("tiny");
+  });
+
+  it("falls back to actionModel, then chatModel", () => {
+    expect(resolveActivatorModel({ actionModel: "8b", chatModel: "35b" } as never)).toBe("8b");
+    expect(resolveActivatorModel({ chatModel: "35b" } as never)).toBe("35b");
+  });
+});
 
 describe("resolveOllamaThink", () => {
   it("defaults to false when unset", () => {

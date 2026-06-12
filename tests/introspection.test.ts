@@ -1,23 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
   createTurnContext,
-  renderIntrospectionPrompt,
   withAction,
   withSpeech,
 } from "../src/context/turn-context.js";
+import { runIntrospection } from "../src/roles/introspection.js";
+import { FakeLlmClient } from "../src/llm/fake.js";
+import type { ChatMessage } from "../src/llm/types.js";
 
 const dialogue = {
   resolveUserDisplayName: (id: string) => id,
 };
 
-function introCtx(
+/** runIntrospection を実行し、LLM へ渡された実メッセージ列を返す（実経路を検証） */
+async function introMessages(
   speech: string | null,
   action: Parameters<typeof withAction>[1],
   options?: {
     trigger?: { type: "user_message"; content: string; speakerId: string };
     recentTurns?: Parameters<typeof createTurnContext>[0]["recentTurns"];
   },
-) {
+): Promise<ChatMessage[]> {
   let ctx = createTurnContext({
     turnId: "t-intro",
     state: "対話",
@@ -32,56 +35,48 @@ function introCtx(
     recalledEpisodes: [],
   });
   ctx = withAction(ctx, action);
-  if (speech !== null) {
-    ctx = withSpeech(ctx, speech);
-  }
-  return renderIntrospectionPrompt(ctx);
+  if (speech !== null) ctx = withSpeech(ctx, speech);
+
+  const llm = new FakeLlmClient(['{"text":"内省本文","importance":5}']);
+  await runIntrospection(llm, ctx);
+  return llm.calls[0]!.messages;
 }
 
-describe("renderIntrospectionPrompt", () => {
-  it("T-I01: REPLY=false uses silence line", () => {
-    const prompt = introCtx(null, { attempted: false });
-    expect(prompt).toMatch(/（状況: 対話 \/ .+）/);
-    expect(prompt).toContain("【直近の会話】");
-    expect(prompt).toContain("（返答はしなかった）");
-    expect(prompt).not.toContain("【行動】");
+const joinByRole = (msgs: ChatMessage[], role: ChatMessage["role"]) =>
+  msgs.filter((m) => m.role === role).map((m) => m.content).join("\n");
+
+describe("runIntrospection の入力（role 構造で自他を分離）", () => {
+  it("相手=user / 自分=assistant に分離して渡す", async () => {
+    const msgs = await introMessages("うん、5月だよね", { attempted: false }, {
+      trigger: { type: "user_message", content: "覚えてくれた？", speakerId: "u1" },
+      recentTurns: [
+        { role: "user", speakerId: "u1", content: "誕生日は5月だよ" },
+        { role: "assistant", content: "覚えておくね" },
+      ],
+    });
+    const userText = joinByRole(msgs, "user");
+    const asstText = joinByRole(msgs, "assistant");
+    expect(userText).toContain("覚えてくれた？");
+    expect(userText).toContain("誕生日は5月だよ");
+    expect(asstText).toContain("うん、5月だよね");
+    expect(asstText).toContain("覚えておくね");
+    // 相手の発話が自分(assistant)側に混ざらない
+    expect(asstText).not.toContain("覚えてくれた？");
   });
 
-  it("T-I02: ACTION none omits action block", () => {
-    const prompt = introCtx("こんにちは", { attempted: false });
-    expect(prompt).toContain("【直近の会話】");
-    expect(prompt).toContain("【いま自分が言ったこと】");
-    expect(prompt).toContain("こんにちは");
-    expect(prompt).not.toContain("【行動】");
+  it("speech 空 → 自分(assistant)側に「返答はしなかった」", async () => {
+    const msgs = await introMessages(null, { attempted: false });
+    expect(joinByRole(msgs, "assistant")).toContain("（返答はしなかった）");
   });
 
-  it("includes conversation history and separates partner utterance from own speech", () => {
-    const prompt = introCtx(
-      "今どんな感じ？一緒に話してみない？",
-      { attempted: false },
-      {
-        trigger: {
-          type: "user_message",
-          content: "元気？",
-          speakerId: "u1",
-        },
-        recentTurns: [
-          { role: "user", speakerId: "u1", content: "こんにちは" },
-          { role: "assistant", content: "こんにちは！" },
-        ],
-      },
-    );
-    expect(prompt).toContain("u1: 元気？");
-    expect(prompt).toContain("自分: こんにちは！");
-    expect(prompt).toContain("【いま自分が言ったこと】");
-    expect(prompt).toContain("今どんな感じ？一緒に話してみない？");
-    expect(prompt.indexOf("【直近の会話】")).toBeLessThan(
-      prompt.indexOf("【いま自分が言ったこと】"),
-    );
+  it("行動なし → 行動ブロックを載せない", async () => {
+    const msgs = await introMessages("こんにちは", { attempted: false });
+    const all = msgs.map((m) => m.content).join("\n");
+    expect(all).not.toContain("（行動）");
   });
 
-  it("T-I03: succeeded action shows factual summary", () => {
-    const prompt = introCtx(null, {
+  it("成功アクション → 「できた」と事実が自分側に載る", async () => {
+    const msgs = await introMessages(null, {
       attempted: true,
       kind: "memory",
       intent: "今日の予定をメモに",
@@ -89,18 +84,27 @@ describe("renderIntrospectionPrompt", () => {
       facts: { kind: "memo_write", filename: "予定.md", body: "買い物と会議" },
       summary: "data/notes/予定.md に書き込んだ:\n買い物と会議",
     });
-    expect(prompt).toContain("【行動】");
-    expect(prompt).toContain("（返答はしなかった）");
-    expect(prompt).toContain("記憶");
-    expect(prompt).toContain("今日の予定をメモに");
-    expect(prompt).toContain("結果: できた");
-    expect(prompt).toContain("内容:");
-    expect(prompt).toContain("予定.md のメモに書き込んだ");
-    expect(prompt).toContain("買い物と会議");
+    const asst = joinByRole(msgs, "assistant");
+    expect(asst).toContain("結果: できた");
+    expect(asst).toContain("買い物と会議");
   });
 
-  it("uses monologue speech even when REPLY is false", () => {
-    const prompt = introCtx("CONCEPT.md を読んだ。次は続きを", {
+  it("失敗アクション → 「できなかった」と原因コードが載る", async () => {
+    const msgs = await introMessages("ごめんね", {
+      attempted: true,
+      kind: "memory",
+      intent: "誕生日を覚える",
+      status: "failed",
+      summary: "覚える内容を生成できなかった",
+      error: { code: "llm_parse_failed", message: "JSON解釈失敗" },
+    });
+    const asst = joinByRole(msgs, "assistant");
+    expect(asst).toContain("結果: できなかった");
+    expect(asst).toContain("原因コード: llm_parse_failed");
+  });
+
+  it("独り言の発話は REPLY=false でも自分側に載る", async () => {
+    const msgs = await introMessages("CONCEPT.md を読んだ。次は続きを", {
       attempted: true,
       kind: "memory",
       intent: "読む",
@@ -108,24 +112,8 @@ describe("renderIntrospectionPrompt", () => {
       facts: { kind: "memo_read", filename: "CONCEPT.md", body: "設計書" },
       summary: "data/notes/CONCEPT.md を読んだ:\n設計書",
     });
-    expect(prompt).toContain("CONCEPT.md を読んだ。次は続きを");
-    expect(prompt).not.toContain("（返答はしなかった）");
-  });
-
-  it("T-I04: failed action shows error detail", () => {
-    const prompt = introCtx("ごめんね", {
-      attempted: true,
-      kind: "memory",
-      intent: "誕生日を覚える",
-      status: "failed",
-      summary:
-        "覚える内容を生成できなかった\n原因コード: llm_parse_failed\n原因: JSON解釈失敗",
-      error: {
-        code: "llm_parse_failed",
-        message: "JSON解釈失敗",
-      },
-    });
-    expect(prompt).toContain("原因コード: llm_parse_failed");
-    expect(prompt).toContain("結果: できなかった");
+    const asst = joinByRole(msgs, "assistant");
+    expect(asst).toContain("CONCEPT.md を読んだ。次は続きを");
+    expect(asst).not.toContain("（返答はしなかった）");
   });
 });
