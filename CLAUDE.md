@@ -36,7 +36,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 ```
 
 - **プリプロセス** (`src/context/preprocess.ts`): 想起クエリ決定（`lastUserContent → lastSpeech → concern → affect → null`）→ LanceDB 想起 → `TurnContext` 生成。フィルタは量を絞るだけで元データは変更しない。
-- **actor pool** (`src/actors/`): `recall` `remember` `forget` `memoWrite` `memoRead` `webSearch` `urlBrowse` `webcam` `plan` が独立して並列に起動判断・実行。各 actor が `activate()` で自己判断し、起動した actor のみ実行。mini-context（直近3ターン）で判断。`plan` は集中モードの**構造化plan**（`data/plans/<id>.json`）を op で更新する（構造はコードが保証・LLM は op を1つ出すだけ。markdown は `data/notes/goals/` への派生ビュー）。
+- **actor pool** (`src/actors/`): `recall` `remember` `forget` `memo` `webSearch` `urlBrowse` `webcam` `plan` が独立して並列に起動判断・実行。各 actor が `activate()` で自己判断し、起動した actor のみ実行。mini-context（直近3ターン）で判断。`plan` は集中モードの**構造化plan**（`data/plans/<id>.json`）を op で更新する（構造はコードが保証・LLM は op を1つ出すだけ。markdown は `data/notes/goals/` への派生ビュー）。`memo` は読み書き統合 actor で、対象を全文ロード（read-before-edit）してから op を1つ（view/create/append/replace/section_replace）を純関数 applier で適用する（[docs/MEMO-TREE.md](docs/MEMO-TREE.md)）。
 - **language-agent** (`src/roles/language.ts`): 全 facts を受け取り発話生成 + NEXT_STATE を出力。常に起動し発話するかを内部で決める。
 - **内省** (`src/roles/introspection.ts`) → **内心更新** (`src/roles/inner-state.ts`)。
 
@@ -57,7 +57,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 | エピソード記憶 | `data/lancedb/` `episodes` | LLM 要約・グラデーション（full/summarize/vague）OK＝ふんわり思い出す |
 | 意味記憶 | `data/lancedb/` `semantic` | 夢で蒸留した知識 |
 | メモインデックス | `data/lancedb/` `memo_index` | 「どこに何を書いたか」の所在管理。`memo_write` 成功時に機械的 upsert。減衰しない |
-| 共有メモ本文 | `data/notes/**/*.md` | **既存本文を LLM で要約・改変しない**。全文を `facts.body` に載せる。階層ディレクトリ可 |
+| 共有メモ本文 | `data/notes/**/*.md` | **本文を LLM で要約しない**（劣化禁止）。構造保存的な op 編集（厳密置換・見出し差し替え）は read-before-edit を条件に可。全文を `facts.body` に載せる。階層ディレクトリ可 |
 | 作業記憶 | `data/state.json` | ユーザーとボットの**表面発話のみ**。各エージェントの判断・ツール結果は含めない |
 | affect（感情余韻） | `data/state.json` `affect` | 持ち越す生の感情（余韻）。旧 `innerState`。内省後に毎ターン書き換え。空＝起きたて |
 | concern（関心事） | `data/state.json` `concern` | 認知的焦点（何に注目しているか）。affect と同じ LLM 呼び出しで更新。actor activate / recall クエリに使う |
@@ -87,7 +87,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 - キーワードマッチでの直行ルーティング
 - ロールごとに想起・会話ログの入れ方を変えること
 - ヒューリスティックによるエージェントのスキップ（活性化判断は必ず LLM で行う）
-- メモ（`data/notes/`）本文を LLM で要約・改変すること（新規作成と pick のみ LLM 可）
+- メモ（`data/notes/`）本文を LLM で**要約**すること（劣化するから）。構造保存的な op 編集（厳密置換・見出し差し替え）は read-before-edit ＋厳密一致確認をコードで強制した上でのみ可
 - `memo_write` 成功時に `episodes` へ直接追記すること（`memo_index` へ書く）
 - 理由のない暗黙トリム（preview・verbose の truncate は別）
 - フィルタ・コンテキスト縮小を理由に元データ（LanceDB・state.json）を削除・変更すること

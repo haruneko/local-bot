@@ -1,0 +1,160 @@
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { runMemo } from "../src/roles/memo.js";
+import { FakeLlmClient } from "../src/llm/fake.js";
+import { InMemoryEpisodeStore } from "../src/memory/episode.js";
+import { InMemoryMemoIndexStore } from "../src/memory/memo-index.js";
+import { createTurnContext } from "../src/context/turn-context.js";
+import { readNoteContent, writeNoteContent } from "../src/tools/notes.js";
+
+const dialogue = { resolveUserDisplayName: () => "HAL" };
+
+let dir: string;
+beforeEach(async () => {
+  dir = await mkdtemp(path.join(tmpdir(), "memo-"));
+  process.env.MEMO_NOTES_DIR = dir;
+});
+afterEach(async () => {
+  delete process.env.MEMO_NOTES_DIR;
+  await rm(dir, { recursive: true, force: true });
+});
+
+function makeInput(intent: string, memoIndex?: InMemoryMemoIndexStore) {
+  const ctx = createTurnContext({
+    turnId: "turn-memo",
+    state: "対話",
+    trigger: { type: "user_message", content: "メモして", speakerId: "u1" },
+    dialogue,
+    recentTurns: [],
+    recalledEpisodes: [],
+  });
+  return {
+    ctx,
+    action: { kind: "memory" as const, intent },
+    episodes: new InMemoryEpisodeStore(),
+    episodeRecallTopK: 3,
+    memoIndex,
+  };
+}
+
+describe("runMemo（統合 actor・連想ディセント）", () => {
+  it("空ツリーでは descent をスキップし create で新規作成、_index と memoIndex を更新", async () => {
+    const memoIndex = new InMemoryMemoIndexStore();
+    // ツリーが空 → descent は LLM を呼ばない → op の1応答のみ
+    const llm = new FakeLlmClient([
+      JSON.stringify({ op: "create", filename: "買い物.md", content: "卵、牛乳" }),
+    ]);
+    const outcome = await runMemo(llm, makeInput("買い物リスト", memoIndex));
+    expect(outcome.attempted && outcome.status).toBe("succeeded");
+    expect(await readNoteContent("買い物.md")).toContain("卵");
+    // 目次が機械生成される
+    expect(await readNoteContent("_index.md")).toContain("[[買い物]]");
+    // 所在インデックス
+    expect((await memoIndex.list())[0].path).toBe("買い物.md");
+  });
+
+  it("ルート直下の葉を descent で選び view（書き込まない）", async () => {
+    await writeNoteContent("note.md", "原文の中身");
+    const llm = new FakeLlmClient([
+      JSON.stringify({ filename: "note.md" }), // descent: 葉を選ぶ
+      JSON.stringify({ op: "view" }),
+    ]);
+    const outcome = await runMemo(llm, makeInput("あのメモ読んで"));
+    if (outcome.attempted && outcome.status === "succeeded") {
+      expect(outcome.facts).toMatchObject({ kind: "memo_read", filename: "note.md", body: "原文の中身" });
+    } else {
+      throw new Error("expected success");
+    }
+  });
+
+  it("フォルダ→葉と2段降りて replace、残りは保全", async () => {
+    await writeNoteContent("lyrics/01-新曲.md", "Aメロは仮。サビは未定。");
+    const llm = new FakeLlmClient([
+      JSON.stringify({ filename: "lyrics" }), // descent: フォルダへ降りる
+      JSON.stringify({ filename: "lyrics/01-新曲.md" }), // descent: 葉
+      JSON.stringify({ op: "replace", old: "サビは未定。", content: "サビが決まった。" }),
+    ]);
+    const outcome = await runMemo(llm, makeInput("サビを書く"));
+    expect(outcome.attempted && outcome.status).toBe("succeeded");
+    const content = await readNoteContent("lyrics/01-新曲.md");
+    expect(content).toContain("サビが決まった。");
+    expect(content).toContain("Aメロは仮。"); // 保全
+  });
+
+  it("replace の old が一致しなければ失敗（盲目改変しない）", async () => {
+    await writeNoteContent("note.md", "本文");
+    const llm = new FakeLlmClient([
+      JSON.stringify({ filename: "note.md" }),
+      JSON.stringify({ op: "replace", old: "存在しない", content: "x" }),
+    ]);
+    const outcome = await runMemo(llm, makeInput("直して"));
+    expect(outcome.attempted && outcome.status).toBe("failed");
+    expect(await readNoteContent("note.md")).toBe("本文");
+  });
+
+  it("descent が行き止まっても recall フォールバックで葉へテレポート（迷子救済）", async () => {
+    await writeNoteContent("misfiled/deep.md", "迷子の中身");
+    // descent: ルートで「どれも合わない」と null を返す（誤配置で枝が辿れない想定）
+    const descentNull = JSON.stringify({ filename: null });
+    // フォールバック用の memoIndex スタブ: 確信度の高いヒットを返す
+    const memoIndex = {
+      upsert: async () => {},
+      list: async () => [],
+      recall: async () => [{ path: "misfiled/deep.md", preview: "迷子", distance: 0.1 }],
+    };
+    const llm = new FakeLlmClient([descentNull, JSON.stringify({ op: "view" })]);
+    const input = { ...makeInput("迷子のメモを読む"), memoIndex, explicitRecallMaxDistance: 0.4 };
+    const outcome = await runMemo(llm, input);
+    if (outcome.attempted && outcome.status === "succeeded") {
+      expect(outcome.facts).toMatchObject({ kind: "memo_read", filename: "misfiled/deep.md" });
+    } else {
+      throw new Error("expected teleport success");
+    }
+  });
+
+  it("フォールバックは距離が遠いとテレポートしない（誤テレポート防止）", async () => {
+    await writeNoteContent("other.md", "別の話題"); // descent が LLM を呼ぶよう非空にする
+    const memoIndex = {
+      upsert: async () => {},
+      list: async () => [],
+      recall: async () => [{ path: "unrelated.md", preview: "x", distance: 0.9 }],
+    };
+    // descent null → フォールバックも距離超過で null → 新規 create
+    const llm = new FakeLlmClient([
+      JSON.stringify({ filename: null }),
+      JSON.stringify({ op: "create", filename: "新規.md", content: "新しい話題" }),
+    ]);
+    const input = { ...makeInput("全く新しい話題"), memoIndex, explicitRecallMaxDistance: 0.4 };
+    const outcome = await runMemo(llm, input);
+    expect(outcome.attempted && outcome.status).toBe("succeeded");
+    expect(await readNoteContent("新規.md")).toContain("新しい話題");
+  });
+
+  it("大きな create は書き込み後に自動分割され、子が memoIndex に載る", async () => {
+    process.env.MEMO_MAX_LEAF_BYTES = "200"; // 小さい予算で分割を誘発
+    const memoIndex = new InMemoryMemoIndexStore();
+    const body = ["## サビ", "さび".repeat(40), "## Aメロ", "えーめろ".repeat(40)].join("\n");
+    const llm = new FakeLlmClient([
+      JSON.stringify({ op: "create", filename: "歌.md", content: body }),
+    ]);
+    try {
+      const outcome = await runMemo(llm, makeInput("新曲", memoIndex));
+      expect(outcome.attempted && outcome.status).toBe("succeeded");
+      // 元ファイルはフォルダ化（消えている）、子が複数
+      expect(await readNoteContent("歌.md")).toBeNull();
+      const paths = (await memoIndex.list()).map((e) => e.path);
+      expect(paths.length).toBeGreaterThan(1);
+      expect(paths.every((p) => p.startsWith("歌/"))).toBe(true);
+    } finally {
+      delete process.env.MEMO_MAX_LEAF_BYTES;
+    }
+  });
+
+  it("op のパース失敗時は失敗で返す", async () => {
+    const llm = new FakeLlmClient(["not json", "not json"]);
+    const outcome = await runMemo(llm, makeInput("何か"));
+    expect(outcome.attempted && outcome.status).toBe("failed");
+  });
+});

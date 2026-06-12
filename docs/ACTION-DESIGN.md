@@ -46,8 +46,7 @@ flowchart TD
 | `recall` | memory | LanceDB ベクトル検索で意識的に想起 |
 | `remember` | memory | LanceDB にファクト追記 |
 | `forget` | memory | LanceDB からソフト削除（`deleted` フラグ） |
-| `memoWrite` | memory | `data/notes/` に書く |
-| `memoRead` | memory | `data/notes/` を読む（memo_index で pick） |
+| `memo` | memory | `data/notes/` を読み書きする統合 actor。フェーズ1=対象を pick して全文ロード（read-before-edit）→フェーズ2=op を1つ（view/create/append/replace/section_replace/noop）を純関数 applier で適用。詳細 [MEMO-TREE.md](MEMO-TREE.md) |
 | `webSearch` | research | MCP 経由 Web 検索（指示ベース・内心ベース両対応） |
 | `urlBrowse` | research | MCP 経由 URL 閲覧 |
 | `webcam` | research | カメラ映像取得（未実装） |
@@ -58,7 +57,7 @@ flowchart TD
 | | エピソード記憶（LanceDB） | 共有メモ（ファイル） |
 |--|---------------------------|----------------------|
 | 性格 | 会話のふんわりした想起 | 意図して残した全文 |
-| LLM | 想起・`recall` で要約・圧縮してよい | **既存本文の要約・改変はしない** |
+| LLM | 想起・`recall` で要約・圧縮してよい | **要約しない**。構造保存的な op 編集（厳密置換・見出し差し替え）は read-before-edit を条件に可 |
 | 重さ | 距離・提示濃さでぼかす | ファイルはそのまま全部渡す |
 
 ## 探索・発信（MCP）

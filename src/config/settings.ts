@@ -19,8 +19,7 @@ export type ActorName =
   | "recall"
   | "remember"
   | "forget"
-  | "memoWrite"
-  | "memoRead"
+  | "memo"
   | "webSearch"
   | "urlBrowse"
   | "webcam"
@@ -40,8 +39,7 @@ export const DEFAULT_ACTOR_CHANNELS: Record<ActorName, ContextChannel[]> = {
   recall:    ["conversation", "inner_state"],
   remember:  ["conversation", "inner_state"],
   forget:    ["conversation", "inner_state"],
-  memoWrite: ["conversation", "inner_state"],
-  memoRead:  ["conversation", "inner_state"],
+  memo:      ["conversation", "inner_state"],
   webSearch: ["conversation", "inner_state", "plan"],
   urlBrowse: ["conversation", "inner_state", "plan"],
   webcam:    ["conversation", "inner_state", "image_feed"],
@@ -226,7 +224,7 @@ export function resolveEnabledActors(
   state: string,
 ): ActorName[] {
   const ALL_ACTORS: ActorName[] = [
-    "recall", "remember", "forget", "memoWrite", "memoRead",
+    "recall", "remember", "forget", "memo",
     "webSearch", "urlBrowse", "webcam", "plan",
   ];
   const stateActors = settings.stateConfig?.[state]?.actors;

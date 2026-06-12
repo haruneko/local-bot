@@ -1,8 +1,13 @@
-import { readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { platform } from "node:process";
 
 export const NOTES_DIR = path.join(process.cwd(), "data", "notes");
+
+/** メモの保存先ルート。テスト隔離のため `MEMO_NOTES_DIR` で差し替え可能（既定は data/notes） */
+export function notesDir(): string {
+  return process.env.MEMO_NOTES_DIR?.trim() || NOTES_DIR;
+}
 
 export type WriteNoteArgs = {
   filename: string;
@@ -112,9 +117,41 @@ export function normalizeReadArgs(
 export async function readNoteContent(filename: string): Promise<string | null> {
   const safe = safePath(filename) ?? safeFilename(filename) ?? slugifyFilename(filename);
   try {
-    return await readFile(path.join(NOTES_DIR, safe), "utf8");
+    return await readFile(path.join(notesDir(), safe), "utf8");
   } catch {
     return null;
+  }
+}
+
+/**
+ * メモ本文を全文で書き込む（サブディレクトリ保全・親フォルダ自動作成）。
+ * op 純関数 applier が計算した nextContent をそのまま書く用途。成功時は実際に書いた相対パスを返す。
+ * normalizeWriteArgs と違いサブディレクトリを平坦化しない（メモの木のため）。
+ */
+export async function writeNoteContent(
+  filename: string,
+  content: string,
+): Promise<string | null> {
+  const safe = safePath(filename) ?? safeFilename(filename) ?? slugifyFilename(filename);
+  if (!safe) return null;
+  const target = path.join(notesDir(), safe);
+  try {
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, content, "utf8");
+    return safe;
+  } catch {
+    return null;
+  }
+}
+
+/** メモファイルを削除する（分割で元ファイルをフォルダ化するとき等）。パス安全処理あり */
+export async function deleteNote(filename: string): Promise<void> {
+  const safe = safePath(filename) ?? safeFilename(filename) ?? slugifyFilename(filename);
+  if (!safe) return;
+  try {
+    await rm(path.join(notesDir(), safe), { force: true });
+  } catch {
+    /* 無ければ何もしない */
   }
 }
 
@@ -135,8 +172,9 @@ export function truncateNotePreview(
 }
 
 export async function listNoteFilenames(): Promise<string[]> {
+  const root = notesDir();
   try {
-    const entries = await readdir(NOTES_DIR, {
+    const entries = await readdir(root, {
       recursive: true,
       withFileTypes: true,
     });
@@ -146,10 +184,10 @@ export async function listNoteFilenames(): Promise<string[]> {
         const fullPath = path.join(
           (e as unknown as { parentPath?: string; path?: string }).parentPath ??
             (e as unknown as { path?: string }).path ??
-            NOTES_DIR,
+            root,
           e.name,
         );
-        return path.relative(NOTES_DIR, fullPath).split(path.sep).join("/");
+        return path.relative(root, fullPath).split(path.sep).join("/");
       })
       .sort();
   } catch {
