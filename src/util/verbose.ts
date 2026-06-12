@@ -385,10 +385,6 @@ export function detectLlmRole(messages: ChatMessage[]): string {
   // 夢の蒸留（「内省断片」を含むので introspection より先）
   if (sys.includes("蒸留")) return "dream.distill";
 
-  // 旧 v0.6 束ねエージェント（現行未使用・保険）
-  if (sys.includes("記憶エージェント")) return "memory_agent";
-  if (sys.includes("探索エージェント")) return "research_agent";
-
   // 内心更新 → 内省（内心が先。両方「内省」を含む）
   if (sys.includes("前の内心")) return "inner_state";
   if (sys.includes("内省")) return "introspection";
