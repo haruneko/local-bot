@@ -6,10 +6,11 @@
 ## できること
 
 - CLI / Slack ボットで対話（ユーザー発話 / ハートビート）
-- **actor pool**: recall / remember / forget / memo_write / memo_read / webSearch / urlBrowse が並列に自律実行
+- **actor pool**: recall / forget / memo / webSearch / urlBrowse / plan が並列に自律実行
 - **記憶**（LanceDB + ベクトル想起）と **メモ**（`data/notes/`）の二系統 + メモインデックス
+- **メモ＝連想する記憶の木**: 読み書き統合 `memo` actor が、op（view/create/append/replace/section_replace）＋ MOC ツリー＋連想ディセント＋サイズ自動分割で扱う（[docs/MEMO-TREE.md](docs/MEMO-TREE.md)）
 - **意味記憶**（夢バッチでエピソード + 夢のタネから蒸留）
-- 内省だけをエピソード記憶に蓄積（`remember` は別途ファクト追記）
+- 内省が毎ターンのエピソード記憶を書き、importance（気にかけ度）も採点（意図的な「覚える」専用 actor は持たない＝`remember` 廃止）
 - **話者対応**: `config/users.yaml` の `note`（関係性）を言語野に注入し、誰と話すかで反応が変わる。想起も話者一致エピソードを重み付け
 - **集中モード**: State `集中` で取り組み中の構造化plan（`data/plans/`）が計画チャンネルとして毎ターン常駐。`plan` actor が op（complete/log 等）で進捗を更新——構造はコードが保証し LLM は op を1つ出すだけ（`data/notes/goals/` に markdown ビューをミラー。長期計画の自律進行 v1）
 - **3 段階ログ**: `quiet`（発話のみ）/ `info`（1ターン十数行の構造化サマリ・常駐の既定）/ `debug`（全 LLM 入出力。`-v`）
@@ -18,7 +19,7 @@
 
 ```
 [入力] プリプロセス（自動想起・recency除外）
-  → [actor pool 並列] recall / remember / webSearch / ...
+  → [actor pool 並列] recall / memo / webSearch / ...
   → [言語野] 発話生成 + NEXT_STATE
   → [内省] → [内心更新] → LanceDB
 ```
@@ -37,9 +38,9 @@
 
 | kind | 意味 |
 |------|------|
-| `memory` | 記憶操作（recall / remember / forget / memo_read / memo_write） |
+| `memory` | 記憶操作（recall / forget / memo の読み書き） |
 | `research` | 探索（Web検索・URL閲覧・センサーなど） |
-| `express` | 発信（SNS投稿など。既定 dry-run） |
+| `express` | 発信（SNS投稿など。型は存在するが現状ライブな actor 未配線） |
 
 ## 必要環境
 
@@ -172,8 +173,9 @@ npm run smoke         # Ollama 疎通確認
 ```
 src/
   orchestrator/turn.ts   # 1ターンの流れ
-  actors/                # actor pool（recall / remember / webSearch 等）
-  roles/                 # 言語野・内省・内心更新・サブエージェント
+  actors/                # actor pool（recall / forget / memo / webSearch 等）
+  memo/                  # メモの op applier・MOC ツリー・連想ディセント
+  roles/                 # 言語野・内省・内心更新・memo・recall ループ
   context/               # TurnContext 組み立て・メモリスナップショット
   recall/                # 想起グラデーション・距離分類
   memory/                # LanceDB・意味記憶・作業記憶
@@ -192,7 +194,7 @@ config/                  # 実行時設定
 |------|------|
 | actor が動かない | `--verbose` で activator の判断と各 actor の activate ログを確認 |
 | LanceDB エラー | `data/lancedb` を削除して再作成 |
-| メモを書いたのに読めない | `--verbose` で `memoRead` の pick 入力を確認 |
+| メモを書いたのに読めない | `--verbose` で `memo` の連想ディセント（`memo.descend`）と op 選択（`memo.op`）を確認 |
 
 ## ライセンス
 

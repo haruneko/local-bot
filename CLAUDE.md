@@ -35,8 +35,8 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 [入力] プリプロセス（想起） → [自律] actor pool（並列） → language-agent → 内省 → 内心更新 → LanceDB
 ```
 
-- **プリプロセス** (`src/context/preprocess.ts`): 想起クエリ決定（`lastUserContent → lastSpeech → concern → affect → null`）→ LanceDB 想起 → `TurnContext` 生成。フィルタは量を絞るだけで元データは変更しない。
-- **actor pool** (`src/actors/`): `recall` `remember` `forget` `memo` `webSearch` `urlBrowse` `webcam` `plan` が独立して並列に起動判断・実行。各 actor が `activate()` で自己判断し、起動した actor のみ実行。mini-context（直近3ターン）で判断。`plan` は集中モードの**構造化plan**（`data/plans/<id>.json`）を op で更新する（構造はコードが保証・LLM は op を1つ出すだけ。markdown は `data/notes/goals/` への派生ビュー）。`memo` は読み書き統合 actor で、対象を全文ロード（read-before-edit）してから op を1つ（view/create/append/replace/section_replace）を純関数 applier で適用する（[docs/MEMO-TREE.md](docs/MEMO-TREE.md)）。
+- **プリプロセス** (`src/context/preprocess.ts`): 想起クエリ決定（`lastUserContent → lastSpeech → concern → affect → null`）→ LanceDB 想起 → `TurnContext` 生成。フィルタは量を絞るだけで元データは変更しない。時刻は知覚チャンネルに **生の日時＋曜日＋時間感覚の言葉（相: 朝/夜更け 等。`phaseOfDay` で決定的に付与。生の時刻だけだとモデルが「感じ」に変換できないため言葉を先に付ける）** として載せる（`src/sensor/datetime.ts`）。
+- **actor pool** (`src/actors/`): `recall` `forget` `memo` `webSearch` `urlBrowse` `webcam` `plan` `synthesize` が独立して並列に起動判断・実行。（`remember` は廃止＝意図的な内部記憶は「書き込み」でなく内省の importance 採点で扱う。人間も記憶を直接書けず符号化強度を上げるだけ、という整理。`runRemember`/`REMEMBER_SYSTEM`/schema は完全削除。`EpisodeSource "remember"` と present 表示は履歴エピソード用に温存）各 actor が `activate()` で自己判断し、起動した actor のみ実行。mini-context（直近3ターン）で判断。`plan` は集中モードの**構造化plan**（`data/plans/<id>.json`）を op で更新する（構造はコードが保証・LLM は op を1つ出すだけ。markdown は `data/notes/goals/` への派生ビュー）。`memo` は読み書き統合 actor で、locate（主=recall認識・フォールバック=連想ディセント）→対象を全文ロード（read-before-edit・**行番号付きで提示**）→ op を1つ（view/create/append/replace/section_replace/**replace_line**/**delete_line**）を純関数 applier で適用する（[docs/MEMO-TREE.md](docs/MEMO-TREE.md)）。`synthesize` は想起＋外部＋感性（内心/関心事）を統合して成果物（歌詞・読書メモ・まとめ・文章）を**生成**し `data/notes/works/<planId|slug>.md` へ append で外化する＝「行動としての思考」。memo（強制ギプス・転記）と違い**生成が役割**の唯一のレーン。「書いて/作って/まとめて」や集中作業の成果物前進で起動。
 - **language-agent** (`src/roles/language.ts`): 全 facts を受け取り発話生成 + NEXT_STATE を出力。常に起動し発話するかを内部で決める。
 - **内省** (`src/roles/introspection.ts`) → **内心更新** (`src/roles/inner-state.ts`)。
 
@@ -54,9 +54,9 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 
 | 層 | 保存先 | 読み出し時の方針 |
 |----|--------|------------------|
-| エピソード記憶 | `data/lancedb/` `episodes` | LLM 要約・グラデーション（full/summarize/vague）OK＝ふんわり思い出す |
+| エピソード記憶 | `data/lancedb/` `episodes` | LLM 要約・グラデーション（full/summarize/vague）OK＝ふんわり思い出す。内省が毎ターン書き、`importance`（1-10）も採点。importance は「気にかけ度」寄り（相手の気持ち・新たに分かった相手のこと・頼まれた等を高く）＝意図的記憶の代替。想起の relevance に効く（減衰に抗う） |
 | 意味記憶 | `data/lancedb/` `semantic` | 夢で蒸留した知識 |
-| メモインデックス | `data/lancedb/` `memo_index` | 「どこに何を書いたか」の所在管理。`memo_write` 成功時に機械的 upsert。減衰しない |
+| メモインデックス | `data/lancedb/` `memo_index` | 「どこに何を書いたか」の所在管理。`memo` のメモ書き込み成功時に機械的 upsert。減衰しない |
 | 共有メモ本文 | `data/notes/**/*.md` | **本文を LLM で要約しない**（劣化禁止）。構造保存的な op 編集（厳密置換・見出し差し替え）は read-before-edit を条件に可。全文を `facts.body` に載せる。階層ディレクトリ可 |
 | 作業記憶 | `data/state.json` | ユーザーとボットの**表面発話のみ**。各エージェントの判断・ツール結果は含めない |
 | affect（感情余韻） | `data/state.json` `affect` | 持ち越す生の感情（余韻）。旧 `innerState`。内省後に毎ターン書き換え。空＝起きたて |
@@ -65,6 +65,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 
 `memo_index` はエピソード記憶・意味記憶とは別テーブル（情報源記憶）。`episodes` に書かない（DECISIONS.md §メモインデックスの設計 参照）。  
 想起グラデーションは `src/recall/distance.ts`（距離分類）+ `src/recall/llm-present.ts`（LLM 提示）。閾値は `DEFAULT_RECALL_DISTANCE_THRESHOLDS`。
+背景の記憶チャンネルは各エピソードに **発生時刻（`occurredAt`）を `[N分前/N日前]` で前置き**する（知覚チャンネルの時間感覚と同じ思想）。記憶内の相対時刻語（「明日」「さっき」）が"いつ基準か"を分からせ、**古い記憶を今の事実として喋る**のを防ぐ（`RecalledEpisode.occurredAt` を `EpisodeRecallHit.timestamp` から `distance.ts → llm-present.ts → turn-context.appendRecalledEpisodes` で通す。`formatRelativeTime` 再利用）。
 
 ## 設定
 
@@ -88,7 +89,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 - ロールごとに想起・会話ログの入れ方を変えること
 - ヒューリスティックによるエージェントのスキップ（活性化判断は必ず LLM で行う）
 - メモ（`data/notes/`）本文を LLM で**要約**すること（劣化するから）。構造保存的な op 編集（厳密置換・見出し差し替え）は read-before-edit ＋厳密一致確認をコードで強制した上でのみ可
-- `memo_write` 成功時に `episodes` へ直接追記すること（`memo_index` へ書く）
+- メモ書き込み成功時に `episodes` へ直接追記すること（`memo_index` へ書く）
 - 理由のない暗黙トリム（preview・verbose の truncate は別）
 - フィルタ・コンテキスト縮小を理由に元データ（LanceDB・state.json）を削除・変更すること
 

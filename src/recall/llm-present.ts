@@ -110,6 +110,7 @@ function assembleRecalledEpisodes(
       presented,
       relevance: hit.relevance,
       presentation: hit.presentation,
+      occurredAt: hit.occurredAt,
     });
   }
 

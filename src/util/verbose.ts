@@ -370,12 +370,10 @@ export function detectLlmRole(messages: ChatMessage[]): string {
   if (sys.includes("カテゴリ内のツールを1つ選び")) return "subagent.pick";
 
   // memory 系 actor 本体
-  if (sys.includes("後で思い出せる短いファクト")) return "remember";
+  if (sys.includes("認識して選ぶ")) return "memo.recall_pick";
   if (sys.includes("木構造に整理")) return "memo.descend";
   if (sys.includes("メモへの操作（op）")) return "memo.op";
-  if (sys.includes("本文とファイル名を決め")) return "memo_write";
   if (sys.includes("記憶候補から")) return "forget.pick";
-  if (sys.includes("冒頭抜粋")) return "memo_read.pick";
 
   // 内省テキストからのタグ抽出（「内省」を含むので introspection より先）
   if (sys.includes("名詞タグ")) return "tags";

@@ -73,21 +73,21 @@ idle heartbeat 判定:
 
 ## 5. actor pool（v0.7〜）
 
-各ツールが独立した actor として並列に自律実行する。memory-agent / research-agent の束ねは廃止。
+各ツールが独立した actor として並列に自律実行する。memory-agent / research-agent / カテゴリ・サブエージェントの束ねは廃止（dead-in-prod コードも 2026-06 に削除済み）。
 
 ### 5.1 actor 一覧
 
 | actor | 機械処理 |
 |-------|----------|
 | `recall` | LanceDB ベクトル検索 |
-| `remember` | LanceDB append |
 | `forget` | LanceDB ソフト削除（`deleted` フラグ） |
-| `memoWrite` | `data/notes/` write |
-| `memoRead` | list / read（冒頭抜粋インデックスで pick） |
+| `memo` | `data/notes/` 読み書き統合。locate（主=recall認識・フォールバック=連想ディセント）で対象を辿り（read-before-edit・**行番号付きで提示**）、op を1つ（view/create/append/replace/section_replace/**replace_line**/**delete_line**）を純関数 applier で適用。MOC ツリー再生成・サイズ自動分割を含む（[MEMO-TREE.md](MEMO-TREE.md)） |
 | `webSearch` | MCP 経由 Web 検索 |
 | `urlBrowse` | MCP 経由 URL 閲覧 |
-| `webcam` | カメラ映像取得 |
+| `webcam` | カメラ映像取得（未実装） |
 | `plan` | 構造化plan（`data/plans/<id>.json`）を op で更新（コードが構造を保証・LLM は op を1つ出すだけ）。markdown は派生ビュー |
+
+`remember` は**廃止・完全削除**。意図的な内部記憶は「LanceDB への書き込み」でなく、内省の importance 採点（相手を気にかけた発話ほど高く＝残りやすく）で扱う（人間も記憶を直接書けず符号化強度を上げるだけ、という整理）。`EpisodeSource "remember"` は履歴エピソード用に温存。
 
 ### 5.2 `activate()` スキーマ（共通）
 
@@ -165,7 +165,7 @@ type ActionOutcome = { attempted: false } | {
 
 `status === succeeded` → `できた`、`failed` → `できなかった`。内省 LLM の実メッセージは `--verbose`（debug）で確認できる。
 
-> 旧 `renderIntrospectionPrompt`（フラット固定テンプレ）は廃止。同様に内心更新・remember/memoWrite も自他を明示する（remember/memoWrite はフラット＋方向ラベル、内省/内心は role 構造）。
+> 旧 `renderIntrospectionPrompt`（フラット固定テンプレ）は廃止。同様に内心更新・`memo` も自他（誰が誰に言った/頼んだか）を明示する（`memo` はフラット＋方向ラベル、内省/内心は role 構造）。
 
 ### 8.2 出力
 

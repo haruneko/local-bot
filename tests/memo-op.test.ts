@@ -30,6 +30,17 @@ describe("applyMemoOp", () => {
       const r = applyMemoOp(null, { op: "append", content: "初回" });
       expect(r).toMatchObject({ ok: true, opKind: "create" });
     });
+
+    it("リスト項目の追記は1行間隔（空行を入れない）", () => {
+      const r = applyMemoOp("- 牛乳\n- パン", { op: "append", content: "- ヨーグルト" });
+      expect(r).toMatchObject({ ok: true, opKind: "append" });
+      if (r.ok) expect(r.nextContent).toBe("- 牛乳\n- パン\n- ヨーグルト\n"); // 空行なし
+    });
+
+    it("散文の追記は段落間隔（空行を入れる）", () => {
+      const r = applyMemoOp("一段落目", { op: "append", content: "二段落目" });
+      if (r.ok) expect(r.nextContent).toBe("一段落目\n\n二段落目\n");
+    });
   });
 
   describe("replace（read-before-edit / 厳密一致）", () => {
@@ -90,6 +101,31 @@ describe("applyMemoOp", () => {
     it("見出しが無ければ失敗", () => {
       const r = applyMemoOp(doc, { op: "section_replace", heading: "## 無い", content: "x" });
       expect(r.ok).toBe(false);
+    });
+  });
+
+  describe("replace_line / delete_line（行番号で狙う）", () => {
+    const doc = ["- 牛乳", "- 卵、玉ねぎ", "- パン"].join("\n");
+
+    it("replace_line は指定行だけ差し替える（厳密文字列不要）", () => {
+      const r = applyMemoOp(doc, { op: "replace_line", line: 2, content: "- 玉ねぎ" });
+      expect(r).toMatchObject({ ok: true, opKind: "replace_line" });
+      if (r.ok) expect(r.nextContent).toBe("- 牛乳\n- 玉ねぎ\n- パン");
+    });
+
+    it("delete_line は指定行だけ消す（他の項目は無傷）", () => {
+      const r = applyMemoOp(doc, { op: "delete_line", line: 2 });
+      expect(r).toMatchObject({ ok: true, opKind: "delete_line" });
+      if (r.ok) expect(r.nextContent).toBe("- 牛乳\n- パン");
+    });
+
+    it("行番号が範囲外なら失敗", () => {
+      expect(applyMemoOp(doc, { op: "replace_line", line: 9, content: "x" }).ok).toBe(false);
+      expect(applyMemoOp(doc, { op: "delete_line", line: 0 }).ok).toBe(false);
+    });
+
+    it("対象本文が無ければ失敗", () => {
+      expect(applyMemoOp(null, { op: "delete_line", line: 1 }).ok).toBe(false);
     });
   });
 

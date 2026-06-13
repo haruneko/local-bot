@@ -15,6 +15,7 @@ import type { EpisodeStore } from "../memory/episode.js";
 import type { SemanticStore } from "../memory/semantic.js";
 import type { MemoIndexStore } from "../memory/memo-index.js";
 import { presentSemanticFacts } from "../recall/semantic-present.js";
+import { collectUserArtifacts } from "../action/present.js";
 import { WorkingMemory } from "../memory/working.js";
 import type { LlmClient } from "../llm/types.js";
 import { runLanguage } from "../roles/language.js";
@@ -51,6 +52,9 @@ export type TurnTrigger =
 export type TurnResult = {
   turnId: string;
   speech: string | null;
+  /** speech とは別経路でユーザーに全文提示する成果物（生成物・調査結果・読み上げ）。
+   *  音声等、本文を読み上げない宛先では出力側が出さない選択をする */
+  artifacts: string[];
   introspection: string;
   episodeSaved: boolean;
   nextState: AgentState;
@@ -74,6 +78,7 @@ export type TurnDeps = {
   initialAffect?: string;
   initialConcern?: string;
   initialFocusPlan?: string;
+  initialFocusStreak?: number;
   contextTokenBudget: number;
   languageNumPredict?: number;
   timeZone?: string;
@@ -101,6 +106,7 @@ export type TurnDeps = {
     affect: string;
     concern: string;
     focusPlan: string;
+    focusStreak: number;
   }) => Promise<void>;
   verbose?: VerboseLogger;
 };
@@ -108,11 +114,16 @@ export type TurnDeps = {
 /** 抑制バッファの有効ターン数 */
 const INHIBITION_WINDOW_TURNS = 4;
 
+/** 集中力の上限（強制ギプス・アドホック）。集中が連続でこのターン数続いたら「集中力が切れる」。
+ *  ハートビートで未達 goal を永遠にループ＝「ずっと同じことを考え続ける」のを防ぐ＝人間の疲労の代替。 */
+const MAX_FOCUS_STREAK = 10;
+
 export class TurnOrchestrator {
   private turnContext: TurnContext | null = null;
   private affect: string;
   private concern: string;
   private focusPlan: string;
+  private focusStreak: number;
   private readonly recentEpisodeTurnIds: string[] = [];
   /** 直近ターンで想起済みのベクトル群。INHIBITION_WINDOW_TURNS ターン後に期限切れ */
   private readonly inhibitionBuffer: { vector: number[]; expiresAtTurn: number }[] = [];
@@ -125,6 +136,7 @@ export class TurnOrchestrator {
     this.affect = deps.initialAffect ?? "";
     this.concern = deps.initialConcern ?? "";
     this.focusPlan = deps.initialFocusPlan ?? "";
+    this.focusStreak = deps.initialFocusStreak ?? 0;
   }
 
   getAffect(): string {
@@ -180,6 +192,7 @@ export class TurnOrchestrator {
       affect: this.affect,
       concern: this.concern,
       focusPlan: this.focusPlan,
+      focusStreak: this.focusStreak,
     });
   }
 
@@ -286,30 +299,44 @@ export class TurnOrchestrator {
     // --- activate → actor pool ---
     ctx = await this.runActorPool(ctx, enabledActors, actionLlm, activatorLlm, actionDeps);
 
-    // plan actor が計画ノートを更新したら、取り組み中のゴールポインタを差し替える
+    // plan actor の結果を収集する。ここでは focusPlan を確定しない（＝計画の作成・更新と
+    // 「集中に入る」を切り離す。メモ感覚で計画を1つ作っただけで集中に固定されないようにする）。
     let planAchieved = false;
+    let planIdThisTurn = "";
     for (const a of ctx.actions) {
       if (a.attempted && a.status === "succeeded" && a.facts?.kind === "plan") {
-        if (a.facts.achieved) {
-          // ゴール達成 → 集中対象から外す（言語野が次の State を選ぶ。集中に固定しない）
-          this.focusPlan = "";
-          planAchieved = true;
-        } else {
-          this.focusPlan = a.facts.planId;
-        }
+        if (a.facts.achieved) planAchieved = true;
+        else planIdThisTurn = a.facts.planId;
       }
     }
+    // ゴール達成 → 集中対象から外す（言語野が次の State を選ぶ）
+    if (planAchieved) this.focusPlan = "";
 
     // --- language-agent（常に起動） ---
     ctx = await this.generateSpeech(ctx, trigger, languageLlm, startState);
 
-    // 事後ルール: 取り組み中の計画（focusPlan）が未達成のあいだは集中を維持する。
-    // 集中の維持を「毎ターン plan が更新されたか」に依存させると、doer が燃料を出さない
-    // ターン（例: 創作系で何も外部探索が要らないターン）で集中が剥がれ、計画チャンネルが
-    // 注入されなくなって二度と戻れなくなる。「未達の目標を持っている」という事実そのものへの
-    // 反応として集中を保つ（言語野の NEXT_STATE を上書き）。抜けるのはゴール達成で
-    // focusPlan が空になったとき（その後の State は言語野が選ぶ）。
-    if (this.focusPlan && !planAchieved) {
+    // 入口: 集中は「言語野が deliberate に集中を選んだ」ときだけ確定する。計画を作った/更新した
+    // だけでは入らない（事故的な集中固定を防ぐ）。取り組む対象を focusPlan に確定する。
+    if (!planAchieved && ctx.nextState === "集中") {
+      this.focusPlan = planIdThisTurn || this.focusPlan;
+    }
+
+    // 集中力の上限（強制ギプス）: 集中が MAX_FOCUS_STREAK ターン続いたら集中力が切れる。
+    // focusPlan を一旦手放す（goal ノートは data/plans に残るので、後で表に出れば再開できる）。
+    // これでハートビートの「ずっと同じことを考え続ける」無限ループを断つ。
+    if (this.focusStreak >= MAX_FOCUS_STREAK) {
+      this.focusPlan = "";
+      this.focusStreak = 0;
+    }
+
+    // 事後ルール（sticky）: 未達の計画（focusPlan）を持っているあいだ集中を維持する。ただし
+    // **ハートビート（相手が居ない自律ターン）のときだけ**効かせる。
+    // - ハートビート: 維持する。入力が無いと言語野が集中を選ばず goal を見失う dead-end を防ぐ＝
+    //   人が居ない間は未達の目標に自律的に戻り続ける。
+    // - 対話（user_message 等・相手が居る）: 効かせない。言語野の判断に任せ、相手が感情や別の話題を
+    //   向けたら集中を抜けて相手に向き合える（タスク固執＝タコ耳の解消）。focusPlan は達成まで残るので、
+    //   会話を抜けた後のハートビートで goal に復帰する。「喋る間は相手に・独りなら自分の作業に」。
+    if (this.focusPlan && !planAchieved && trigger.type === "heartbeat") {
       ctx = { ...ctx, nextState: "集中" };
       this.turnContext = ctx;
     }
@@ -327,18 +354,22 @@ export class TurnOrchestrator {
     // --- State 遷移・永続化 ---
     const prevState = this.state;
     this.state = applyNextState(this.state, ctx.nextState ?? this.state);
+    // 集中力カウンタ: 集中が続けば加算、抜けたら 0。MAX を超えると次ターンの強制ギプスで切れる。
+    this.focusStreak = this.state === "集中" ? this.focusStreak + 1 : 0;
     await this.deps.onSessionPersist?.({
       state: this.state,
       workingMemory: this.deps.workingMemory.getRecent(),
       affect: this.affect,
       concern: this.concern,
       focusPlan: this.focusPlan,
+      focusStreak: this.focusStreak,
     });
     v?.stateTransition(prevState, this.state);
 
     const result: TurnResult = {
       turnId,
       speech: ctx.speech ?? null,
+      artifacts: collectUserArtifacts(ctx.actions),
       introspection,
       episodeSaved: episodePersisted,
       nextState: this.state,

@@ -13,7 +13,7 @@ import { MEMO_OP_SYSTEM } from "../prompts/roles.js";
 import { memoOpJsonSchema, memoOpSchema } from "../prompts/schemas.js";
 import type { LlmClient } from "../llm/types.js";
 import { applyMemoOp, type MemoOp } from "../memo/ops.js";
-import { descendToTarget, recallFallbackTarget } from "../memo/descent.js";
+import { descendToTarget, recallRecognizeTarget } from "../memo/descent.js";
 import { regenerateIndexChain, splitIfOversized } from "../memo/tree.js";
 import {
   defaultNoteFilename,
@@ -32,9 +32,18 @@ function resolveFilename(raw?: string): string | null {
   return safePath(withMd) ?? safeFilename(withMd) ?? slugifyFilename(withMd);
 }
 
+/** 本文に1始まりの行番号を付ける（op 段の提示用。replace_line/delete_line がこの番号で狙う） */
+function numberLines(text: string): string {
+  if (text === "") return "（空ファイル）";
+  return text
+    .split("\n")
+    .map((line, i) => `${i + 1}\t${line}`)
+    .join("\n");
+}
+
 /**
  * メモ読み書き統合 actor の本体。read を write に内包する（write は必ず read を伴う）。
- *  フェーズ1: 連想ディセントで対象メモを辿り全文ロード（read-before-edit）
+ *  フェーズ1: 対象メモを locate（主=recall認識・フォールバック=連想ディセント）して全文ロード（read-before-edit）
  *  フェーズ2: 現在の全文＋意図を見て op を1つ出す → 純関数 applier で決定的に適用
  *  書き込み後: 親〜ルートの `_index.md`（MOC）を機械再生成し memo_index を upsert
  * 詳細は docs/MEMO-TREE.md。
@@ -48,16 +57,14 @@ export async function runMemo(
   const { currentDateTime } = input.ctx;
   const lastUserMessage = lastUserMessageFromContext(input.ctx);
 
-  // --- フェーズ1: 連想ディセントで対象を辿る（無ければ null = 新規） ---
-  let target = await descendToTarget(llm, intent);
-  // recall 加速（フォールバック）: 行き止まったら memo_index で葉へテレポート（迷子救済）
-  if (!target && input.memoIndex) {
-    target = await recallFallbackTarget(
-      input.memoIndex,
-      intent,
-      input.explicitRecallMaxDistance ?? 0.4,
-    );
-  }
+  // --- フェーズ1: 対象メモを locate（無ければ null = 新規） ---
+  // 主経路: recall 認識（memo_index の top-k 一覧を見て「意図の対象」を認識し、明確一致は必ず再利用）。
+  //   台帳のように同じノートへ繰り返し戻る用途で頑健＝断片化を防ぐ。
+  // フォールバック: recall で認識できなければ連想ディセント（木を降りる・browsing 的）。
+  let target = input.memoIndex
+    ? await recallRecognizeTarget(llm, input.memoIndex, intent)
+    : null;
+  if (!target) target = await descendToTarget(llm, intent);
   const current = target ? await readNoteContent(target) : null;
 
   // --- フェーズ2: op を1つ出す ---
@@ -80,8 +87,10 @@ export async function runMemo(
             target
               ? `候補メモ: ${target}（下が現在の全文。意図と別主題なら無視して create で新規にしてよい）`
               : "候補メモ: なし（新規に書くなら create で filename を付ける）",
-            target ? "----- 候補の現在の全文 -----" : "",
-            target ? (current ?? "（空ファイル）") : "",
+            target
+              ? "----- 候補の現在の全文（行番号付き。replace_line/delete_line はこの番号で狙う） -----"
+              : "",
+            target ? numberLines(current ?? "") : "",
           ]
             .filter(Boolean)
             .join("\n"),

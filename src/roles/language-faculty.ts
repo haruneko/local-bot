@@ -4,7 +4,6 @@ import type { TurnContext } from "../context/turn-context.js";
 import {
   buildConversationTurns,
   buildLanguageContextSuffix,
-  renderLanguageUserContent,
 } from "../context/turn-context.js";
 import {
   LANGUAGE_HEARTBEAT_SYSTEM_PREFIX,
@@ -12,6 +11,11 @@ import {
 } from "../prompts/roles.js";
 import type { ChatMessage, LlmClient } from "../llm/types.js";
 import { formatActionsForLanguage } from "../action/present.js";
+import {
+  extractJsonText,
+  repairCommonJsonErrors,
+  stripThinkBlocks,
+} from "../action/parse-json.js";
 
 export type GenerateLanguageOptions = {
   persona: string;
@@ -32,18 +36,66 @@ const languageJsonSchema = zodToJsonSchema(languageOutputSchema, {
   $refStrategy: "none",
 }) as Record<string, unknown>;
 
+/**
+ * 壊れた JSON から speech 値だけを正規表現で救出する。
+ * speech 文字列が閉じず nextState を巻き込んだケースは、その痕跡を末尾から除去する。
+ */
+function salvageSpeech(text: string): string | null {
+  const m = text.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (!m) return null;
+  let speech: string;
+  try {
+    speech = JSON.parse(`"${m[1]}"`) as string;
+  } catch {
+    speech = m[1];
+  }
+  return speech.replace(/\s*["']?\s*nextState["']?\s*:?.*$/is, "").trim();
+}
+
+/**
+ * 言語野の生出力を {speech,nextState} に解す。**生の JSON / 思考は絶対にユーザーへ出さない**。
+ *  1. <think> 除去 → JSON 抽出 → 軽微な壊れを修復してスキーマ検証
+ *  2. 失敗時は speech 値だけ救出
+ *  3. JSON の痕跡が無ければ素テキストを発話とみなす（構造化出力なのに素で返した保険）
+ *  4. 壊れた JSON 断片しか無ければ沈黙（空発話）にフォールバック
+ */
 function parseLanguageOutput(raw: string, fallbackState: string): LanguageOutput {
-  const trimmed = raw.trim();
-  for (const candidate of [trimmed, `{${trimmed}}`]) {
+  const cleaned = stripThinkBlocks(raw).trim();
+  const extracted = extractJsonText(raw);
+  for (const candidate of [
+    extracted,
+    repairCommonJsonErrors(extracted),
+    cleaned,
+    `{${cleaned}}`,
+  ]) {
+    if (!candidate) continue;
     try {
       const obj = JSON.parse(candidate) as unknown;
       const parsed = languageOutputSchema.safeParse(obj);
-      if (parsed.success) return parsed.data;
+      if (parsed.success) {
+        return {
+          speech: stripThinkBlocks(parsed.data.speech).trim(),
+          nextState: parsed.data.nextState,
+        };
+      }
     } catch {
       // fall through
     }
   }
-  return { speech: trimmed, nextState: fallbackState };
+
+  const salvaged = salvageSpeech(cleaned);
+  if (salvaged) {
+    const sm = cleaned.match(/"nextState"\s*:\s*"([^"]*)"/);
+    return { speech: salvaged, nextState: sm?.[1] ?? fallbackState };
+  }
+
+  // JSON の痕跡が無い＝素のテキストで返した → そのまま発話とみなす
+  if (!/[{}]|"speech"|"nextState"/.test(cleaned)) {
+    return { speech: cleaned, nextState: fallbackState };
+  }
+
+  // 壊れた JSON 断片しか残らない → 沈黙（生は出さない・記憶に残さない）
+  return { speech: "", nextState: fallbackState };
 }
 
 export async function generateLanguageText(
@@ -121,31 +173,6 @@ function buildLanguageDialogueMessages(
 
   messages.push({ role: "user", content: userContent });
   return messages;
-}
-
-export async function generateExpressText(
-  llm: LlmClient,
-  ctx: TurnContext,
-  intent: string,
-): Promise<string> {
-  const persona = ctx.persona ?? "";
-  const base = renderLanguageUserContent(ctx);
-  const userContent = [
-    base,
-    "",
-    "【発信の意図】",
-    intent,
-    "",
-    "上記の意図に沿った、外部チャンネル向けの短文を1つだけ書く。",
-    "ユーザーへの返答ではなく、投稿・送信向けの本文のみ。",
-  ].join("\n");
-
-  return generateLanguageText(llm, {
-    persona,
-    systemPrefix: LANGUAGE_SYSTEM_PREFIX,
-    userContent,
-    temperature: 0.7,
-  });
 }
 
 function resolveNumPredict(ctx: TurnContext, defaultNumPredict: number): number {

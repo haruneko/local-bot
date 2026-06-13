@@ -3,36 +3,27 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 
 const jsonSchemaOptions = { $refStrategy: "none" as const };
 
-export const rememberOutputSchema = z.object({
-  body: z.string().min(1),
-});
-export const rememberJsonSchema = zodToJsonSchema(rememberOutputSchema, {
-  name: "RememberOutput",
-  ...jsonSchemaOptions,
-});
-
-export const memoWriteOutputSchema = z.object({
-  content: z.string().min(1),
-  filename: z.string().optional(),
-  /** true=既存メモへ追記（content は追記分のみ）。省略/false=新規作成 */
-  append: z.boolean().optional(),
-});
-export const memoWriteJsonSchema = zodToJsonSchema(memoWriteOutputSchema, {
-  name: "MemoWriteOutput",
-  ...jsonSchemaOptions,
-});
-
 export const memoReadPickOutputSchema = z.object({
   filename: z.string().nullable(),
 });
 
 /** メモ本文への op（plan の op と同型・構造はコードが保証）。詳細は docs/MEMO-TREE.md */
 export const memoOpSchema = z.object({
-  op: z.enum(["view", "create", "append", "replace", "section_replace", "noop"]),
+  op: z.enum([
+    "view",
+    "create",
+    "append",
+    "replace",
+    "section_replace",
+    "replace_line",
+    "delete_line",
+    "noop",
+  ]),
   filename: z.string().optional(),
   content: z.string().optional(),
   old: z.string().optional(),
   heading: z.string().optional(),
+  line: z.number().int().optional(),
 });
 export const memoOpJsonSchema = zodToJsonSchema(memoOpSchema, {
   name: "MemoOp",

@@ -17,8 +17,6 @@ import type { TurnContext } from "../context/turn-context.js";
 import type { LlmClient } from "../llm/types.js";
 import type { McpToolProvider } from "../mcp/types.js";
 import { SUBAGENT_STEP_SYSTEM } from "../prompts/roles.js";
-import { runMemorySubagent } from "./agents/memory.js";
-import { generateExpressText } from "./language-faculty.js";
 
 export const MAX_SUBAGENT_STEPS = 3;
 
@@ -252,99 +250,3 @@ export async function runResearchSubagent(
   });
 }
 
-export async function runExpressSubagent(
-  llm: LlmClient,
-  input: RunActionInput,
-): Promise<ActionOutcome> {
-  const action = input.action;
-  const catalog = input.toolCatalog ?? [];
-  const tools = catalog.filter((t) => t.category === "express");
-  if (tools.length === 0) {
-    return actionFailed(action, "発信ツールが設定されていない", {
-      code: ACTION_ERROR_CODES.ACTION_DISCONNECTED,
-      message: "express カテゴリの MCP ツールがない",
-    });
-  }
-
-  const pick = await runSubagentToolPick(llm, {
-    category: "express",
-    intent: action.intent,
-    catalog: tools,
-    ctx: input.ctx,
-  });
-
-  if (pick.done || !pick.tool) {
-    return actionFailed(
-      action,
-      "発信ツールを選べなかった",
-      pick.error ?? {
-        code: ACTION_ERROR_CODES.PICK_FAILED,
-        message: pick.reason ?? "ツール未選択",
-      },
-    );
-  }
-
-  const tool = findCatalogTool(tools, pick.tool);
-  if (!tool) {
-    return actionFailed(action, "発信ツールが見つからない", {
-      code: ACTION_ERROR_CODES.PICK_FAILED,
-      message: `未知のツール: ${pick.tool}`,
-    });
-  }
-
-  const args = { ...(pick.arguments ?? {}) };
-  if (!args.text && !args.content && !args.message) {
-    const composed = await generateExpressText(llm, input.ctx, action.intent);
-    if (tool.name === "post_tweet" || tool.name.includes("tweet")) {
-      args.text = composed;
-    } else {
-      args.content = composed;
-    }
-  }
-
-  if (input.expressDryRun) {
-    const preview = String(args.text ?? args.content ?? args.message ?? "");
-    return actionSucceeded(action, {
-      kind: "express",
-      tool: tool.name,
-      title: `[dry-run] ${action.intent}`,
-      body: preview,
-    });
-  }
-
-  const result = await executeMcpStep(input.mcp!, tool, args);
-  if (!result.ok) {
-    return actionFailed(action, "発信ツールの実行に失敗した", {
-      code: ACTION_ERROR_CODES.TOOL_FAILED,
-      message: result.summary,
-      detail: result.content,
-    });
-  }
-
-  return actionSucceeded(action, {
-    kind: "express",
-    tool: tool.name,
-    title: action.intent,
-    body: result.content,
-  });
-}
-
-export async function runCategorySubagent(
-  llm: LlmClient,
-  input: RunActionInput,
-): Promise<ActionOutcome> {
-  const kind = input.action.kind;
-  switch (kind) {
-    case "memory":
-      return runMemorySubagent(llm, input);
-    case "research":
-      return runResearchSubagent(llm, input);
-    case "express":
-      return runExpressSubagent(llm, input);
-    default:
-      return actionFailed(input.action, "未対応のカテゴリ", {
-        code: ACTION_ERROR_CODES.ACTION_DISCONNECTED,
-        message: `kind: ${kind}`,
-      });
-  }
-}

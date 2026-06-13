@@ -35,7 +35,7 @@ describe("runActivator", () => {
   it("T-AC02: activate が null を返す actor は含まれない", async () => {
     const specs = [
       { actor: mockActor("recall", null), llm: null as never, channels: [] as never },
-      { actor: mockActor("remember", null), llm: null as never, channels: [] as never },
+      { actor: mockActor("forget", null), llm: null as never, channels: [] as never },
     ];
     const result = await runActivator(makeCtx(), specs);
     expect(result).toEqual([]);
@@ -53,7 +53,7 @@ describe("runActivator", () => {
   it("T-AC04: 複数 actor で部分的に activate → 有効なもののみ返す", async () => {
     const specs = [
       { actor: mockActor("recall",    { intent: "記憶を引き出す" }), llm: null as never, channels: [] as never },
-      { actor: mockActor("remember",  null),                         llm: null as never, channels: [] as never },
+      { actor: mockActor("forget",  null),                         llm: null as never, channels: [] as never },
       { actor: mockActor("webSearch", { intent: "天気を調べる" }),   llm: null as never, channels: [] as never },
     ];
     const result = await runActivator(makeCtx(), specs);

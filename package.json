@@ -16,6 +16,7 @@
     "slack": "tsx src/cli/slack.ts",
     "smoke": "tsx scripts/smoke-ollama.ts",
     "score-importance": "tsx src/cli/score-importance.ts",
+    "reindex": "tsx src/cli/reindex.ts",
     "searxng:up": "sudo docker compose up -d searxng",
     "searxng:down": "sudo docker compose down searxng",
     "searxng:logs": "sudo docker compose logs -f searxng"

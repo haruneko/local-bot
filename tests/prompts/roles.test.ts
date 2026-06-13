@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   LANGUAGE_HEARTBEAT_SYSTEM_PREFIX,
   LANGUAGE_SYSTEM_PREFIX,
-  REMEMBER_SYSTEM,
 } from "../../src/prompts/roles.js";
 import { formatActionForLanguage } from "../../src/action/present.js";
 
@@ -19,11 +18,6 @@ describe("role prompts", () => {
     expect(LANGUAGE_HEARTBEAT_SYSTEM_PREFIX).not.toContain("質問で返さない");
   });
 
-  it("REMEMBER_SYSTEM normalizes relative dates to absolute", () => {
-    expect(REMEMBER_SYSTEM).toContain("基準日時");
-    expect(REMEMBER_SYSTEM).toContain("今日");
-    expect(REMEMBER_SYSTEM).toContain("年月日");
-  });
 });
 
 describe("formatActionForLanguage regression", () => {

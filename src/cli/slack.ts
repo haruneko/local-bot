@@ -38,6 +38,8 @@ async function main(): Promise<void> {
     printTurnSummary(result, verbose);
 
     if (result.speech) await reply(result.speech);
+    // 成果物（生成物・調査結果・読み上げ）は speech とは別に全文を投稿する（チャットチャンネル）
+    for (const artifact of result.artifacts) await reply(artifact);
   }
 
   // DM のみ（チャンネルは app_mention で処理するため channel_type で絞る）
@@ -73,6 +75,12 @@ async function main(): Promise<void> {
           await bolt.client.chat.postMessage({
             channel: heartbeatChannel,
             text: result.speech,
+          });
+        }
+        for (const artifact of result.artifacts) {
+          await bolt.client.chat.postMessage({
+            channel: heartbeatChannel,
+            text: artifact,
           });
         }
       } catch (err) {

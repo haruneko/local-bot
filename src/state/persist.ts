@@ -13,6 +13,8 @@ export type PersistedSession = {
   concern: string;
   /** 集中モードで取り組み中の計画 id（data/plans/<id>.json）。空 = 取り組み中の計画なし */
   focusPlan: string;
+  /** 集中が連続したターン数（集中力の上限＝強制ギプス用。ハートビート跨ぎで永続）。 */
+  focusStreak: number;
   updatedAt: string;
 };
 
@@ -45,7 +47,7 @@ function parseWorkingMemory(raw: unknown): ConversationTurn[] {
 export async function loadSession(
   filePath: string,
   fallbackState: AgentState = DEFAULT_AGENT_STATE,
-): Promise<Pick<PersistedSession, "state" | "workingMemory" | "affect" | "concern" | "focusPlan">> {
+): Promise<Pick<PersistedSession, "state" | "workingMemory" | "affect" | "concern" | "focusPlan" | "focusStreak">> {
   try {
     const raw = await readFile(filePath, "utf8");
     const parsed = JSON.parse(raw) as Partial<PersistedSession & { innerState?: string }>;
@@ -63,12 +65,17 @@ export async function loadSession(
       typeof parsed.concern === "string" ? parsed.concern : "";
     const focusPlan =
       typeof parsed.focusPlan === "string" ? parsed.focusPlan : "";
+    const focusStreak =
+      typeof parsed.focusStreak === "number" && parsed.focusStreak >= 0
+        ? parsed.focusStreak
+        : 0;
     return {
       state,
       workingMemory: parseWorkingMemory(parsed.workingMemory),
       affect,
       concern,
       focusPlan,
+      focusStreak,
     };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
@@ -76,7 +83,7 @@ export async function loadSession(
       console.warn("[session] load failed, using defaults", err);
     }
   }
-  return { state: fallbackState, workingMemory: [], affect: "", concern: "", focusPlan: "" };
+  return { state: fallbackState, workingMemory: [], affect: "", concern: "", focusPlan: "", focusStreak: 0 };
 }
 
 /** @deprecated loadSession を使う */
@@ -95,6 +102,7 @@ export async function saveSession(
     affect?: string;
     concern?: string;
     focusPlan?: string;
+    focusStreak?: number;
   },
 ): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -104,6 +112,7 @@ export async function saveSession(
     affect: session.affect ?? "",
     concern: session.concern ?? "",
     focusPlan: session.focusPlan ?? "",
+    focusStreak: session.focusStreak ?? 0,
     updatedAt: new Date().toISOString(),
   };
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");

@@ -4,8 +4,6 @@ import { detectLlmRole } from "../src/util/verbose.js";
 import {
   AFFECT_CONCERN_SYSTEM,
   INTROSPECTION_SYSTEM,
-  MEMO_WRITE_SYSTEM,
-  REMEMBER_SYSTEM,
 } from "../src/prompts/roles.js";
 
 const roleOf = (content: string) =>
@@ -50,10 +48,8 @@ describe("detectLlmRole", () => {
   });
 
   it("distinguishes the prompts that all contain 内省", () => {
-    // 内心・内省・remember・memo_write はどれも誤分類しやすい
+    // 内心・内省 はどれも誤分類しやすい
     expect(roleOf(AFFECT_CONCERN_SYSTEM)).toBe("inner_state");
     expect(roleOf(INTROSPECTION_SYSTEM)).toBe("introspection");
-    expect(roleOf(REMEMBER_SYSTEM)).toBe("remember");
-    expect(roleOf(MEMO_WRITE_SYSTEM)).toBe("memo_write");
   });
 });

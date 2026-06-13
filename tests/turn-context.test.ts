@@ -71,6 +71,37 @@ describe("TurnContext", () => {
     expect(rendered).toContain("髪を切りたい");
   });
 
+  it("背景の記憶に発生時刻を [N日前] として前置きし、時刻基準の注記を出す", () => {
+    const now = new Date("2026-06-13T12:00:00+09:00");
+    const threeDaysAgo = new Date(now.getTime() - 3 * 86_400_000).toISOString();
+    const ctx = createTurnContext({
+      turnId: "t-when",
+      state: "対話",
+      trigger: { type: "user_message", content: "天気は？", speakerId: "user_001" },
+      dialogue,
+      recentTurns: [
+        { role: "user", speakerId: "user_001", content: "天気は？" },
+      ],
+      recalledEpisodes: [
+        {
+          presented: "川口の明日は雨だが午後に晴れる",
+          relevance: 0.9,
+          presentation: "summarize",
+          occurredAt: threeDaysAgo,
+        },
+      ],
+      now,
+    });
+
+    const rendered = renderLanguageUserContent(ctx);
+    expect(rendered).toContain("[3日前]");
+    expect(rendered).toContain("いまの話とは限らない"); // 古い記憶を今の事実にしない注記
+    // 前置きが本文の前に来る
+    expect(rendered.indexOf("[3日前]")).toBeLessThan(
+      rendered.indexOf("川口の明日は雨"),
+    );
+  });
+
   it("renders inner state in language input when non-empty", () => {
     const ctx = createTurnContext({
       turnId: "t-inner",

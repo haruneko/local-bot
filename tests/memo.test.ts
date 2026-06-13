@@ -39,7 +39,7 @@ function makeInput(intent: string, memoIndex?: InMemoryMemoIndexStore) {
   };
 }
 
-describe("runMemo（統合 actor・連想ディセント）", () => {
+describe("runMemo（統合 actor・recall認識＋descent）", () => {
   it("空ツリーでは descent をスキップし create で新規作成、_index と memoIndex を更新", async () => {
     const memoIndex = new InMemoryMemoIndexStore();
     // ツリーが空 → descent は LLM を呼ばない → op の1応答のみ
@@ -94,40 +94,38 @@ describe("runMemo（統合 actor・連想ディセント）", () => {
     expect(await readNoteContent("note.md")).toBe("本文");
   });
 
-  it("descent が行き止まっても recall フォールバックで葉へテレポート（迷子救済）", async () => {
-    await writeNoteContent("misfiled/deep.md", "迷子の中身");
-    // descent: ルートで「どれも合わない」と null を返す（誤配置で枝が辿れない想定）
-    const descentNull = JSON.stringify({ filename: null });
-    // フォールバック用の memoIndex スタブ: 確信度の高いヒットを返す
+  it("recall認識で既存の台帳ノートを再利用する（断片化させない）", async () => {
+    await writeNoteContent("買い物リスト.md", "卵\n牛乳");
+    // memo_index が既存ノートを候補に返す → recall認識が一覧から既存を認識
     const memoIndex = {
       upsert: async () => {},
       list: async () => [],
-      recall: async () => [{ path: "misfiled/deep.md", preview: "迷子", distance: 0.1 }],
+      recall: async () => [{ path: "買い物リスト.md", preview: "卵 牛乳", distance: 0.1 }],
     };
-    const llm = new FakeLlmClient([descentNull, JSON.stringify({ op: "view" })]);
-    const input = { ...makeInput("迷子のメモを読む"), memoIndex, explicitRecallMaxDistance: 0.4 };
-    const outcome = await runMemo(llm, input);
+    const llm = new FakeLlmClient([
+      JSON.stringify({ filename: "買い物リスト.md" }), // recall認識: 既存を再利用
+      JSON.stringify({ op: "view" }),
+    ]);
+    const outcome = await runMemo(llm, { ...makeInput("買い物リストに何ある？"), memoIndex });
     if (outcome.attempted && outcome.status === "succeeded") {
-      expect(outcome.facts).toMatchObject({ kind: "memo_read", filename: "misfiled/deep.md" });
+      expect(outcome.facts).toMatchObject({ kind: "memo_read", filename: "買い物リスト.md" });
     } else {
-      throw new Error("expected teleport success");
+      throw new Error("expected reuse of existing note");
     }
   });
 
-  it("フォールバックは距離が遠いとテレポートしない（誤テレポート防止）", async () => {
-    await writeNoteContent("other.md", "別の話題"); // descent が LLM を呼ぶよう非空にする
+  it("recall認識で明確一致が無ければ null→descent/新規へ（誤再利用しない）", async () => {
+    // memo_index は無関係な候補を返す → recall認識は null → 木は空なので descent スキップ → create
     const memoIndex = {
       upsert: async () => {},
       list: async () => [],
-      recall: async () => [{ path: "unrelated.md", preview: "x", distance: 0.9 }],
+      recall: async () => [{ path: "unrelated.md", preview: "別の話題", distance: 0.5 }],
     };
-    // descent null → フォールバックも距離超過で null → 新規 create
     const llm = new FakeLlmClient([
-      JSON.stringify({ filename: null }),
+      JSON.stringify({ filename: null }), // recall認識: 明確一致なし
       JSON.stringify({ op: "create", filename: "新規.md", content: "新しい話題" }),
     ]);
-    const input = { ...makeInput("全く新しい話題"), memoIndex, explicitRecallMaxDistance: 0.4 };
-    const outcome = await runMemo(llm, input);
+    const outcome = await runMemo(llm, { ...makeInput("全く新しい話題"), memoIndex });
     expect(outcome.attempted && outcome.status).toBe("succeeded");
     expect(await readNoteContent("新規.md")).toContain("新しい話題");
   });

@@ -164,3 +164,41 @@ describe("generateDialogueSpeech — heartbeat/dialogue 統一フォーマット
     expect(msgs.every((m) => !m.content.includes("独り言の内容"))).toBe(true);
   });
 });
+
+describe("parseLanguageOutput — 生の思考・壊れたJSONを絶対に漏らさない", () => {
+  it("<think>…</think> 付きの出力から think を除去して speech だけ返す", async () => {
+    const raw =
+      '<think>\nThe user asked X. I should respond.\nnextState should be 静穏.\n例: {"speech":"foo"}\n</think>\n\n{"speech":"文書を仕上げた。次に進もう。","nextState":"静穏"}';
+    const llm = new FakeLlmClient([raw]);
+    const out = await generateDialogueSpeech(llm, makeHeartbeatCtx());
+    expect(out.speech).toBe("文書を仕上げた。次に進もう。");
+    expect(out.nextState).toBe("静穏");
+    expect(out.speech).not.toContain("<think>");
+    expect(out.speech).not.toContain("{");
+  });
+
+  it("speech文字列が閉じずnextStateを巻き込んだ壊れJSONから speech を救出する", async () => {
+    // 実際に流出した形: speech の閉じ引用符と , が欠落
+    const raw =
+      '{\n"speech": "見つからなかったみたい。好きなジャンルは決まってる？\nnextState": "対話"\n}';
+    const llm = new FakeLlmClient([raw]);
+    const out = await generateDialogueSpeech(llm, makeUserCtx());
+    expect(out.speech).toBe("見つからなかったみたい。好きなジャンルは決まってる？");
+    expect(out.speech).not.toContain("nextState");
+    expect(out.speech).not.toContain("{");
+    expect(out.nextState).toBe("対話");
+  });
+
+  it("素のテキスト（JSONでない）はそのまま発話として扱う", async () => {
+    const llm = new FakeLlmClient(["こんにちは、元気だよ。"]);
+    const out = await generateDialogueSpeech(llm, makeUserCtx());
+    expect(out.speech).toBe("こんにちは、元気だよ。");
+  });
+
+  it("救出不能な壊れJSON断片は沈黙にフォールバック（生を出さない）", async () => {
+    const llm = new FakeLlmClient(['{"spee', "ch broken } {"]);
+    const out = await generateDialogueSpeech(llm, makeUserCtx());
+    expect(out.speech).toBe("");
+    expect(out.nextState).toBe("対話"); // fallback = ctx.state
+  });
+});

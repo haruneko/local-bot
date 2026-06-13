@@ -194,6 +194,7 @@ export async function createApp(
         affect: "",
         concern: "",
         focusPlan: "",
+        focusStreak: 0,
       };
   const wm = new WorkingMemory(
     settings.workingMemoryTurns,
@@ -206,6 +207,7 @@ export async function createApp(
         affect: string;
         concern: string;
         focusPlan: string;
+        focusStreak: number;
       }) => saveSession(statePath, next)
     : undefined;
 
@@ -223,8 +225,8 @@ export async function createApp(
 
   // actor ごとの知覚チャンネルと LLM
   const ALL_ACTOR_NAMES: ActorName[] = [
-    "recall", "remember", "forget", "memo",
-    "webSearch", "urlBrowse", "webcam", "plan",
+    "recall", "forget", "memo",
+    "webSearch", "urlBrowse", "webcam", "plan", "synthesize",
   ];
   const actorChannels = Object.fromEntries(
     ALL_ACTOR_NAMES.map((name) => [name, resolveActorChannels(settings, name)]),
@@ -262,6 +264,7 @@ export async function createApp(
     initialAffect: session.affect,
     initialConcern: session.concern,
     initialFocusPlan: session.focusPlan,
+    initialFocusStreak: session.focusStreak,
     contextTokenBudget: settings.contextTokenBudget,
     languageNumPredict: settings.languageNumPredict ?? 400,
     timeZone: settings.timeZone ?? "Asia/Tokyo",

@@ -1,6 +1,6 @@
 import type { LlmClient } from "../llm/types.js";
 import { listChildren } from "./tree.js";
-import { MEMO_DESCEND_SYSTEM } from "../prompts/roles.js";
+import { MEMO_DESCEND_SYSTEM, MEMO_RECALL_PICK_SYSTEM } from "../prompts/roles.js";
 import {
   memoReadPickJsonSchema,
   memoReadPickOutputSchema,
@@ -74,21 +74,47 @@ export async function descendToTarget(
 }
 
 /**
- * recall 加速の「フォールバック」合成（docs/MEMO-TREE.md §3）。
- * descent が行き止まった（どの枝も合わない）とき、memo_index のベクトル想起で葉へテレポートする。
- * 「迷子」（誤配置で永遠に辿り着けない）を救う安全網。
- * 誤テレポート（本来は新規作成すべきなのに無関係な葉に飛ぶ）を避けるため厳しい距離閾値で絞り、
- * 実在するファイルだけを返す。
+ * recall 認識（locate の**主経路**・docs/MEMO-TREE.md §3 / 台帳ユースケース）。
+ * memo_index のベクトル想起で候補を top-k 出し、その**一覧を LLM に見せて「意図の対象」を認識**させる
+ * （想起＝recall ではなく、見て選ぶ＝recognition）。木を盲目で降りる descent より、台帳のように
+ * 同じノートへ繰り返し戻る用途で頑健（断片化を防ぐ）。明確に一致する候補があれば**必ず再利用**し、
+ * 重複を作らない。明確な一致が無ければ null（→ descent フォールバック / 新規作成へ）。
  */
-export async function recallFallbackTarget(
+export async function recallRecognizeTarget(
+  llm: LlmClient,
   memoIndex: MemoIndexStore,
   intent: string,
-  maxDistance: number,
+  topK = 8,
 ): Promise<string | null> {
-  const hits = await memoIndex.recall(intent, 1);
-  const top = hits[0];
-  if (!top || top.distance > maxDistance) return null;
-  const content = await readNoteContent(top.path);
-  if (content === null) return null; // index は残っているがファイルが無い
-  return top.path;
+  const hits = await memoIndex.recall(intent, topK);
+  if (hits.length === 0) return null; // 候補ゼロ → LLM を呼ばない
+  const list = hits.map((h) => `${h.path} — ${h.preview}`).join("\n");
+  const format = memoReadPickJsonSchema as Record<string, unknown>;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const raw = await llm.chat(
+      [
+        { role: "system", content: MEMO_RECALL_PICK_SYSTEM },
+        {
+          role: "user",
+          content: [
+            `意図: ${intent}`,
+            "",
+            "既存メモ（ファイル名 — 冒頭抜粋）:",
+            list,
+          ].join("\n"),
+        },
+      ],
+      { format, temperature: 0 },
+    );
+    const parsed = tryParseJsonWithSchema(raw, memoReadPickOutputSchema);
+    if (!parsed.ok) continue;
+    const f = parsed.value.filename;
+    if (f && hits.some((h) => h.path === f)) {
+      const content = await readNoteContent(f);
+      if (content !== null) return f; // 実在確認（index は残るがファイルが消えた場合を弾く）
+    }
+    return null; // 明確な一致なし → descent / 新規へ
+  }
+  return null;
 }

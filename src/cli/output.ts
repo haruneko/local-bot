@@ -6,6 +6,11 @@ export function printTurnSummary(
   verbose: VerboseLogger,
 ): void {
   if (result.speech) console.log(result.speech);
+  // 成果物（生成物・調査結果・読み上げ）は speech とは別経路で全文出す。
+  // チャット（テキスト）チャンネルなので常に提示する。音声チャンネルでは出さない設計。
+  for (const artifact of result.artifacts) {
+    console.log(`\n${artifact}`);
+  }
   const parts = [`[state → ${result.nextState}]`];
   if (verbose.enabled) {
     parts.push(`turn=${result.turnId.slice(0, 8)}`);

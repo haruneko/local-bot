@@ -26,8 +26,8 @@
 
 `memo_write` 成功時に `memo_index` へ機械的に記録する（LLM 不要）。
 
-- `memo_write` 成功時に upsert（`src/roles/memo-write.ts`）
-- `memo_read` の pick がベクトル検索ベースに移行済み（`src/roles/memo-read.ts`）
+- メモ書き込み成功時に upsert（`src/roles/memo.ts`・統合 memo actor。旧 `memo-write.ts`/`memo-read.ts` は廃止）
+- 読み（locate）は **recall 認識（top-k 一覧を見て対象を認識・明確一致は必ず再利用）を主**、連想ディセントをフォールバックに（`src/memo/descent.ts`・[MEMO-TREE.md](MEMO-TREE.md)）。削除/1行修正は行 op（`replace_line`/`delete_line`）
 - プリプロセスで `memo_index` も並走検索し、`recalledNotes` として全ロールに渡す（`src/orchestrator/turn.ts`）
 - `episodes` には書かない（カテゴリ違反。DECISIONS.md 参照）
 
@@ -60,7 +60,7 @@
 
 ### 問題B: 行動の結果が次ターンに「名刺」として残らない
 
-1ターン内の多段（`MAX_SUBAGENT_STEPS=5`）は実装済みだが、**クロスターンの連続行動**の設計がない。
+1ターン内の多段（`MAX_SUBAGENT_STEPS=3` / `MAX_RECALL_STEPS=3`）は実装済みだが、**クロスターンの連続行動**の設計がない。
 
 例: webSearch でAを調べた → 次のハートビートで「Aの結果を踏まえてBを深掘りしよう」が成立するには、workingMemory 内の独り言「次はBを調べよう」が actor の activate に届く必要がある。これは現在 ACTOR_CONTEXT_TURNS=3 で機能する可能性があるが、独り言が「調べたい気持ち」という感情的表現だと具体的なクエリにならない。
 
@@ -88,21 +88,15 @@
 
 ## 次にやること（おすすめ順）
 
-### 1. filesystem MCP の導入（1-B の残り）
+### 1. ~~filesystem MCP の導入（サブディレクトリ書き込み）~~ ✅ memo-tree で解決
 
-**状態:** 未実装  
-**理由:** 1-A・1-B の読み取り側は完成しているが、エージェントがサブディレクトリにファイルを**書く**手段がない。`normalizeWriteArgs` がスラッシュを含むパスを拒否するため、in-process の `memo_write` は現在フラットなファイル名のみ対応。
+**状態:** 解決済み（filesystem MCP は不要になった）  
+当初の課題「エージェントがサブディレクトリにファイルを書く手段がない」は、**統合 `memo` actor の `writeNoteContent`（`safePath` でサブディレクトリ保全・親フォルダ自動作成）** で解消。MOC ツリーが話題フォルダを自前で作り、`_index.md` を機械再生成する（[MEMO-TREE.md](MEMO-TREE.md)）。旧 `normalizeWriteArgs` のフラット化制約を回避する専用プリミティブ（`writeNoteContent`）を用意したため、外部 filesystem MCP に頼る必要がなくなった。
 
-- `@modelcontextprotocol/server-filesystem` MCP を `config/mcp.json` に追加
-- `list_directory` / `read_file` / `write_file` を research/express から呼べるようにする
-- エージェントが自分でディレクトリ構造を決めてファイルを作れるようになる
+### 2. 自発的な `distill`（蒸留を会話中にも）
 
-> `normalizeWriteArgs` のサブディレクトリ対応は filesystem MCP 側で解決する設計のため、in-process 側は変更不要。
-
-### 2. `distill` ツール実装（スタブ解除）
-
-**状態:** スタブ（`memory.ts` で「未対応」を返すだけ）  
-**前提:** 1-B filesystem MCP 完了後に着手
+**状態:** 蒸留は `npm run dream` バッチで動作中。会話中に自発実行する action-tool 経路は、legacy カテゴリ・サブエージェント削除（2026-06）と共に撤去済み＝再導入は新規作業。  
+**前提:** なし（filesystem MCP 不要に）
 
 実装することで会話中にエージェントが自発的に知識整理できるようになる。
 
@@ -172,7 +166,7 @@ express MCP サーバに追加し、express サブエージェントがカタロ
   - `affect` / `concern` = ターン単位で書き換わる内心
   - 長期ゴール = 複数ターン・複数日にわたる関心・やりかけのこと
 - **heartbeat の自発行動**: heartbeat が「応答待ち」ではなく「自分の議題を進める」判断をする
-- **State 拡張の可能性**: `対話` / `静穏` の2値では表現しきれなくなる可能性あり。ログを観察してから設計する（CONCEPT.md §State 参照）
+- **State 拡張の可能性**: 現状 `対話` / `静穏` / `集中` の3値（`集中`＝focusPlan に取り組むモード・追加済み）。さらに表現しきれなくなる可能性はログを観察してから設計（CONCEPT.md §State 参照）
 
 **設計上の最重要制約**: 自律性を持たせる部分こそ「予測ゲートの罠」に最もはまりやすい。  
 「次に何をしたいか」ではなく「前のターンで何が起きたか（結果の観測）」を起点に行動を決める設計を守ること。

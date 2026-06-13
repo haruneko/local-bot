@@ -10,7 +10,7 @@ import type {
   AgentState,
   ConversationTurn,
 } from "../types.js";
-import { buildContextClock } from "../sensor/datetime.js";
+import { buildContextClock, formatRelativeTime } from "../sensor/datetime.js";
 import {
   formatDialogueTurn,
   formatWorkingMemoryDialogue,
@@ -299,6 +299,7 @@ function appendRecalledEpisodes(parts: string[], ctx: TurnContext): void {
     "",
     "## 背景の記憶（口に出さない・参考のみ）",
     "（これは過去の内省。ユーザーには見せていない。口調の台本として使わない）",
+    "（各項目の先頭 [N分前/N日前] はその記憶が作られた時点。記憶の中の「明日」「今日」「さっき」はその時点が基準＝いまの話とは限らない。古い記憶を今の事実として喋らない）",
     ...ctx.recalledEpisodes.map((ep, i) => {
       const tag =
         ep.presentation === "vague"
@@ -306,7 +307,10 @@ function appendRecalledEpisodes(parts: string[], ctx: TurnContext): void {
           : ep.presentation === "summarize"
             ? "（要約）"
             : "";
-      return `${i + 1}. ${tag}${ep.presented}`;
+      const when = ep.occurredAt
+        ? `[${formatRelativeTime(ep.occurredAt, ctx.now)}] `
+        : "";
+      return `${i + 1}. ${when}${tag}${ep.presented}`;
     }),
   );
 }

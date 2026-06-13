@@ -34,12 +34,49 @@ export function formatActionSummary(facts: ActionFacts): string {
       return `${facts.tool} で調べた結果: ${truncateBody(facts.body, 500)}`;
     case "express":
       return `${facts.tool} に送った: ${truncateBody(facts.body, 500)}`;
+    case "synthesize":
+      return `${noteDisplayPath(facts.filename)} に書き起こした:\n${truncateBody(facts.body)}`;
     case "plan":
       return `${noteDisplayPath(facts.filename)} の計画を更新した:\n${truncateBody(facts.body)}`;
   }
 }
 
-export function formatActionFactContent(action: ActionOutcome): string {
+/** 言語野・内省に渡す本文の冒頭量（〜4文・手触りだけ）。全文は別経路でユーザーに届く */
+const HEAD_PREVIEW_CHARS = 120;
+
+function headPreview(text: string, max = HEAD_PREVIEW_CHARS): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max)}…`;
+}
+
+/** 本文の分量メタ（内省が「これだけ作った」量感を掴むため） */
+function bodyMeta(text: string): string {
+  const t = text.trim();
+  const lines = t ? t.split("\n").length : 0;
+  return `全${t.length}字・${lines}行`;
+}
+
+/** facts の本文を渡す宛先。長さの扱いを宛先で非対称にする（ユーザー出力は別関数で全文） */
+type FactAudience = "language" | "introspection";
+
+/**
+ * 生テキスト系の長い本文を宛先別に短縮する。
+ * - language: 冒頭＋「全文は相手に別途そのまま届く＝ここで書き写さない」（二重生成・劣化を防ぐ）
+ * - introspection: 冒頭＋分量メタ（全文は works/・memo_index が正本。手応えだけ残す）
+ */
+function shrinkBody(body: string, audience: FactAudience): string {
+  const head = headPreview(body);
+  if (audience === "language") {
+    return `${head}\n（全文は相手に別途そのまま届く。ここで書き写さず、一言添えるだけにする）`;
+  }
+  return `${head}（${bodyMeta(body)}）`;
+}
+
+export function formatActionFactContent(
+  action: ActionOutcome,
+  audience: FactAudience = "language",
+): string {
   if (!action.attempted) {
     return "（行動なし）";
   }
@@ -55,12 +92,12 @@ export function formatActionFactContent(action: ActionOutcome): string {
     case "memo_read":
       return [
         `${facts.filename} のメモを読んでみた。こんなことが書いてあった:`,
-        facts.body,
+        shrinkBody(facts.body, audience),
       ].join("\n");
     case "memo_write":
       return [
         `${facts.filename} のメモに書き込んだ:`,
-        facts.body,
+        shrinkBody(facts.body, audience),
       ].join("\n");
     case "remember":
       return ["こんなことを記憶に残した:", facts.body].join("\n");
@@ -75,7 +112,7 @@ export function formatActionFactContent(action: ActionOutcome): string {
       return [
         `${facts.tool} で調べてみたら、こんな情報が見つかった:`,
         facts.title ? `件名: ${facts.title}` : "",
-        facts.body,
+        shrinkBody(facts.body, audience),
       ]
         .filter(Boolean)
         .join("\n");
@@ -83,13 +120,65 @@ export function formatActionFactContent(action: ActionOutcome): string {
       return [
         `${facts.tool} を使って送った:`,
         facts.title ? `件名: ${facts.title}` : "",
-        facts.body,
+        shrinkBody(facts.body, audience),
       ]
         .filter(Boolean)
         .join("\n");
+    case "synthesize":
+      return [
+        `${facts.filename} に、想起と外部情報と自分の感性を統合してこれを書き起こした:`,
+        shrinkBody(facts.body, audience),
+      ].join("\n");
     case "plan":
       return [`${facts.filename} の計画ノートを更新した:`, facts.body].join("\n");
   }
+}
+
+/**
+ * preprocess 時点の context に無い「新しく立ち上がった情報」を運ぶ facts か。
+ * 原則: そのターンのプリプロセスまでの情報を読んでも出てこない情報は全文ユーザーに出す。
+ * - synthesize: 生成した成果物 / research: 外部から取得 / memo_read: ファイル全文をこのターンで初ロード（読み上げ意図）
+ * - memo_write(既出の転記)・recall(想起要約)・plan・forget は対象外
+ */
+export function factExternalizesNewInfo(facts: ActionFacts): boolean {
+  switch (facts.kind) {
+    case "synthesize":
+    case "research":
+    case "memo_read":
+      return true;
+    default:
+      return false;
+  }
+}
+
+/**
+ * ユーザー（チャットチャンネル）向け。新規情報 facts のみ本文を**全文**返す（無ければ null）。
+ * speech とは別経路で成果物・調査結果をそのまま届ける＝言語野に再生成させない。
+ * 音声チャンネル等、本文を読み上げない宛先では呼び出し側が出さない選択をする。
+ */
+export function formatActionForUserOutput(action: ActionOutcome): string | null {
+  if (!action.attempted || action.status !== "succeeded" || !action.facts) {
+    return null;
+  }
+  const facts = action.facts;
+  if (!factExternalizesNewInfo(facts)) return null;
+  switch (facts.kind) {
+    case "synthesize":
+      return facts.body;
+    case "memo_read":
+      return facts.body;
+    case "research":
+      return facts.title ? `【${facts.title}】\n${facts.body}` : facts.body;
+    default:
+      return null;
+  }
+}
+
+/** このターンの全 ActionOutcome から、ユーザーに全文提示する成果物本文を集める */
+export function collectUserArtifacts(actions: ActionOutcome[]): string[] {
+  return actions
+    .map((a) => formatActionForUserOutput(a))
+    .filter((s): s is string => s !== null && s.trim() !== "");
 }
 
 type AttemptedAction = Extract<ActionOutcome, { attempted: true }>;
@@ -103,7 +192,7 @@ function formatActionContentForIntrospection(
     }
     return action.summary;
   }
-  return formatActionFactContent(action);
+  return formatActionFactContent(action, "introspection");
 }
 
 export function formatActionForIntrospection(action: ActionOutcome): string {

@@ -102,6 +102,8 @@ export type ClassifiedRecallHit = {
   distance: number;
   presentation: RecallPresentation;
   relevance: number;
+  /** エピソードの発生時刻（ISO 8601）。想起提示で「N分前/N日前」に変換する用 */
+  occurredAt?: string;
 };
 
 export type RecallScoreOptions = {
@@ -147,6 +149,7 @@ export function classifyRecallHits(
       presentation,
       relevance:
         baseRelevance * importanceScore * inhibitionPenalty * speakerBoost,
+      occurredAt: hit.timestamp,
     });
   }
 

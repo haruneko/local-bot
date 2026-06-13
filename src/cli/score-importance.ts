@@ -6,13 +6,13 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { tryParseJsonWithSchema } from "../action/parse-json.js";
 
-const IMPORTANCE_SYSTEM = `エピソード記憶を読み、重要度を 1〜10 の整数で採点してください。
+const IMPORTANCE_SYSTEM = `エピソード記憶を読み、記憶としての残りやすさ（相手を気にかける存在として、心に残るほど高い）を 1〜10 の整数で採点してください。
 出力は JSON オブジェクト1つだけ: {"importance": 数値}
 
 採点基準:
-10〜8: 新しい発見・強い感情・自分の判断に大きく影響する出来事
+10〜8: 相手の気持ち・状態がにじんだ／相手のことが新しく分かった（好み・予定・約束・困りごと）／頼まれた・相談された／関係の機微、または新しい発見・自分の判断に影響する出来事
 7〜5: 普通の会話・いくらか有意義な出来事
-4〜2: 前のターンとほぼ同じ内容の繰り返し・特に変化のない出来事
+4〜2: 相槌・定型・前のターンとほぼ同じ内容の繰り返し・特に変化のない出来事
 1: 完全な繰り返し・情報なし`;
 
 const importanceSchema = z.object({ importance: z.number().int().min(1).max(10) });

@@ -6,4 +6,5 @@ export type ActionFacts =
   | { kind: "forget"; body: string }
   | { kind: "research"; tool: string; title: string; body: string }
   | { kind: "express"; tool: string; title: string; body: string }
+  | { kind: "synthesize"; filename: string; body: string }
   | { kind: "plan"; planId: string; filename: string; body: string; achieved: boolean };

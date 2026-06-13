@@ -8,15 +8,25 @@
  *   一致しなければ失敗（盲目改変しない）。
  */
 export type MemoOp = {
-  op: "view" | "create" | "append" | "replace" | "section_replace" | "noop";
+  op:
+    | "view"
+    | "create"
+    | "append"
+    | "replace"
+    | "section_replace"
+    | "replace_line"
+    | "delete_line"
+    | "noop";
   /** create のとき新規パス。他の op では caller が pick 済みの対象を使う */
   filename?: string;
-  /** create=初期本文 / append=追記分 / replace=置換後 / section_replace=見出し下の新本文 */
+  /** create=初期本文 / append=追記分 / replace=置換後 / section_replace=見出し下の新本文 / replace_line=その行の新しい内容 */
   content?: string;
   /** replace: 置き換える既存の厳密な部分文字列 */
   old?: string;
   /** section_replace: 対象セクションの見出し行（例 "## サビ"） */
   heading?: string;
+  /** replace_line / delete_line: 対象の行番号（1始まり。提示された番号付き本文の番号） */
+  line?: number;
 };
 
 export type MemoApplyResult =
@@ -108,7 +118,11 @@ export function applyMemoOp(
         return { ok: true, opKind: "create", nextContent: `${content}\n` };
       }
       const base = current.replace(/\s*$/, "");
-      return { ok: true, opKind: "append", nextContent: `${base}\n\n${content}\n` };
+      // リスト項目（- / * / + / 1.）の追記は1行間隔、散文は段落（空行）間隔。
+      // 判定するのは LLM が今出した content の形だけ（既存 markdown はパースしない）。
+      const isListItem = /^\s*([-*+]|\d+[.)])\s/.test(content);
+      const sep = isListItem ? "\n" : "\n\n";
+      return { ok: true, opKind: "append", nextContent: `${base}${sep}${content}\n` };
     }
 
     case "replace": {
@@ -140,6 +154,30 @@ export function applyMemoOp(
         opKind: "section_replace",
         nextContent: newLines.join("\n"),
       };
+    }
+
+    case "replace_line": {
+      // 行番号で1行を差し替え（厳密 old 文字列を作らせない＝弱モデルでも堅い。提示は番号付き本文）
+      if (current === null) return { ok: false, reason: "replace_line 対象の本文が無い" };
+      const lines = current.split("\n");
+      const idx = (op.line ?? 0) - 1; // 1始まり
+      if (idx < 0 || idx >= lines.length) {
+        return { ok: false, reason: `replace_line の行番号 ${op.line} が範囲外（1〜${lines.length}）` };
+      }
+      lines[idx] = op.content ?? "";
+      return { ok: true, opKind: "replace_line", nextContent: lines.join("\n") };
+    }
+
+    case "delete_line": {
+      // 行番号で1行を削除（項目1個の削除＝厳密一致 replace の脆さを回避）
+      if (current === null) return { ok: false, reason: "delete_line 対象の本文が無い" };
+      const lines = current.split("\n");
+      const idx = (op.line ?? 0) - 1;
+      if (idx < 0 || idx >= lines.length) {
+        return { ok: false, reason: `delete_line の行番号 ${op.line} が範囲外（1〜${lines.length}）` };
+      }
+      lines.splice(idx, 1);
+      return { ok: true, opKind: "delete_line", nextContent: lines.join("\n") };
     }
   }
 }

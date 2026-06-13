@@ -1,9 +1,20 @@
 import type { z } from "zod";
 import { truncateErrorDetail } from "./error.js";
 
-/** LLM が ```json 付きで返したときなどを吸収する */
+/**
+ * 推論モデル（qwen3 等）が think=false でも吐く `<think>…</think>` を除去する。
+ * think ブロック内には例示の `{` `}` が混じるため、JSON 抽出の前に必ず落とす。
+ * 閉じていない `<think>`（生成途中で切れた）も末尾まで落とす。
+ */
+export function stripThinkBlocks(raw: string): string {
+  return raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<think>[\s\S]*$/i, "");
+}
+
+/** LLM が ```json 付き・前置きの <think>・前後テキストで返したときなどを吸収する */
 export function extractJsonText(raw: string): string {
-  const trimmed = raw.trim();
+  const trimmed = stripThinkBlocks(raw).trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/i);
   if (fenced) return fenced[1].trim();
 
