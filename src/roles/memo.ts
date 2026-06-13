@@ -78,9 +78,9 @@ export async function runMemo(
             lastUserMessage ? `相手があなたに言ったこと: ${lastUserMessage}` : "",
             "",
             target
-              ? `対象メモ: ${target}（下が現在の全文）`
-              : "対象メモ: なし（新規に書くなら create で filename を付ける）",
-            target ? "----- 現在の全文 -----" : "",
+              ? `候補メモ: ${target}（下が現在の全文。意図と別主題なら無視して create で新規にしてよい）`
+              : "候補メモ: なし（新規に書くなら create で filename を付ける）",
+            target ? "----- 候補の現在の全文 -----" : "",
             target ? (current ?? "（空ファイル）") : "",
           ]
             .filter(Boolean)
@@ -125,8 +125,23 @@ export async function runMemo(
     return actionSucceeded(action, "メモは変更しなかった");
   }
 
-  // 書き込み系 op を純関数で適用
-  const result = applyMemoOp(current, op);
+  // 書き込み先と基準本文を op の意味で解決する。
+  // create は descent 候補を無視して新規パスへ（衝突不能）。
+  // ただし新規パスに既存があれば上書きせず append に倒す（データ保全）。
+  let filename: string;
+  let baseContent: string | null;
+  let effectiveOp = op;
+  if (op.op === "create") {
+    filename = resolveFilename(op.filename) ?? target ?? defaultNoteFilename();
+    baseContent = await readNoteContent(filename);
+    if (baseContent !== null) effectiveOp = { ...op, op: "append" }; // 既存→追記に倒す
+  } else {
+    // append / replace / section_replace は descent 候補（全文ロード済み）を対象にする
+    filename = target ?? resolveFilename(op.filename) ?? defaultNoteFilename();
+    baseContent = target ? current : null;
+  }
+
+  const result = applyMemoOp(baseContent, effectiveOp);
   if (!result.ok) {
     return actionFailed(action, "メモ操作を適用できなかった", {
       code: ACTION_ERROR_CODES.INVALID_ARGS,
@@ -137,8 +152,6 @@ export async function runMemo(
     return actionSucceeded(action, "メモは変更しなかった");
   }
 
-  const filename =
-    target ?? resolveFilename(op.filename) ?? defaultNoteFilename();
   const written = await writeNoteContent(filename, result.nextContent);
   if (!written) {
     return actionFailed(action, "メモファイルへの書き込みに失敗した", {

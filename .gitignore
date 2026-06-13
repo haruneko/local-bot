@@ -8,3 +8,4 @@ data/notes/*
 data/plans/
 .env
 *.log
+article/

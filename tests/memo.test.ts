@@ -152,6 +152,32 @@ describe("runMemo（統合 actor・連想ディセント）", () => {
     }
   });
 
+  it("descent が無関係な既存葉に当たっても、op=create は候補を無視して新規作成（衝突回避）", async () => {
+    await writeNoteContent("既存の別メモ.md", "全然ちがう話題");
+    const llm = new FakeLlmClient([
+      JSON.stringify({ filename: "既存の別メモ.md" }), // descent が誤って既存を選ぶ
+      // op は候補を見て別主題と判断し create で新規パスへ
+      JSON.stringify({ op: "create", filename: "新曲メモ.md", content: "新しい曲のアイデア" }),
+    ]);
+    const outcome = await runMemo(llm, makeInput("新曲のメモを作る"));
+    expect(outcome.attempted && outcome.status).toBe("succeeded"); // 衝突で落ちない
+    expect(await readNoteContent("新曲メモ.md")).toContain("新しい曲のアイデア");
+    expect(await readNoteContent("既存の別メモ.md")).toBe("全然ちがう話題"); // 既存は無傷
+  });
+
+  it("create 先に同名既存があれば上書きせず append に倒す（データ保全）", async () => {
+    await writeNoteContent("ノート.md", "元の本文");
+    const llm = new FakeLlmClient([
+      JSON.stringify({ filename: null }), // descent null（新規のつもり）
+      JSON.stringify({ op: "create", filename: "ノート.md", content: "追加分" }),
+    ]);
+    const outcome = await runMemo(llm, makeInput("ノートに何か"));
+    expect(outcome.attempted && outcome.status).toBe("succeeded");
+    const content = await readNoteContent("ノート.md");
+    expect(content).toContain("元の本文"); // 上書きされない
+    expect(content).toContain("追加分"); // 追記される
+  });
+
   it("op のパース失敗時は失敗で返す", async () => {
     const llm = new FakeLlmClient(["not json", "not json"]);
     const outcome = await runMemo(llm, makeInput("何か"));
