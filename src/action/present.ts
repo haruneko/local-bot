@@ -135,17 +135,17 @@ export function formatActionFactContent(
 }
 
 /**
- * preprocess 時点の context に無い「新しく立ち上がった情報」を運ぶ facts か。
- * 原則: そのターンのプリプロセスまでの情報を読んでも出てこない**成果物**は全文ユーザーに出す。
- * - synthesize: 生成した成果物 / memo_read: ファイル全文をこのターンで初ロード（読み上げ意図）
- * - **research は対象外**: 多ソースの生 dump は中間素材でチャットを流す。答え・要点は speech が運ぶ
- *   （language/内省は research facts を引き続き参照する＝この関数はユーザー出力の可否だけ）。
- * - memo_write(既出の転記)・recall(想起要約)・plan・forget も対象外
+ * preprocess 時点の context に無い「新しく立ち上がった情報」をユーザーに出す facts か。
+ * 原則: そのターンのプリプロセスまでの情報を読んでも出てこない情報は出す。ただし量は kind 次第：
+ * - synthesize / memo_read: 成果物・読み上げ＝**全文**（既存ファイルあり）
+ * - research: **要約だけ**（多ソースの生 dump=全文 body はチャットを流すので出さない・要点は届ける）
+ * - memo_write(既出の転記)・recall(想起要約)・plan・forget は対象外
  */
 export function factExternalizesNewInfo(facts: ActionFacts): boolean {
   switch (facts.kind) {
     case "synthesize":
     case "memo_read":
+    case "research":
       return true;
     default:
       return false;
@@ -168,6 +168,12 @@ export function formatActionForUserOutput(action: ActionOutcome): string | null 
       return facts.body;
     case "memo_read":
       return facts.body;
+    case "research": {
+      // 全文 body でなく要約だけ（dump を避ける）。要点は届けるが流さない
+      const s = facts.summary.trim();
+      if (!s) return null;
+      return facts.title ? `【${facts.title}】\n${s}` : s;
+    }
     default:
       return null;
   }

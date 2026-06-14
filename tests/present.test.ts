@@ -120,6 +120,7 @@ describe("formatActionSummary", () => {
         kind: "research",
         tool: "web_search",
         title: "天気",
+        summary: "晴れ",
         body: "晴れ",
       },
       summary: "web_search: 晴れ",

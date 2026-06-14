@@ -246,7 +246,24 @@ export async function runResearchSubagent(
     kind: "research",
     tool: lastTool || "research",
     title: action.intent,
+    // ユーザーには要約だけ返す（全文 dump はチャットを流す）
+    summary: researchSummaryForUser(lastContent, lastSummary),
     body: lastContent || lastSummary,
   });
+}
+
+/**
+ * ユーザーに返す research 要約を本文から取り出す。
+ * web_search の本文は「要約: <Tavily の答え>\n\n[出典...]」で始まる（mcp-research.mjs）ので
+ * その要約部分だけ返す。それ以外（browse 等）は本文冒頭を短く。
+ * MCP client の `summary` は "X を実行した" の汎用ラベル（中身なし）なので使わない。
+ */
+export function researchSummaryForUser(content: string, fallbackSummary: string): string {
+  const c = (content ?? "").trim();
+  if (c.startsWith("要約:")) {
+    const idx = c.indexOf("\n\n");
+    return (idx > 0 ? c.slice(0, idx) : c.slice(0, 600)).trim();
+  }
+  return c.slice(0, 500).trim() || fallbackSummary;
 }
 

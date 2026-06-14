@@ -15,20 +15,27 @@ function outcome(facts: ActionFacts) {
 }
 
 describe("出力の3宛先非対称（ユーザー全文 / 言語野・内省は冒頭120字）", () => {
-  it("ユーザー出力: 成果物(synthesize/memo_read)だけ全文・research は出さない", () => {
+  it("ユーザー出力: synthesize/memo_read は全文・research は要約だけ（全文 dump は出さない）", () => {
     const arts = collectUserArtifacts([
       outcome({ kind: "synthesize", filename: "works/a.md", body: long }),
-      // research は多ソースの生 dump＝中間素材。要点は speech が運ぶのでユーザー出力しない
-      outcome({ kind: "research", tool: "web", title: "件名", body: "調査本文" }),
+      // research は要約だけ返す。多ソースの生 dump（body）は流さない
+      outcome({
+        kind: "research",
+        tool: "web",
+        title: "件名",
+        summary: "要約: 結論はこれ",
+        body: "要約: 結論はこれ\n\n[1] 長い出典 " + long,
+      }),
       outcome({ kind: "memo_read", filename: "n.md", body: "メモ全文" }),
-      // 以下も出さない（プリプロセスまでで既知 or 短い）
+      // 以下は出さない（プリプロセスまでで既知 or 短い）
       outcome({ kind: "memo_write", filename: "n.md", body: long }),
       outcome({ kind: "recall", bullets: ["x"] }),
     ]);
-    expect(arts).toHaveLength(2);
-    expect(arts[0]).toBe(long); // synthesize は全文（truncate しない）
-    expect(arts[1]).toBe("メモ全文"); // memo_read は全文
-    expect(arts.join("\n")).not.toContain("調査本文"); // research は流さない
+    expect(arts).toHaveLength(3);
+    expect(arts[0]).toBe(long); // synthesize は全文
+    expect(arts[1]).toContain("結論はこれ"); // research は要約
+    expect(arts[1]).not.toContain("[1] 長い出典"); // 全文 dump は出さない
+    expect(arts[2]).toBe("メモ全文"); // memo_read は全文
   });
 
   it("言語野: 長い成果物は冒頭に縮め『書き写すな』注記が付く", () => {
