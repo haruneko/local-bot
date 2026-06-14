@@ -36,6 +36,7 @@ import type { SemanticStore } from "../memory/semantic.js";
 import { InMemoryMemoIndexStore, type MemoIndexStore } from "../memory/memo-index.js";
 import { LanceMemoIndexStore } from "../memory/memo-index-lancedb.js";
 import { OllamaEmbedClient, OllamaLlmClient } from "../llm/ollama.js";
+import { configureLlmConcurrency } from "../llm/limit.js";
 import { withVerboseLlm } from "../llm/logging.js";
 import type { EpisodeStore } from "../memory/episode.js";
 import type { LlmClient } from "../llm/types.js";
@@ -122,6 +123,8 @@ export async function createApp(
   const toolCatalog: CatalogTool[] = await buildToolCatalog(mcp);
 
   const host = resolveOllamaHost(settings);
+  // 全 LLM client を作る前に同時実行上限を設定する（毎ターンの活性化バーストでサーバを溢れさせない）
+  configureLlmConcurrency(settings.ollamaMaxConcurrency ?? 4);
   const verboseLogger =
     options.logLevel && options.logLevel !== "quiet"
       ? createVerboseLogger(options.logLevel)

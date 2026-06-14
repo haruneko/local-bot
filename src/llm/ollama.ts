@@ -1,6 +1,7 @@
 import { Ollama } from "ollama";
 import type { OllamaThinkSetting } from "../config/settings.js";
 import type { ChatMessage, ChatOptions, LlmClient } from "./types.js";
+import { runLimited, withLlmRetry } from "./limit.js";
 
 export type OllamaClientConfig = {
   host: string;
@@ -26,19 +27,24 @@ export class OllamaLlmClient implements LlmClient {
     messages: ChatMessage[],
     options?: ChatOptions,
   ): Promise<string> {
-    const response = await this.client.chat({
-      model: this.config.model,
-      messages,
-      stream: false,
-      format: options?.format,
-      think: this.config.think ?? false,
-      options: {
-        temperature: options?.temperature ?? 0.7,
-        ...(this.config.numCtx !== undefined && { num_ctx: this.config.numCtx }),
-        ...(options?.numPredict !== undefined && { num_predict: options.numPredict }),
-      },
-    });
-    return response.message.content;
+    // 同時実行リミッタ越し＋一過性エラーは1回リトライ（サーバ過負荷・瞬断に強くする）
+    return runLimited(() =>
+      withLlmRetry(async () => {
+        const response = await this.client.chat({
+          model: this.config.model,
+          messages,
+          stream: false,
+          format: options?.format,
+          think: this.config.think ?? false,
+          options: {
+            temperature: options?.temperature ?? 0.7,
+            ...(this.config.numCtx !== undefined && { num_ctx: this.config.numCtx }),
+            ...(options?.numPredict !== undefined && { num_predict: options.numPredict }),
+          },
+        });
+        return response.message.content;
+      }),
+    );
   }
 }
 
@@ -53,15 +59,20 @@ export class OllamaEmbedClient {
     if (!text.trim()) {
       return embedEmptyVector(this.client, this.model);
     }
-    const response = await this.client.embed({
-      model: this.model,
-      input: text,
-    });
-    const first = response.embeddings[0];
-    if (!first?.length) {
-      throw new Error("Ollama embed returned empty vector");
-    }
-    return first;
+    // chat と同じ Ollama を叩くので同じリミッタを共有する
+    return runLimited(() =>
+      withLlmRetry(async () => {
+        const response = await this.client.embed({
+          model: this.model,
+          input: text,
+        });
+        const first = response.embeddings[0];
+        if (!first?.length) {
+          throw new Error("Ollama embed returned empty vector");
+        }
+        return first;
+      }),
+    );
   }
 }
 
