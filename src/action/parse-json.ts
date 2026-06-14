@@ -37,6 +37,15 @@ export function repairCommonJsonErrors(text: string): string {
     .replace(/,\s*]/g, "]");
 }
 
+/**
+ * qwen が開いたオブジェクト（subagent の arguments 等）で引用符を過剰エスケープし
+ * `{"query\":\"値\"}` のような不正 JSON を吐くことがある。`\"`→`"` で戻す。
+ * 元が正しい JSON なら候補の先頭で通るので、これは壊れた時だけ効くフォールバック。
+ */
+export function deEscapeQuotes(text: string): string {
+  return text.replace(/\\"/g, '"');
+}
+
 export type ParseJsonFailure = {
   reason: "empty" | "json_syntax" | "schema";
   rawPreview: string;
@@ -59,6 +68,9 @@ export function tryParseJsonWithSchema<T>(
       extracted,
       repairCommonJsonErrors(trimmed),
       repairCommonJsonErrors(extracted),
+      // 過剰エスケープ（`{"k\":\"v\"}`）の救済。元が正しければ上の候補で通るので最後に置く
+      deEscapeQuotes(extracted),
+      deEscapeQuotes(repairCommonJsonErrors(extracted)),
     ]),
   ].filter(Boolean);
   let lastSyntaxMessage: string | undefined;
