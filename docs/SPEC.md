@@ -184,7 +184,7 @@ type ActionOutcome = { attempted: false } | {
   source: "remember" | "introspection";
   reply: boolean;
   turnId: string;
-  importance?: number;    // 重要度 1-10。内省 LLM が採点。未設定時は 5 扱い
+  importance?: number;    // 重要度 1-10。内心更新（affect）と同じ呼び出しで採点（DECISIONS §内省の見える範囲）。未設定時は 5 扱い
 }
 ```
 

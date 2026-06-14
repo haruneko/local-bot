@@ -606,7 +606,7 @@ export class TurnOrchestrator {
         source: "introspection" as const,
         reply: !!ctx.speech?.trim(),
         turnId,
-        importance: introResult.importance,
+        importance: affectResult.importance,
       };
       await this.deps.episodes.append({ body: introspection, metadata });
       this.pushRecentEpisodeTurnId(turnId);

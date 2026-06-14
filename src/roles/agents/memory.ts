@@ -59,7 +59,7 @@ export async function runRecallLoop(
   }
 
   if (allBullets.length === 0) {
-    return actionSucceeded(action, "（該当する記憶は見つからなかった）");
+    return actionSucceeded(action, "記憶を探したが、思い当たるものは無かった");
   }
   return actionSucceeded(action, { kind: "recall", bullets: [...new Set(allBullets)] });
 }

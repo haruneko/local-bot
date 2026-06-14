@@ -54,4 +54,22 @@ describe("coerceToolArgs", () => {
     const r = coerceToolArgs(schema, { other: { nested: true } });
     expect(r).toEqual({ ok: true, args: { other: { nested: true } } });
   });
+
+  it("rescues a misnamed single string arg into the missing required key (q→query)", () => {
+    const schema = { properties: { query: { type: "string" } }, required: ["query"] };
+    const r = coerceToolArgs(schema, { q: "今流行ってる曲" });
+    expect(r.ok && r.args.query).toBe("今流行ってる曲");
+    expect(r.ok && "q" in r.args).toBe(false);
+  });
+
+  it("rescues a misnamed single string into url too (q→url)", () => {
+    const r = coerceToolArgs(urlSchema, { q: "https://example.com/charts" });
+    expect(r.ok && r.args.url).toBe("https://example.com/charts");
+  });
+
+  it("does NOT guess when multiple stray strings are present (ambiguous → fail)", () => {
+    const schema = { properties: { query: { type: "string" } }, required: ["query"] };
+    const r = coerceToolArgs(schema, { q: "a", keyword: "b" });
+    expect(r.ok).toBe(false);
+  });
 });

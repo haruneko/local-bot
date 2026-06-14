@@ -38,7 +38,23 @@ export function coerceToolArgs(
     }
   }
 
+  // キー名取り違えの救済: 必須 string が欠落していて、スキーマに無いキーに string が
+  // ちょうど1つだけ来ている場合（小モデルが query→q / url→link 等と名前を間違える）、
+  // その値を欠落している必須キーへ移す。曖昧（複数候補）なら触らず正直に弾く。
   const required = schema.required ?? [];
+  for (const reqKey of required) {
+    if (props[reqKey]?.type !== "string") continue;
+    const cur = out[reqKey];
+    if (typeof cur === "string" && cur.trim() !== "") continue;
+    const spares = Object.entries(out).filter(
+      ([k, v]) => !(k in props) && typeof v === "string" && v.trim() !== "",
+    );
+    if (spares.length === 1) {
+      out[reqKey] = spares[0][1];
+      delete out[spares[0][0]];
+    }
+  }
+
   const invalid: string[] = [];
   for (const key of required) {
     const value = out[key];

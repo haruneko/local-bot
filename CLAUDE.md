@@ -54,7 +54,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 
 | 層 | 保存先 | 読み出し時の方針 |
 |----|--------|------------------|
-| エピソード記憶 | `data/lancedb/` `episodes` | LLM 要約・グラデーション（full/summarize/vague）OK＝ふんわり思い出す。内省が毎ターン書き、`importance`（1-10）も採点。importance は「気にかけ度」寄り（相手の気持ち・新たに分かった相手のこと・頼まれた等を高く）＝意図的記憶の代替。想起の relevance に効く（減衰に抗う） |
+| エピソード記憶 | `data/lancedb/` `episodes` | LLM 要約・グラデーション（full/summarize/vague）OK＝ふんわり思い出す。内省が毎ターン本文を書く。`importance`（1-10）は**内心更新（affect）と同じ呼び出しで採点**＝生まれたての感情を根拠に符号化強度を決める（内省は感情の前に走るので付けない・DECISIONS §内省の見える範囲）。importance は「気にかけ度」寄り（相手の気持ち・新たに分かった相手のこと・頼まれた等を高く）＝意図的記憶の代替。想起の relevance に効く（減衰に抗う） |
 | 意味記憶 | `data/lancedb/` `semantic` | 夢で蒸留した知識 |
 | メモインデックス | `data/lancedb/` `memo_index` | 「どこに何を書いたか」の所在管理。`memo` のメモ書き込み成功時に機械的 upsert。減衰しない |
 | 共有メモ本文 | `data/notes/**/*.md` | **本文を LLM で要約しない**（劣化禁止）。構造保存的な op 編集（厳密置換・見出し差し替え）は read-before-edit を条件に可。全文を `facts.body` に載せる。階層ディレクトリ可 |

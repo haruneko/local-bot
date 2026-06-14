@@ -189,17 +189,21 @@ export class LanceEpisodeStore implements EpisodeStore {
       }));
   }
 
+  // 注意: SQL フィルタは **小文字の id 列**（= turnId と同値・append で id:turnId をセット）で引く。
+  // camelCase の `turnId` 列は datafusion の罠で引けない: 無クォートだと識別子が小文字化され
+  // `turnid` で「列なし」エラー、ダブルクォートだと（この lance 版の不具合で）値マッチが 0 になる。
+  // `id` は小文字なので無クォートで正しく引ける。
   async softDelete(turnId: string): Promise<boolean> {
     const table = await this.ensureTable();
     const escaped = turnId.replace(/'/g, "''");
     const rows = await table
       .query()
-      .where(`turnId = '${escaped}'`)
+      .where(`id = '${escaped}'`)
       .limit(1)
       .toArray();
     if (rows.length === 0) return false;
     await table.update({
-      where: `turnId = '${escaped}'`,
+      where: `id = '${escaped}'`,
       valuesSql: { deleted: "true" },
     });
     return true;
@@ -209,7 +213,7 @@ export class LanceEpisodeStore implements EpisodeStore {
     const table = await this.ensureTable();
     const escaped = turnId.replace(/'/g, "''");
     await table.update({
-      where: `"turnId" = '${escaped}'`,
+      where: `id = '${escaped}'`,
       valuesSql: { importance: String(importance) },
     });
   }

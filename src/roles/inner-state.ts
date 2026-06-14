@@ -6,6 +6,9 @@ import { actionLabelJa } from "../action/types.js";
 import { AFFECT_CONCERN_SYSTEM } from "../prompts/roles.js";
 import type { ChatMessage, LlmClient } from "../llm/types.js";
 import type { ActionOutcome } from "../types.js";
+import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import { tryParseJsonWithSchema } from "../action/parse-json.js";
 
 export type UpdateAffectAndConcernInput = {
   prevAffect: string;
@@ -19,7 +22,23 @@ export type UpdateAffectAndConcernInput = {
 export type AffectAndConcern = {
   affect: string;
   concern: string;
+  /** このターンの記憶の残りやすさ（1-10）。いま生成した affect の動きを根拠に採点する＝
+   *  情動的顕著性で符号化強度を決める。内省ではなくここで付ける（DECISIONS §内省の見える範囲） */
+  importance: number;
 };
+
+const DEFAULT_IMPORTANCE = 5;
+
+const affectConcernSchema = z.object({
+  affect: z.string(),
+  concern: z.string(),
+  importance: z.number().int().min(1).max(10),
+});
+
+const affectConcernJsonSchema = zodToJsonSchema(affectConcernSchema, {
+  name: "AffectConcern",
+  $refStrategy: "none",
+}) as Record<string, unknown>;
 
 /** 内心テキストの最初の1文（句点区切り）。焼き直し防止のため圧縮して渡す */
 function firstSentence(text: string): string {
@@ -68,15 +87,26 @@ function buildInstruction(input: UpdateAffectAndConcernInput): string {
   ].join("\n");
 }
 
+function clampImportance(n: unknown): number {
+  if (typeof n !== "number" || Number.isNaN(n)) return DEFAULT_IMPORTANCE;
+  return Math.min(10, Math.max(1, Math.round(n)));
+}
+
 function parseAffectAndConcern(raw: string): AffectAndConcern {
+  const strict = tryParseJsonWithSchema(raw, affectConcernSchema);
+  if (strict.ok) {
+    return { ...strict.value, importance: clampImportance(strict.value.importance) };
+  }
+  // フォールバック: importance 欠落・型ズレでも affect/concern は拾う
   try {
     const parsed = JSON.parse(raw.trim()) as Partial<AffectAndConcern>;
     return {
       affect: typeof parsed.affect === "string" ? parsed.affect : "",
       concern: typeof parsed.concern === "string" ? parsed.concern : "",
+      importance: clampImportance(parsed.importance),
     };
   } catch {
-    return { affect: raw.trim(), concern: "" };
+    return { affect: raw.trim(), concern: "", importance: DEFAULT_IMPORTANCE };
   }
 }
 
@@ -89,6 +119,9 @@ export async function updateAffectAndConcern(
     { role: "assistant", content: buildSelfMessage(input) },
     { role: "user", content: buildInstruction(input) },
   ];
-  const raw = await llm.chat(messages, { temperature: 0.6 });
+  const raw = await llm.chat(messages, {
+    format: affectConcernJsonSchema,
+    temperature: 0.6,
+  });
   return parseAffectAndConcern(raw);
 }

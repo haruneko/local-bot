@@ -59,6 +59,35 @@ describe("updateAffectAndConcern (T-IS01, T-IS02)", () => {
     expect(user).toContain("記憶アーキテクチャの実装方法");
   });
 
+  it("importance を affect/concern と同じ呼び出しで採点して返す", async () => {
+    const llm = new FakeLlmClient([
+      '{"affect":"頼まれごとが嬉しい","concern":"相手の予定","importance":8}',
+    ]);
+    const result = await updateAffectAndConcern(llm, {
+      prevAffect: "",
+      prevConcern: "",
+      introspection: "誕生日を覚えてと頼まれた",
+      speech: "覚えておくね",
+      actions: [],
+      currentDateTime: "2026-06-10 10:00",
+    });
+    expect(result.importance).toBe(8);
+  });
+
+  it("importance 欠落でも affect/concern は拾い、importance は既定値5", async () => {
+    const llm = new FakeLlmClient(['{"affect":"穏やか","concern":""}']);
+    const result = await updateAffectAndConcern(llm, {
+      prevAffect: "",
+      prevConcern: "",
+      introspection: "特に何もない",
+      speech: null,
+      actions: [],
+      currentDateTime: "2026-06-10 10:00",
+    });
+    expect(result.affect).toBe("穏やか");
+    expect(result.importance).toBe(5);
+  });
+
   it("T-IS02: prevAffect and prevConcern show placeholder when empty", async () => {
     const llm = new FakeLlmClient(['{"affect":"初めての感想","concern":""}']);
     await updateAffectAndConcern(llm, {

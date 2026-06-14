@@ -10,12 +10,10 @@ import { tryParseJsonWithSchema } from "../action/parse-json.js";
 
 export type IntrospectionOutput = {
   text: string;
-  importance: number;
 };
 
 const introspectionSchema = z.object({
   text: z.string(),
-  importance: z.number().int().min(1).max(10),
 });
 
 const introspectionJsonSchema = zodToJsonSchema(introspectionSchema, {
@@ -46,7 +44,7 @@ export async function runIntrospection(
   const parsed = tryParseJsonWithSchema(raw, introspectionSchema);
   if (parsed.ok) return parsed.value;
   // フォールバック: テキストがそのまま返ってきた場合
-  return { text: raw.trim(), importance: 5 };
+  return { text: raw.trim() };
 }
 
 const tagsSchema = z.object({ tags: z.array(z.string()).max(4) });
