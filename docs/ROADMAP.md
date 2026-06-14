@@ -58,25 +58,27 @@
 
 詳細は DECISIONS.md §affect/concern 分離設計 参照。
 
-### 問題B: 行動の結果が次ターンに「名刺」として残らない
+### 問題B: 行動の結果が次ターンに残らない ✅ 解決済み（集中 State＋構造化 plan）
 
-1ターン内の多段（`MAX_SUBAGENT_STEPS=3` / `MAX_RECALL_STEPS=3`）は実装済みだが、**クロスターンの連続行動**の設計がない。
+~~1ターン内の多段（`MAX_SUBAGENT_STEPS=3` / `MAX_RECALL_STEPS=3`）は実装済みだが、**クロスターンの連続行動**の設計がない。例: webSearch でAを調べた → 次のハートビートで「Aの結果を踏まえてBを深掘りしよう」が成立しない。当初の解決方向は `agenda` フィールド案だった。~~
 
-例: webSearch でAを調べた → 次のハートビートで「Aの結果を踏まえてBを深掘りしよう」が成立するには、workingMemory 内の独り言「次はBを調べよう」が actor の activate に届く必要がある。これは現在 ACTOR_CONTEXT_TURNS=3 で機能する可能性があるが、独り言が「調べたい気持ち」という感情的表現だと具体的なクエリにならない。
+**解決（`agenda` フィールドは作らず、集中 State＋構造化 plan に寄せた）**:
+- 構造化 plan（`data/plans/<id>.json`）が `current`（次のマイルストーン）＋`log`（やったこと）を持つ＝駆動型タスクの agenda 本体。
+- **sticky 集中**（`turn.ts`）: 未達の `focusPlan` を持つ間は集中を維持。とくに**ハートビートでも維持**するので「A を調べた→次の heartbeat で続きを前進」が繋がる（B が「繋がらない」と言っていた当のケース）。
+- 計画チャンネルが集中ターン中に plan を常駐注入（`renderPlan`）。`MAX_FOCUS_STREAK`（強制ギプス）で暴走を止める。
+- 残る非集中（対話・静穏）での連続性は workingMemory 独り言＋concern 頼みの弱い経路だが、「駆動して前進」は集中の役割なので許容。
 
-**現状の伝達経路**: webSearch 結果 → 独り言（workingMemory）→ 次のhartbeat の recall クエリ → webSearch activate（conversation + inner_state チャンネル）。理論上は繋がっているが、actionModel=8B で innerState の感情表現から具体的な検索意図を抽出するには情報が粗い。
+### 問題C: language-agent の format:JSON が口調を抑制する可能性 ❌ 取り下げ
 
-**解決の方向**: agenda フィールドに「調べ終えたこと・次のクエリ」を明示的に書き込めば接続性が上がる。
+~~`generateDialogueSpeech` の `format: languageJsonSchema` が JSON 生成モードに傾け、会話の温度感が失われる可能性。~~
 
-### 問題C: language-agent の format:JSON が口調を抑制する可能性
+**取り下げ理由（2026-06-14）**:
+- 「format 強制で口調が硬い」は**仮説のまま**で、実機で硬さを format 由来と観測できていない。
+- format を外す代償が重い: `nextState` の確実な取得が消える／2パス化（speech と nextState を別呼び出し）は 30B で1呼び出し増。仮説のために実測の信頼性を払う取引。
+- 壊れても素直に劣化する: `parseLanguageOutput` の素テキスト fallback が裸文字列をそのまま発話扱い（＝硬い JSON モードを外れた自然な口調）にし、nextState は現 state 維持に落ちるだけ。**raw 漏れも無い**。
+- JSON 信頼性が実害になるのは language ではなく activate（パース失敗→null→起動漏れ）だが、slack.log で `llm_parse_failed` は **0 件**。過去の失敗は全てタイムアウト（詰まり）で、同時実行リミッタ（`src/llm/limit.ts`）で手当て済み。
 
-`generateDialogueSpeech` が Ollama の `format: languageJsonSchema` を使って `{speech, nextState}` を structured output で取得している。Ollama の JSON フォーマット強制はモデルを JSON 生成モードに傾けるため、会話の温度感・自然な言い回しが失われやすい。
-
-特に qwen3.6 系は structured output への制約が強く、「人間らしい雑談」より「情報を整理した返答」になりがち。
-
-**現在の緩和策**: `parseLanguageOutput` のフォールバックで raw テキストをそのまま speech として使う（JSON パース失敗時）。構造化出力が壊れても会話は継続する。
-
-**観察ポイント**: `--verbose` で language-agent の raw 出力が JSON 準拠かどうかを確認する。JSON バリデーション率が高い = format 強制が効いている = 口調が硬くなっている可能性。
+→ format:JSON は `nextState` 信頼性のため**維持**。口調が硬いと観測されたら再検討する観察項目に格下げ。
 
 ### 問題D: heartbeat の会話文脈が multi-turn を使わない ✅ 対処済み
 
