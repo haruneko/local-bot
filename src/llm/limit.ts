@@ -6,7 +6,9 @@ import pLimit, { type LimitFunction } from "p-limit";
 // サーバ内でなく bot 内に持つ。クラウド client に差し替えても同じ runLimited を通せばよい。
 // サーバ側の OLLAMA_NUM_PARALLEL と同じ値に揃えると、溢れさせずパイプを満杯にできる。
 
-const DEFAULT_CONCURRENCY = 4;
+// 既定は保守的に 2（サーバの OLLAMA_NUM_PARALLEL 未設定でも溢れにくい）。
+// サーバ側を上げたら settings.ollamaMaxConcurrency で揃えて引き上げる。
+const DEFAULT_CONCURRENCY = 2;
 let limit: LimitFunction = pLimit(DEFAULT_CONCURRENCY);
 
 /** 起動時に同時実行上限を設定する（OLLAMA_NUM_PARALLEL と揃える） */
@@ -19,19 +21,24 @@ export function runLimited<T>(fn: () => Promise<T>): Promise<T> {
   return limit(fn);
 }
 
-// 一過性（接続瞬断・サーバ過負荷・タイムアウト・レート制限）と判断できるエラー。
-// これらは待てば直ることが多いので 1 回だけ再試行する（盛りすぎない）。
-const TRANSIENT =
-  /fetch failed|HEADERS_TIMEOUT|BODY_TIMEOUT|UND_ERR|ECONNREFUSED|ECONNRESET|ETIMEDOUT|socket hang up|EAI_AGAIN|\b(?:429|500|502|503|504)\b|overloaded|rate.?limit/i;
+// **速く失敗する**一過性エラー＝リトライして良い（接続瞬断・レート制限・5xx）。
+// ヘッダ/ボディタイムアウト（数分かけて失敗）は除外する：リトライしても倍待つだけで、
+// これは同時実行リミッタで「予防」する種類のもの。
+const RETRIABLE =
+  /fetch failed|ECONNREFUSED|ECONNRESET|EAI_AGAIN|socket hang up|\b(?:429|500|502|503|504)\b|overloaded|rate.?limit/i;
+const SLOW_TIMEOUT = /HEADERS_TIMEOUT|BODY_TIMEOUT/i;
 
-export function isTransientLlmError(err: unknown): boolean {
+export function isRetriableLlmError(err: unknown): boolean {
   if (!err) return false;
   const e = err as { message?: string; code?: string; cause?: { code?: string; message?: string } };
-  const parts = [e.message, e.code, e.cause?.code, e.cause?.message, String(err)];
-  return TRANSIENT.test(parts.filter(Boolean).join(" "));
+  const text = [e.message, e.code, e.cause?.code, e.cause?.message, String(err)]
+    .filter(Boolean)
+    .join(" ");
+  if (SLOW_TIMEOUT.test(text)) return false; // 5分タイムアウトはリトライしない
+  return RETRIABLE.test(text);
 }
 
-/** 一過性エラーのみ短い間隔で再試行する素朴なリトライ（attempts=総試行回数） */
+/** 速く失敗する一過性エラーのみ短い間隔で再試行する素朴なリトライ（attempts=総試行回数） */
 export async function withLlmRetry<T>(
   fn: () => Promise<T>,
   attempts = 2,
@@ -43,7 +50,7 @@ export async function withLlmRetry<T>(
       return await fn();
     } catch (e) {
       last = e;
-      if (i < attempts - 1 && isTransientLlmError(e)) {
+      if (i < attempts - 1 && isRetriableLlmError(e)) {
         await new Promise((r) => setTimeout(r, delayMs));
         continue;
       }

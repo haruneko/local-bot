@@ -3,7 +3,7 @@ import {
   configureLlmConcurrency,
   runLimited,
   withLlmRetry,
-  isTransientLlmError,
+  isRetriableLlmError,
 } from "../src/llm/limit.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -57,10 +57,12 @@ describe("withLlmRetry — 一過性のみ1回だけ再試行", () => {
     expect(calls).toBe(1);
   });
 
-  it("isTransientLlmError は headers timeout / 429 / ECONNREFUSED を拾う", () => {
-    expect(isTransientLlmError({ cause: { code: "UND_ERR_HEADERS_TIMEOUT" } })).toBe(true);
-    expect(isTransientLlmError(new Error("429 Too Many Requests"))).toBe(true);
-    expect(isTransientLlmError(new Error("ECONNREFUSED"))).toBe(true);
-    expect(isTransientLlmError(new Error("llm_parse_failed"))).toBe(false);
+  it("isRetriableLlmError: 速い一過性(429/ECONNREFUSED)は拾い、5分タイムアウトとparse失敗は拾わない", () => {
+    expect(isRetriableLlmError(new Error("429 Too Many Requests"))).toBe(true);
+    expect(isRetriableLlmError(new Error("ECONNREFUSED"))).toBe(true);
+    expect(isRetriableLlmError(new Error("fetch failed"))).toBe(true);
+    // 5分かけて失敗するタイムアウトはリトライしない（倍待ちになるだけ）
+    expect(isRetriableLlmError({ cause: { code: "UND_ERR_HEADERS_TIMEOUT" } })).toBe(false);
+    expect(isRetriableLlmError(new Error("llm_parse_failed"))).toBe(false);
   });
 });

@@ -124,7 +124,7 @@ export async function createApp(
 
   const host = resolveOllamaHost(settings);
   // 全 LLM client を作る前に同時実行上限を設定する（毎ターンの活性化バーストでサーバを溢れさせない）
-  configureLlmConcurrency(settings.ollamaMaxConcurrency ?? 4);
+  configureLlmConcurrency(settings.ollamaMaxConcurrency ?? 2);
   const verboseLogger =
     options.logLevel && options.logLevel !== "quiet"
       ? createVerboseLogger(options.logLevel)
