@@ -50,8 +50,8 @@
        ↓
 [actor pool（並列実行）]
   起動した actor が各自の知覚チャンネルで TurnContext を参照
-  recall / forget / memo（読み書き統合）
-  web-search / url-browse / webcam / plan / ...
+  memory（想起+忘却の受動記憶）/ memo（記録・読み書き統合）
+  web-search / url-browse / webcam / plan / synthesize / ...
   結果を ctx.actions に積む
        ↓
 [language-agent（言語野）]
@@ -99,7 +99,7 @@
 単一の選定者は置かない。各 actor が自分で起動可否を判断する軽量スクリーナーを持つ（`src/actors/activate.ts` の `createActivate` ファクトリ）。mini-context（直近 2〜3 ターン・最新発話・内心ステート・利用可能 actor リスト）のみを受け取り、1 コールで自分について `{active, intent}` を返す。想起済みエピソードは渡さない（それを取りに行くかを決めるのが activate のため）。config / stateConfig のフィルタで pool から除外済みの actor は判断自体が呼ばれない。false negative のコストが高いため迷ったら ON に倒す。actor（＝身体・能力）が増えても判断が分散しているので拡張しやすい。
 
 ### actor pool
-activator が選んだ actor が並列に実行する。各 actor は宣言した**知覚チャンネル**の TurnContext フィールドのみを参照し、自律判断・実行して `ctx.actions` に `ActionOutcome` を積む。ツール例: `recall` `forget` `memo`（読み書き統合・op＋連想する記憶の木）`web-search` `url-browse` `webcam` `plan`。`remember` は廃止（意図的記憶は内省の importance 採点で扱う）。
+activator が選んだ actor が並列に実行する。各 actor は宣言した**知覚チャンネル**の TurnContext フィールドのみを参照し、自律判断・実行して `ctx.actions` に `ActionOutcome` を積む。記憶系は**性質で2 faculty に分ける**（B'）: `memory`＝受動の記憶（recall+忘却を1 actorに統合・op で選ぶ・Read+Delete のみ）／`memo`＝能動の記録（notes の full CRUD・op＋連想する記憶の木）。他に `web-search` `url-browse` `webcam` `plan` `synthesize`（想起+外部+感性を統合して成果物を生成）。`remember` は廃止（意図的記憶は内心更新の importance 採点で扱う）。
 
 ### language-agent（言語野）
 全 facts を受け取りキャラクタールールに従ってセリフを生成する。行動後に結果を説明する分離脳の左脳モデル。毎ターン必ず起動し、発話するかどうかを自分で決める。発話に加えて `NEXT_STATE` を出力し、State 遷移の責任を担う。

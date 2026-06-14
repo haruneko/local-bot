@@ -79,15 +79,15 @@ idle heartbeat 判定:
 
 | actor | 機械処理 |
 |-------|----------|
-| `recall` | LanceDB ベクトル検索 |
-| `forget` | LanceDB ソフト削除（`deleted` フラグ） |
-| `memo` | `data/notes/` 読み書き統合。locate（主=recall認識・フォールバック=連想ディセント）で対象を辿り（read-before-edit・**行番号付きで提示**）、op を1つ（view/create/append/replace/section_replace/**replace_line**/**delete_line**）を純関数 applier で適用。MOC ツリー再生成・サイズ自動分割を含む（[MEMO-TREE.md](MEMO-TREE.md)） |
+| `memory` | **受動の記憶 faculty**（recall+forget 統合・B'）。activate が op∈{想起=recall / 忘却=forget} を1判断で選び run が振る。想起＝LanceDB ベクトル検索／忘却＝softDelete（`deleted` フラグ・**`id` 列で引く**）。ActionFacts kind は `recall`/`forget` |
+| `memo` | **能動の記録 faculty**（notes の full CRUD）。`data/notes/` 読み書き統合。locate（主=recall認識・フォールバック=連想ディセント）で対象を辿り（read-before-edit・**行番号付きで提示**）、op を1つ（view/create/append/replace/section_replace/**replace_line**/**delete_line**）を純関数 applier で適用。MOC ツリー再生成・サイズ自動分割を含む（[MEMO-TREE.md](MEMO-TREE.md)） |
 | `webSearch` | MCP 経由 Web 検索 |
 | `urlBrowse` | MCP 経由 URL 閲覧 |
 | `webcam` | カメラ映像取得（未実装） |
 | `plan` | 構造化plan（`data/plans/<id>.json`）を op で更新（コードが構造を保証・LLM は op を1つ出すだけ）。markdown は派生ビュー |
+| `synthesize` | 想起＋外部＋感性（内心/関心事）を統合して成果物（歌詞・読書メモ・まとめ・文章）を**生成**し `data/notes/works/<planId\|slug>.md` へ append 外化（生成が役割の唯一のレーン・memo は転記） |
 
-`remember` は**廃止・完全削除**。意図的な内部記憶は「LanceDB への書き込み」でなく、内省の importance 採点（相手を気にかけた発話ほど高く＝残りやすく）で扱う（人間も記憶を直接書けず符号化強度を上げるだけ、という整理）。`EpisodeSource "remember"` は履歴エピソード用に温存。
+`remember` は**廃止・完全削除**。意図的な内部記憶は「LanceDB への書き込み」でなく、importance 採点（**内心更新 affect と同じ呼び出しで採点**＝§内省の見える範囲・相手を気にかけた発話ほど高く＝残りやすく）で扱う（人間も記憶を直接書けず符号化強度を上げるだけ、という整理）。`EpisodeSource "remember"` は履歴エピソード用に温存。
 
 ### 5.2 `activate()` スキーマ（共通）
 
