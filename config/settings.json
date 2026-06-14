@@ -16,8 +16,7 @@
   "languageNumPredict": 400,
   "timeZone": "Asia/Tokyo",
   "actors": {
-    "recall":    { "enabled": true,  "channels": ["conversation", "inner_state"] },
-    "forget":    { "enabled": true,  "channels": ["conversation", "inner_state"] },
+    "memory":    { "enabled": true,  "channels": ["conversation", "inner_state"] },
     "memo":      { "enabled": true,  "channels": ["conversation", "inner_state"], "model": "qwen3.6:35b-a3b" },
     "webSearch": { "enabled": true,  "channels": ["conversation", "inner_state", "plan"], "model": "qwen3.6:35b-a3b" },
     "urlBrowse": { "enabled": true,  "channels": ["conversation", "inner_state", "plan"] },
@@ -26,9 +25,9 @@
     "synthesize": { "enabled": true, "channels": ["conversation", "inner_state", "plan"], "model": "qwen3.6:35b-a3b" }
   },
   "stateConfig": {
-    "対話": { "workingMemoryTurns": 8, "episodeRecallTopK": 3, "actors": ["recall", "forget", "memo", "webSearch", "urlBrowse", "plan", "synthesize"] },
-    "静穏": { "workingMemoryTurns": 5, "episodeRecallTopK": 3, "actors": ["recall", "forget", "memo", "webSearch", "urlBrowse", "plan"] },
-    "集中": { "workingMemoryTurns": 8, "episodeRecallTopK": 3, "actors": ["recall", "forget", "memo", "webSearch", "urlBrowse", "plan", "synthesize"] }
+    "対話": { "workingMemoryTurns": 8, "episodeRecallTopK": 3, "actors": ["memory", "memo", "webSearch", "urlBrowse", "plan", "synthesize"] },
+    "静穏": { "workingMemoryTurns": 5, "episodeRecallTopK": 3, "actors": ["memory", "memo", "webSearch", "urlBrowse", "plan"] },
+    "集中": { "workingMemoryTurns": 8, "episodeRecallTopK": 3, "actors": ["memory", "memo", "webSearch", "urlBrowse", "plan", "synthesize"] }
   },
   "actionModel": "qwen3-vl:8b-instruct",
   "activatorModel": "qwen3.6:35b-a3b",

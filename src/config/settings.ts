@@ -16,8 +16,7 @@ export type ContextChannel =
 
 /** フラット actor pool のアクター名 */
 export type ActorName =
-  | "recall"
-  | "forget"
+  | "memory"
   | "memo"
   | "webSearch"
   | "urlBrowse"
@@ -36,8 +35,7 @@ export type ActorConfig = {
 
 /** actor ごとのデフォルト知覚チャンネル（activator と同一にすること） */
 export const DEFAULT_ACTOR_CHANNELS: Record<ActorName, ContextChannel[]> = {
-  recall:    ["conversation", "inner_state"],
-  forget:    ["conversation", "inner_state"],
+  memory:    ["conversation", "inner_state"],
   memo:      ["conversation", "inner_state"],
   webSearch: ["conversation", "inner_state", "plan"],
   urlBrowse: ["conversation", "inner_state", "plan"],
@@ -224,7 +222,7 @@ export function resolveEnabledActors(
   state: string,
 ): ActorName[] {
   const ALL_ACTORS: ActorName[] = [
-    "recall", "forget", "memo",
+    "memory", "memo",
     "webSearch", "urlBrowse", "webcam", "plan", "synthesize",
   ];
   const stateActors = settings.stateConfig?.[state]?.actors;

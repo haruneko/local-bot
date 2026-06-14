@@ -488,6 +488,7 @@ export class TurnOrchestrator {
         ctx,
         intent: spec.intent,
         timeRange: spec.timeRange,
+        op: spec.op,
         channels,
         deps: actionDeps,
       });

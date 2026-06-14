@@ -8,6 +8,8 @@ export type ActiveActorSpec = {
   name: ActorName;
   intent: string;
   timeRange?: { sinceDaysAgo?: number; untilDaysAgo?: number };
+  /** 複数 op を持つ actor が activate で選んだ操作 */
+  op?: string;
 };
 
 type ActorSpec = {
@@ -31,6 +33,7 @@ export async function runActivator(
         name: actor.name,
         intent: result.intent,
         timeRange: result.timeRange,
+        op: result.op,
       };
     }),
   );

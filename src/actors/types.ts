@@ -8,6 +8,8 @@ export type ActorRunInput = {
   ctx: TurnContext;
   intent: string;
   timeRange?: { sinceDaysAgo?: number; untilDaysAgo?: number };
+  /** 複数 op を持つ actor が activate で選んだ操作（例: memory の想起/忘却） */
+  op?: string;
   /** 宣言チャンネル（actor が自身の LLM コールで使うコンテキスト範囲） */
   channels: ContextChannel[];
   deps: RunActionDeps;
@@ -16,6 +18,8 @@ export type ActorRunInput = {
 export type ActorActivateResult = {
   intent: string;
   timeRange?: { sinceDaysAgo?: number; untilDaysAgo?: number };
+  /** 複数 op を持つ actor が activate 時に選んだ操作 */
+  op?: string;
 };
 
 export type ActorRunner = {
