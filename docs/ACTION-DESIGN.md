@@ -106,11 +106,12 @@ type ActionFacts =
 
 | 宛先 | 渡し方 | 理由 |
 |------|--------|------|
-| **ユーザー出力（チャット）** | **全文**（`TurnResult.artifacts`） | 作った/調べた本体はこれ。speech とは別経路で全文提示 |
+| **ユーザー出力（チャット）** | **全文**（`TurnResult.artifacts`）。ただし `research` は**要約だけ** | 作った/読んだ本体はこれ。speech とは別経路で提示。research は多ソースの生 dump を流さない |
 | **言語野の入力** | 冒頭120字＋「全文は別途届く・書き写すな」注記 | 全文を渡すと言語野が書き直し**二重生成＆劣化**する |
 | **内省の入力** | 冒頭120字＋分量メタ（全◯字・◯行） | エピソードは要約層。全文は works/・memo_index が正本。手応えだけ残す |
 
-- ユーザー出力の線引きは **「そのターンのプリプロセスまでの情報を読んでも出てこない情報は全文出す」**＝新規情報 kind のみ（`factExternalizesNewInfo`）: `synthesize`（生成）/ `research`（外部取得）/ `memo_read`（全文を初ロード＝読み上げ意図）。`memo_write`（既出の転記）・`recall`・`plan` は出さない。
+- ユーザー出力の線引きは **「そのターンのプリプロセスまでの情報を読んでも出てこない情報＝新規情報 kind だけ出す」**（`factExternalizesNewInfo`）: `synthesize`（生成）/ `research`（外部取得）/ `memo_read`（全文を初ロード＝読み上げ意図）。`memo_write`（既出の転記）・`recall`・`plan`・`forget` は出さない。
+- **量は kind で非対称**（`src/action/present.ts`）: `synthesize` / `memo_read` は**全文**、**`research` は要約だけ**（多ソースの生 dump＝全文 body はチャットを流すので出さず、要点だけ届ける）。
 - 音声など本文を読み上げない宛先では、出力側が `artifacts` を出さない選択をする（チャンネル能力での出し分け）。CLI/Slack は常に提示。
 - `synthesize` の `body` は**そのターンで作った一片**（成果物の全文ではない）。
 

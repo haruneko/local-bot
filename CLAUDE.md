@@ -55,7 +55,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 | 層 | 保存先 | 読み出し時の方針 |
 |----|--------|------------------|
 | エピソード記憶 | `data/lancedb/` `episodes` | LLM 要約・グラデーション（full/summarize/vague）OK＝ふんわり思い出す。内省が毎ターン本文を書く。`importance`（1-10）は**内心更新（affect）と同じ呼び出しで採点**＝生まれたての感情を根拠に符号化強度を決める（内省は感情の前に走るので付けない・DECISIONS §内省の見える範囲）。importance は「気にかけ度」寄り（相手の気持ち・新たに分かった相手のこと・頼まれた等を高く）＝意図的記憶の代替。想起の relevance に効く（減衰に抗う） |
-| 意味記憶 | `data/lancedb/` `semantic` | 夢で蒸留した知識 |
+| 意味記憶 | `data/lancedb/` `semantic` | 夢で蒸留した知識。**外界 grounded**＝エピソードからは「相手・世界について実際に語られた／起きた事実」だけ蒸留し、自己物語（「わたしは〜」）はエピソードから作らない（自己像は persona＋夢のタネが正本・話者を取り違えない・推測で埋めない） |
 | メモインデックス | `data/lancedb/` `memo_index` | 「どこに何を書いたか」の所在管理。`memo` のメモ書き込み成功時に機械的 upsert。減衰しない |
 | 共有メモ本文 | `data/notes/**/*.md` | **本文を LLM で要約しない**（劣化禁止）。構造保存的な op 編集（厳密置換・見出し差し替え）は read-before-edit を条件に可。全文を `facts.body` に載せる。階層ディレクトリ可 |
 | 作業記憶 | `data/state.json` | ユーザーとボットの**表面発話のみ**。各エージェントの判断・ツール結果は含めない |
@@ -71,7 +71,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 
 | ファイル | 内容 |
 |----------|------|
-| `config/settings.json` | モデル名・Ollama ホスト・記憶件数・トークン予算・`stateConfig`・`roles` |
+| `config/settings.json` | モデル名・Ollama ホスト・記憶件数・トークン予算・`stateConfig`・`roles`・`ollamaMaxConcurrency`（LLM 同時実行上限＝サーバ `OLLAMA_NUM_PARALLEL` と揃える） |
 | `config/mcp.json` | MCP サーバ定義・`expressDryRun` |
 | `config/users.yaml` | 話者 ID → 表示名＋任意の `note`（関係性の一文）。note は言語野の「## 相手について」に注入され、誰と話すかで反応が変わる。recall は話者一致エピソードを重み付け（`SPEAKER_MATCH_BOOST`） |
 | `persona/character.md` | キャラクター・口調・一人称 |
