@@ -147,10 +147,16 @@ function findCatalogTool(
 export async function runResearchSubagent(
   llm: LlmClient,
   input: RunActionInput,
+  allowedToolNames?: string[],
 ): Promise<ActionOutcome> {
   const action = input.action;
   const catalog = input.toolCatalog ?? [];
-  const tools = catalog.filter((t) => t.category === "research");
+  let tools = catalog.filter((t) => t.category === "research");
+  // 起動 actor に応じてツールを絞る（webSearch→web_search のみ / urlBrowse→browse_url のみ）。
+  // 両方渡すと「調べて」でも browse_url が選ばれ検索ページのゴミを掴むため。
+  if (allowedToolNames && allowedToolNames.length > 0) {
+    tools = tools.filter((t) => allowedToolNames.includes(t.name));
+  }
   if (tools.length === 0) {
     return actionFailed(action, "探索ツールが設定されていない", {
       code: ACTION_ERROR_CODES.ACTION_DISCONNECTED,

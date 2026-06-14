@@ -19,7 +19,8 @@ export const webSearchActor: ActorRunner = {
   activate: createActivate("webSearch", "", { systemPrompt: WEB_SEARCH_ACTIVATE_PROMPT }),
   run: (llm, input) => {
     const action = { kind: "research" as const, intent: input.intent };
-    return runResearchSubagent(llm, { ctx: input.ctx, action, ...input.deps });
+    // 検索は web_search（Tavily＝綺麗）のみ。browse_url を選ばせない（検索ページのゴミ回避）
+    return runResearchSubagent(llm, { ctx: input.ctx, action, ...input.deps }, ["web_search"]);
   },
 };
 
@@ -27,12 +28,14 @@ export const urlBrowseActor: ActorRunner = {
   name: "urlBrowse",
   activate: createActivate(
     "urlBrowse",
-    "会話に実際の URL（http/https）や明示された外部参照先があるとき、" +
-      "または取り組み中の計画（## 取り組み中の計画）の現在のマイルストーンを進めるために特定ページを開く必要があるときに起動する。" +
-      "対象 URL/参照先が無いとき、内省・感情・記憶・雑談だけのときは起動しない（推測で URL を作らない）",
+    "会話に **http:// または https:// で始まる実際の URL** が書かれているとき、" +
+      "または取り組み中の計画（## 取り組み中の計画）が特定ページの閲覧を要求しているときだけ起動する。" +
+      "**『調べて』『検索して』『〜は？』のような検索依頼は web_search の領分＝urlBrowse は起動しない**。" +
+      "URL が会話に無いのに推測で URL を作って開かない。内省・感情・記憶・雑談だけのときも起動しない",
   ),
   run: (llm, input) => {
     const action = { kind: "research" as const, intent: input.intent };
-    return runResearchSubagent(llm, { ctx: input.ctx, action, ...input.deps });
+    // URL 閲覧は browse_url のみ（会話に実 URL があるとき起動）
+    return runResearchSubagent(llm, { ctx: input.ctx, action, ...input.deps }, ["browse_url"]);
   },
 };
