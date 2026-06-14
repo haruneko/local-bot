@@ -101,7 +101,9 @@ export type AppSettings = {
   languageNumPredict?: number;
   /** コンテキスト日時のタイムゾーン（IANA） */
   timeZone?: string;
-  /** 明示的 recall actor での距離上限（未設定は 0.40）。背景想起の fullMax より厳しく設定する */
+  /** 明示的 recall actor での距離上限（未設定は 0.45＝背景想起の fullMax と同値）。
+   *  背景より厳しくすると「背景には浮かんでるのに明示的に思い出せない」逆転が起きるため、
+   *  背景の確信(full)層と揃える。それ以上の関連度は bullet 要約側で落とす */
   explicitRecallMaxDistance?: number;
   /** actor pool の設定（Layer 1: 全 State 共通の enabled/channels） */
   actors?: Partial<Record<ActorName, ActorConfig>>;
@@ -188,9 +190,9 @@ export function resolveActorModel(settings: AppSettings, name: ActorName): strin
   return settings.actors?.[name]?.model ?? resolveActionModel(settings);
 }
 
-/** 明示的 recall actor の距離上限を解決する（未設定は 0.40） */
+/** 明示的 recall actor の距離上限を解決する（未設定は 0.45＝背景 fullMax と同値） */
 export function resolveExplicitRecallMaxDistance(settings: AppSettings): number {
-  return settings.explicitRecallMaxDistance ?? 0.40;
+  return settings.explicitRecallMaxDistance ?? 0.45;
 }
 
 /** actor の知覚チャンネルを解決する。settings 未設定はデフォルトにフォールバック */

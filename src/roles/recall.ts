@@ -30,7 +30,7 @@ export async function runRecall(
     since,
     until,
   );
-  const maxDist = input.explicitRecallMaxDistance ?? 0.40;
+  const maxDist = input.explicitRecallMaxDistance ?? 0.45;
   const hits = rawHits.filter((h) => h.distance <= maxDist);
 
   if (hits.length === 0) {
