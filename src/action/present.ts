@@ -136,14 +136,15 @@ export function formatActionFactContent(
 
 /**
  * preprocess 時点の context に無い「新しく立ち上がった情報」を運ぶ facts か。
- * 原則: そのターンのプリプロセスまでの情報を読んでも出てこない情報は全文ユーザーに出す。
- * - synthesize: 生成した成果物 / research: 外部から取得 / memo_read: ファイル全文をこのターンで初ロード（読み上げ意図）
- * - memo_write(既出の転記)・recall(想起要約)・plan・forget は対象外
+ * 原則: そのターンのプリプロセスまでの情報を読んでも出てこない**成果物**は全文ユーザーに出す。
+ * - synthesize: 生成した成果物 / memo_read: ファイル全文をこのターンで初ロード（読み上げ意図）
+ * - **research は対象外**: 多ソースの生 dump は中間素材でチャットを流す。答え・要点は speech が運ぶ
+ *   （language/内省は research facts を引き続き参照する＝この関数はユーザー出力の可否だけ）。
+ * - memo_write(既出の転記)・recall(想起要約)・plan・forget も対象外
  */
 export function factExternalizesNewInfo(facts: ActionFacts): boolean {
   switch (facts.kind) {
     case "synthesize":
-    case "research":
     case "memo_read":
       return true;
     default:
@@ -167,8 +168,6 @@ export function formatActionForUserOutput(action: ActionOutcome): string | null 
       return facts.body;
     case "memo_read":
       return facts.body;
-    case "research":
-      return facts.title ? `【${facts.title}】\n${facts.body}` : facts.body;
     default:
       return null;
   }

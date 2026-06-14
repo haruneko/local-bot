@@ -15,20 +15,20 @@ function outcome(facts: ActionFacts) {
 }
 
 describe("出力の3宛先非対称（ユーザー全文 / 言語野・内省は冒頭120字）", () => {
-  it("ユーザー出力: 新規情報 kind だけ全文を返す", () => {
+  it("ユーザー出力: 成果物(synthesize/memo_read)だけ全文・research は出さない", () => {
     const arts = collectUserArtifacts([
       outcome({ kind: "synthesize", filename: "works/a.md", body: long }),
+      // research は多ソースの生 dump＝中間素材。要点は speech が運ぶのでユーザー出力しない
       outcome({ kind: "research", tool: "web", title: "件名", body: "調査本文" }),
       outcome({ kind: "memo_read", filename: "n.md", body: "メモ全文" }),
-      // 以下は出さない（プリプロセスまでで既知 or 短い）
+      // 以下も出さない（プリプロセスまでで既知 or 短い）
       outcome({ kind: "memo_write", filename: "n.md", body: long }),
       outcome({ kind: "recall", bullets: ["x"] }),
     ]);
-    expect(arts).toHaveLength(3);
+    expect(arts).toHaveLength(2);
     expect(arts[0]).toBe(long); // synthesize は全文（truncate しない）
-    expect(arts[1]).toContain("件名");
-    expect(arts[1]).toContain("調査本文");
-    expect(arts[2]).toBe("メモ全文");
+    expect(arts[1]).toBe("メモ全文"); // memo_read は全文
+    expect(arts.join("\n")).not.toContain("調査本文"); // research は流さない
   });
 
   it("言語野: 長い成果物は冒頭に縮め『書き写すな』注記が付く", () => {
