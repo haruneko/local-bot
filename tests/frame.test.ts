@@ -5,29 +5,29 @@ import { join } from "node:path";
 import { readFrames } from "../src/sensor/frame.js";
 
 describe("readFrames — 視覚センサー（文字起こししない・生の base64）", () => {
-  it("source 未設定/空白なら空（視覚オフ）", () => {
-    expect(readFrames()).toEqual([]);
-    expect(readFrames("")).toEqual([]);
-    expect(readFrames("   ")).toEqual([]);
+  it("source 未設定/空白なら空（視覚オフ）", async () => {
+    expect(await readFrames()).toEqual([]);
+    expect(await readFrames("")).toEqual([]);
+    expect(await readFrames("   ")).toEqual([]);
   });
 
-  it("存在しないパスなら空（壊さず黙る）", () => {
-    expect(readFrames("/no/such/file.png")).toEqual([]);
+  it("存在しないパスなら空（壊さず黙る）", async () => {
+    expect(await readFrames("/no/such/file.png")).toEqual([]);
   });
 
-  it("ファイルパスなら中身を base64 で1枚返す", () => {
+  it("ファイルパスなら中身を base64 で1枚返す（画像でなければ原本のまま）", async () => {
     const dir = mkdtempSync(join(tmpdir(), "frame-"));
     const f = join(dir, "a.png");
-    const bytes = Buffer.from([1, 2, 3, 4]);
+    const bytes = Buffer.from([1, 2, 3, 4]); // 画像でない＝縮小は素通り（原本）
     writeFileSync(f, bytes);
     try {
-      expect(readFrames(f)).toEqual([bytes.toString("base64")]);
+      expect(await readFrames(f)).toEqual([bytes.toString("base64")]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("ディレクトリなら最新更新の画像1枚（非画像は無視）", () => {
+  it("ディレクトリなら最新更新の画像1枚（非画像は無視）", async () => {
     const dir = mkdtempSync(join(tmpdir(), "frame-"));
     const older = join(dir, "old.png");
     const newer = join(dir, "new.jpg");
@@ -39,7 +39,7 @@ describe("readFrames — 視覚センサー（文字起こししない・生の 
     const past = new Date(Date.now() - 60_000);
     utimesSync(older, past, past);
     try {
-      expect(readFrames(dir)).toEqual([newerBytes.toString("base64")]);
+      expect(await readFrames(dir)).toEqual([newerBytes.toString("base64")]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

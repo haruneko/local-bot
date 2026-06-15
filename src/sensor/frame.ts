@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { normalizeImage } from "./image.js";
 
 /**
  * 視覚センサー: いま視界に入っているフレーム（画像）を base64 で返す。
@@ -13,13 +14,17 @@ import { join } from "node:path";
  */
 const IMAGE_EXT = /\.(png|jpe?g|webp|bmp|gif)$/i;
 
-export function readFrames(source?: string): string[] {
+export async function readFrames(
+  source?: string,
+  maxLongSide?: number,
+): Promise<string[]> {
   const path = source?.trim();
   if (!path) return [];
   try {
     const target = statSync(path).isDirectory() ? latestImageIn(path) : path;
     if (!target) return [];
-    return [readFileSync(target).toString("base64")];
+    const raw = readFileSync(target).toString("base64");
+    return [await normalizeImage(raw, maxLongSide)];
   } catch {
     return [];
   }

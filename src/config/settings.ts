@@ -106,6 +106,9 @@ export type AppSettings = {
   /** 視覚センサーの出どころ（画像ファイルパス or ディレクトリ）。未設定 = 視覚オフ。
    *  カメラが無い間はファイルベース。後で webcam グラブや Wi-Fi カメラ URL に差し替え（docs/ARCH-NEXT.md） */
   imageFeedSource?: string;
+  /** 取り込んだ画像の縮小上限（長辺・px）。未設定は 1024。高解像度はタイル増でトークン爆発するので
+   *  取り込み口で縮小する（`src/sensor/image.ts`）。重ければ下げる（800 等）。 */
+  imageMaxLongSide?: number;
   /** 明示的 recall actor での距離上限（未設定は 0.45＝背景想起の fullMax と同値）。
    *  背景より厳しくすると「背景には浮かんでるのに明示的に思い出せない」逆転が起きるため、
    *  背景の確信(full)層と揃える。それ以上の関連度は bullet 要約側で落とす */

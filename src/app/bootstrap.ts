@@ -273,7 +273,7 @@ export async function createApp(
     contextTokenBudget: settings.contextTokenBudget,
     languageNumPredict: settings.languageNumPredict ?? 400,
     timeZone: settings.timeZone ?? "Asia/Tokyo",
-    readFrames: () => readFrames(settings.imageFeedSource),
+    readFrames: () => readFrames(settings.imageFeedSource, settings.imageMaxLongSide),
     // 自発 distill: 静穏 idle で蒸留（タネは適用しない＝外界 grounded のエピソード蒸留のみ）。
     // 新素材が足りなければ runDream が内部でスキップする。
     runDistill: () =>

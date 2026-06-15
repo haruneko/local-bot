@@ -25,6 +25,7 @@
     "@lancedb/lancedb": "^0.22.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@slack/bolt": "^4.7.3",
+    "jimp": "^1.6.1",
     "ollama": "^0.5.18",
     "p-limit": "^7.3.0",
     "zod": "^3.25.76",

@@ -2,6 +2,7 @@ import { App as BoltApp } from "@slack/bolt";
 import { createApp } from "../app/bootstrap.js";
 import { parseArgs } from "./args.js";
 import { printTurnSummary } from "./output.js";
+import { normalizeImage } from "../sensor/image.js";
 
 const DEFAULT_HEARTBEAT_MS = 60 * 60 * 1000;
 /** これを超える成果物は inline で流さず Slack snippet（折りたたみ添付）にする */
@@ -21,7 +22,7 @@ async function main(): Promise<void> {
     memory: args.memory,
     logLevel: args.logLevel ?? "info",
   });
-  const { orchestrator, verbose } = app;
+  const { orchestrator, verbose, settings } = app;
 
   const botToken = process.env.SLACK_BOT_TOKEN ?? "";
   const bolt = new BoltApp({
@@ -44,7 +45,8 @@ async function main(): Promise<void> {
           headers: { Authorization: `Bearer ${botToken}` },
         });
         if (!res.ok) continue;
-        out.push(Buffer.from(await res.arrayBuffer()).toString("base64"));
+        const raw = Buffer.from(await res.arrayBuffer()).toString("base64");
+        out.push(await normalizeImage(raw, settings.imageMaxLongSide));
       } catch {
         // スコープ未付与・DL 失敗 → スキップ
       }
