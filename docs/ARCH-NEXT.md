@@ -119,6 +119,23 @@
 
 ---
 
+## embedding サブシステム（モダリティごとに backend を差し替え）
+
+`LlmClient`（chat を差し替え可能にしてる）と同じ思想で、embedding も backend を差し替え可能にする。
+
+- **窓口は TS**: `EmbeddingProvider`（`embedText` / `embedImage`）。呼ぶ側（recall・視覚想起）は**どこで embed してるか知らない**。
+- **backend はモダリティごと**:
+  - text → Ollama `nomic-embed-text`（既存・HTTP）
+  - image → 別 backend（下記）。落ちてる/未設定なら **null を返す**＝視覚見分けは systematic 起動なのでただスキップ（壊れない・Slack の files:read 無しと同じ degrade）。
+- **2026-06-15 に判明: Ollama は画像 embed 不可**。専用 embed モデルは `images` を無視、vision 生成モデルは `/api/embed` が **501 Not Implemented**。上流 issue（multimodal embedding 対応）は open。＝画像 embedding は Ollama の外で回すしかない。
+- **画像 backend の選択肢**:
+  - **in-process（推し）**: transformers.js / onnxruntime-node で CLIP を Node プロセス内で回す。外部サービスも subprocess も無し＝ただのライブラリ呼び出し。初回に ONNX を DL してキャッシュ。
+  - 外部 HTTP サーバ（Python・nomic-embed-vision を常駐）: 別プロセス管理が要る（ops がめんどい）。
+- **クロスモーダル（言葉↔画像を同空間で）＝保留だが捨てない**: nomic-embed-text ↔ nomic-embed-vision は同空間だが Ollama が画像を出せない。in-process で同空間にするなら text も画像も jina-clip 等に寄せる＝**既存エピソードの再 embed（移行）が要る**。recognition（画像→画像）は別空間でも効くので、先に画像 backend だけでも視覚記憶は立つ。クロスモーダルはその後の判断。
+- **将来**: Ollama が画像 embed 対応したら image backend を Ollama に差し替えるだけ（窓口・呼ぶ側は無変更）。
+
+---
+
 ## 3. 今ある前提のどれを残し・どれを変えるか
 
 | 前提 | 今 | 次 |
