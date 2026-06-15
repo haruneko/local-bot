@@ -97,7 +97,7 @@
 ### 視覚
 
 1. **受動の視覚** ✅ 実装済（222b8b7）— `image_feed` チャンネルで生画像を言語野へ（文字起こししない）。`src/sensor/frame.ts`・`settings.imageFeedSource`（既定オフ）。現行 chatModel(qwen3.6:35b-a3b) が vision 対応。周辺視野の注釈付き（景色に引っ張られすぎ対策の第一段・要観察）。
-2. **Slack 画像受信**（次・計画済）— Slack の添付画像を `image_feed` の出どころにする。`user_message` トリガーに `images?` を足し、orchestrator は「トリガー画像＞ファイルセンサー」で `imageFeed` に入れる。画像だけのメッセージも通す。**要 Slack スコープ `files:read`**（`url_private` を bot トークンで DL）。記憶は当面 v1（下記）。
+2. **Slack 画像受信** ✅ 実装済（要 `files:read` で有効化）— Slack の添付画像を `image_feed` の出どころにする。`user_message` トリガーに `images?` を足し、orchestrator は「トリガー画像＞ファイルセンサー」で `imageFeed` に入れる。画像だけのメッセージも通す。`url_private` を bot トークンで DL（スコープ未付与・DL 失敗時は黙ってテキストとして続行）。**実機で効かせるには Slack アプリに `files:read` スコープを足して入れ直す**。記憶は当面 v1（下記）。
 3. **能動の「見にいく」** — `webcam` actor を能動の見る係として実装。カメラを動かした結果の2枚目を `image_feed` に append（`images` は配列なので自然に並ぶ）。＝行動→結果の視覚版。
 
 ### 画像の記憶（キャプションを正本にしない前提）

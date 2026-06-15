@@ -289,4 +289,58 @@ describe("TurnOrchestrator", () => {
     expect(turn2LangSystem).toContain("古い内省");
     expect(turn2LangSystem).not.toContain("直近の内省");
   });
+
+  it("user_message のトリガー画像が image_feed として言語野に届く（周辺視野の注釈付き）", async () => {
+    const llm = new FakeLlmClient([
+      lang("いい写真だね"),
+      "内省",
+      '{"tags":["会話"]}',
+      "嬉しい気分",
+    ]);
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({ llm, workingMemory: new WorkingMemory(20) }),
+    );
+
+    await orch.run({
+      type: "user_message",
+      content: "見て",
+      speakerId: "user_001",
+      images: ["BASE64FRAME"],
+    });
+
+    const langMsgs = llm.calls[0]!.messages;
+    const lastUser = langMsgs[langMsgs.length - 1]!;
+    expect(lastUser.role).toBe("user");
+    expect(lastUser.images).toEqual(["BASE64FRAME"]);
+    expect(lastUser.content).toContain("周辺視野");
+  });
+
+  it("トリガー画像はファイルセンサー(readFrames)より優先される", async () => {
+    const llm = new FakeLlmClient([
+      lang("返答"),
+      "内省",
+      '{"tags":[]}',
+      "気分",
+    ]);
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        readFrames: () => ["SENSOR"],
+      }),
+    );
+
+    await orch.run({
+      type: "user_message",
+      content: "x",
+      speakerId: "user_001",
+      images: ["TRIGGER"],
+    });
+
+    const msgs = llm.calls[0]!.messages;
+    const last = msgs[msgs.length - 1]!;
+    expect(last.images).toEqual(["TRIGGER"]);
+  });
 });

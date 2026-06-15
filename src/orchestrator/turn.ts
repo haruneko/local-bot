@@ -46,7 +46,13 @@ import type {
 import { DEFAULT_ACTOR_CHANNELS } from "../config/settings.js";
 
 export type TurnTrigger =
-  | { type: "user_message"; content: string; speakerId: string }
+  | {
+      type: "user_message";
+      content: string;
+      speakerId: string;
+      /** 相手が添えてきた画像（base64・文字起こししない）。あれば image_feed に乗る */
+      images?: string[];
+    }
   | { type: "heartbeat" };
 
 export type TurnResult = {
@@ -263,8 +269,15 @@ export class TurnOrchestrator {
     // 計画チャンネル: 集中 State のときだけ取り組み中のゴールノート全文を常駐させる
     const plan = await this.loadPlanChannel(startState);
 
-    // 視覚チャンネル(image_feed): いま視界に入っているフレーム（あれば）
-    const imageFeed = this.deps.readFrames ? await this.deps.readFrames() : [];
+    // 視覚チャンネル(image_feed): いま視界に入っているフレーム。
+    // 相手が添えてきた画像（トリガー）を優先し、無ければファイルセンサー（環境の視界）にフォールバック。
+    const triggerImages =
+      trigger.type === "user_message" ? trigger.images : undefined;
+    const imageFeed = triggerImages?.length
+      ? triggerImages
+      : this.deps.readFrames
+        ? await this.deps.readFrames()
+        : [];
 
     let ctx = createTurnContext({
       turnId,
