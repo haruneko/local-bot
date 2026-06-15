@@ -403,4 +403,21 @@ describe("TurnOrchestrator", () => {
 
     expect(distillCalls).toBe(0);
   });
+
+  it("符号化ロンダリング対策: 裏打ち事実(groundedFacts)に相手発話を機械記録し、本文は内省のまま", async () => {
+    const llm = new FakeLlmClient([lang("返答"), "内省テキスト", '{"tags":[]}', "気分"]);
+    const episodes = new InMemoryEpisodeStore();
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({ llm, episodes, workingMemory: new WorkingMemory(20) }),
+    );
+
+    await orch.run({ type: "user_message", content: "やっほー", speakerId: "user_001" });
+
+    const ep = episodes.getAll()[0]!;
+    // 事実記録には相手発話が入る（埋め込まないメタ）
+    expect(ep.metadata.groundedFacts).toContain("やっほー");
+    // 本文(body)は内省のまま＝想起は無傷
+    expect(ep.body).toBe("内省テキスト");
+  });
 });

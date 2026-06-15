@@ -59,10 +59,12 @@ function buildDreamUserContent(
 
   if (episodes.length > 0) {
     const episodeBlocks = episodes
-      .map(
-        (ep, i) =>
-          `--- ${i + 1} (turnId: ${ep.metadata.turnId}, at: ${ep.metadata.timestamp})\n${ep.body.trim()}`,
-      )
+      // 作話を含みうる本文(body)でなく、裏打ちのある事実記録(groundedFacts)から蒸留する。
+      // 無い場合（旧エピソード等）は body にフォールバック（符号化ロンダリング対策・DECISIONS §②）。
+      .map((ep, i) => {
+        const material = ep.metadata.groundedFacts?.trim() || ep.body.trim();
+        return `--- ${i + 1} (turnId: ${ep.metadata.turnId}, at: ${ep.metadata.timestamp})\n${material}`;
+      })
       .join("\n\n");
     parts.push("## 蒸留対象のエピソード", episodeBlocks);
   }

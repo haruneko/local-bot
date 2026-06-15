@@ -37,6 +37,8 @@ type EpisodeRow = {
   deleted: boolean;
   /** 重要度 1-10。addColumns マイグレーション前は undefined になりうる */
   importance?: number;
+  /** 裏打ちのある事実記録（夢が蒸留に使う・埋め込まない）。空文字 = なし */
+  groundedFacts?: string;
 };
 
 export class LanceEpisodeStore implements EpisodeStore {
@@ -80,6 +82,7 @@ export class LanceEpisodeStore implements EpisodeStore {
         reply: false,
         turnId: "__seed__",
         deleted: false,
+        groundedFacts: "",
       },
     ]);
     await this.table.delete('id = "__seed__"');
@@ -94,6 +97,9 @@ export class LanceEpisodeStore implements EpisodeStore {
     }
     if (!fields.includes("importance")) {
       await table.addColumns([{ name: "importance", valueSql: "5.0" }]);
+    }
+    if (!fields.includes("groundedFacts")) {
+      await table.addColumns([{ name: "groundedFacts", valueSql: "''" }]);
     }
   }
 
@@ -115,6 +121,7 @@ export class LanceEpisodeStore implements EpisodeStore {
       turnId: record.metadata.turnId,
       deleted: false,
       importance: record.metadata.importance ?? 5,
+      groundedFacts: record.metadata.groundedFacts ?? "",
     };
     await table.add([row]);
   }
@@ -141,6 +148,7 @@ export class LanceEpisodeStore implements EpisodeStore {
         source: r.source as EpisodeRecord["metadata"]["source"],
         reply: r.reply,
         turnId: r.turnId,
+        groundedFacts: r.groundedFacts || undefined,
       },
     }));
   }

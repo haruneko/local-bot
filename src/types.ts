@@ -44,4 +44,8 @@ export type EpisodeMetadata = {
   turnId: string;
   /** 重要度スコア 1-10。内省 LLM が採点。未設定時は 5（中立）扱い */
   importance?: number;
+  /** 裏打ちのある事実記録（コードが行動結果＋相手発話から機械生成・埋め込まない）。
+   *  夢の蒸留が turnId 経由で引いて、作話を含みうる本文でなくこれから蒸留する＝符号化ロンダリング対策
+   *  （DECISIONS §②符号化側のロンダリング対策）。本文(body)の想起は無傷のまま。 */
+  groundedFacts?: string;
 };

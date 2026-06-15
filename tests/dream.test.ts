@@ -25,6 +25,52 @@ function episode(turnId: string, body: string, timestamp: string) {
 }
 
 describe("runDream", () => {
+  it("符号化ロンダリング対策: 本文でなく裏打ち事実(groundedFacts)から蒸留する", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "local-bot-dream-gf-"));
+    const dreamStatePath = path.join(dir, "dream-state.json");
+    const episodes = new InMemoryEpisodeStore();
+    await episodes.append({
+      body: "冷蔵庫を確認した（作話）。とても満ち足りた気分だった。",
+      metadata: {
+        timestamp: "2026-06-01T10:00:00.000Z",
+        participants: [],
+        tags: [],
+        state: "対話",
+        action: "",
+        source: "introspection" as const,
+        reply: true,
+        turnId: "t1",
+        groundedFacts:
+          "太郎: 買い物リスト何だっけ？\n\n買い物リスト.md を読んだ: 卵・牛乳・パン",
+      },
+    });
+    const llm = new FakeLlmClient([
+      JSON.stringify({
+        facts: [{ body: "太郎の買い物リストは卵・牛乳・パン", tags: ["買い物"] }],
+      }),
+    ]);
+
+    await runDream({
+      llm,
+      episodes,
+      semantic: new InMemorySemanticStore(),
+      dreamStatePath,
+      minEpisodes: 1,
+    });
+
+    const userContent = llm.calls[0]!.messages.find(
+      (m) => m.role === "user",
+    )!.content;
+    expect(userContent).toContain("買い物リスト.md を読んだ"); // 裏打ち事実から蒸留
+    expect(userContent).not.toContain("冷蔵庫を確認した"); // 作話本文は使わない
+
+    try {
+      await rm(dir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
+
   it("skips when episodes are below minimum and no seed", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "local-bot-dream-run-"));
     const dreamStatePath = path.join(dir, "dream-state.json");

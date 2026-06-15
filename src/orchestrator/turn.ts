@@ -15,7 +15,7 @@ import type { EpisodeStore } from "../memory/episode.js";
 import type { SemanticStore } from "../memory/semantic.js";
 import type { MemoIndexStore } from "../memory/memo-index.js";
 import { presentSemanticFacts } from "../recall/semantic-present.js";
-import { collectUserArtifacts } from "../action/present.js";
+import { collectUserArtifacts, formatActionFactContent } from "../action/present.js";
 import { WorkingMemory } from "../memory/working.js";
 import type { LlmClient } from "../llm/types.js";
 import { runLanguage } from "../roles/language.js";
@@ -642,6 +642,20 @@ export class TurnOrchestrator {
         .filter(Boolean)
         .join("; ");
 
+      // 裏打ちのある事実記録: 相手の発話＋行動結果（外界 grounded）。自分の発話は作話を含みうるので入れない。
+      // 埋め込まない（メタなので想起検索に混ざらない）。夢が turnId 経由で引いて、本文でなくこれから蒸留する。
+      const groundedParts: string[] = [];
+      if (trigger.type === "user_message") {
+        const name = ctx.dialogue.resolveUserDisplayName(trigger.speakerId);
+        groundedParts.push(`${name}: ${trigger.content}`);
+      }
+      for (const a of ctx.actions) {
+        if (a.attempted && a.status === "succeeded" && a.facts) {
+          groundedParts.push(formatActionFactContent(a, "introspection"));
+        }
+      }
+      const groundedFacts = groundedParts.join("\n\n");
+
       const metadata = {
         timestamp: new Date().toISOString(),
         participants,
@@ -652,6 +666,7 @@ export class TurnOrchestrator {
         reply: !!ctx.speech?.trim(),
         turnId,
         importance: affectResult.importance,
+        groundedFacts: groundedFacts || undefined,
       };
       await this.deps.episodes.append({ body: introspection, metadata });
       this.pushRecentEpisodeTurnId(turnId);
