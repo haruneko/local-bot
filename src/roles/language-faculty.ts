@@ -167,9 +167,19 @@ function buildLanguageDialogueMessages(
 
   const actionText = formatActionsForLanguage(ctx.actions);
   const hasAction = ctx.actions.some((a) => a.attempted);
-  const userContent = hasAction
+  let userContent = hasAction
     ? `${triggerLine}\n\n## このターンで起きたこと\n${actionText}`
     : triggerLine;
+
+  // 視覚チャンネル(image_feed): いま視界に入っている景色を生のまま添える（文字起こししない）。
+  // 周辺視野として枠づけ＝話題に関係するときだけ触れる（景色に引っ張られすぎを防ぐ）。
+  if (ctx.imageFeed.length > 0) {
+    userContent +=
+      "\n\n（画像はいま視界に入っている景色＝周辺視野。話題に関係するときだけ触れればよく、" +
+      "毎回描写する必要はない。）";
+    messages.push({ role: "user", content: userContent, images: ctx.imageFeed });
+    return messages;
+  }
 
   messages.push({ role: "user", content: userContent });
   return messages;

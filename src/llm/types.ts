@@ -1,6 +1,8 @@
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
   content: string;
+  /** マルチモーダル: 生の画像（base64・文字起こししない）。vision モデルがそのまま見る */
+  images?: string[];
 };
 
 export type ChatOptions = {

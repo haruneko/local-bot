@@ -59,6 +59,10 @@ export type TurnContext = {
   /** memo_index から想起した関連メモの所在 */
   recalledNotes: MemoIndexHit[];
 
+  /** 視覚チャンネル(image_feed): いま視界に入っているフレーム（base64・文字起こししない）。
+   *  空 = 画像なし。image_feed を宣言したモジュール（当面は言語野）だけが生のまま受け取る */
+  imageFeed: string[];
+
   /** withPersona で設定（言語野用） */
   persona?: string;
 
@@ -78,6 +82,7 @@ export type CreateTurnContextInput = {
   recalledEpisodes: RecalledEpisode[];
   semanticFacts?: SemanticFactView[];
   recalledNotes?: MemoIndexHit[];
+  imageFeed?: string[];
   affect?: string;
   concern?: string;
   plan?: string;
@@ -128,6 +133,7 @@ export function createTurnContext(input: CreateTurnContextInput): TurnContext {
     recallDelivery: "full",
     semanticFacts: [...(input.semanticFacts ?? [])],
     recalledNotes: [...(input.recalledNotes ?? [])],
+    imageFeed: [...(input.imageFeed ?? [])],
     affect: input.affect ?? "",
     concern: input.concern ?? "",
     plan: input.plan ?? "",

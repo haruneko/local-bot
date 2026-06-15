@@ -82,6 +82,8 @@ export type TurnDeps = {
   contextTokenBudget: number;
   languageNumPredict?: number;
   timeZone?: string;
+  /** 視覚センサー: いま視界に入っているフレーム（base64）を返す。未設定 = 視覚オフ */
+  readFrames?: () => string[] | Promise<string[]>;
   getPersona: () => Promise<string>;
   dialogue: DialogueFormatOptions;
   actionDeps?: {
@@ -261,6 +263,9 @@ export class TurnOrchestrator {
     // 計画チャンネル: 集中 State のときだけ取り組み中のゴールノート全文を常駐させる
     const plan = await this.loadPlanChannel(startState);
 
+    // 視覚チャンネル(image_feed): いま視界に入っているフレーム（あれば）
+    const imageFeed = this.deps.readFrames ? await this.deps.readFrames() : [];
+
     let ctx = createTurnContext({
       turnId,
       state: startState,
@@ -270,6 +275,7 @@ export class TurnOrchestrator {
       recalledEpisodes: recalled,
       semanticFacts,
       recalledNotes: memoHits,
+      imageFeed,
       affect: this.affect,
       concern: this.concern,
       plan,

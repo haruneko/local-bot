@@ -165,6 +165,39 @@ describe("generateDialogueSpeech — heartbeat/dialogue 統一フォーマット
   });
 });
 
+describe("generateDialogueSpeech — 視覚チャンネル(image_feed)", () => {
+  it("imageFeed があれば最終 user メッセージに images が乗り、周辺視野の注釈が付く", async () => {
+    const llm = new FakeLlmClient(['{"speech":"やあ","nextState":"対話"}']);
+    const ctx = withPersona(
+      createTurnContext({
+        turnId: "t-img",
+        state: "対話",
+        trigger: { type: "user_message", content: "やっほー", speakerId: "u1" },
+        dialogue,
+        recentTurns: [],
+        recalledEpisodes: [],
+        imageFeed: ["BASE64FRAME"],
+      }),
+      "キャラクター設定",
+    );
+    await generateDialogueSpeech(llm, ctx);
+    const msgs = llm.calls[0].messages;
+    const last = msgs[msgs.length - 1];
+    expect(last.role).toBe("user");
+    expect(last.images).toEqual(["BASE64FRAME"]);
+    expect(last.content).toContain("周辺視野");
+  });
+
+  it("imageFeed が空なら images を付けない（普段は画像なし）", async () => {
+    const llm = new FakeLlmClient(['{"speech":"やあ","nextState":"対話"}']);
+    await generateDialogueSpeech(llm, makeUserCtx());
+    const msgs = llm.calls[0].messages;
+    const last = msgs[msgs.length - 1];
+    expect(last.images).toBeUndefined();
+    expect(last.content).not.toContain("周辺視野");
+  });
+});
+
 describe("parseLanguageOutput — 生の思考・壊れたJSONを絶対に漏らさない", () => {
   it("<think>…</think> 付きの出力から think を除去して speech だけ返す", async () => {
     const raw =

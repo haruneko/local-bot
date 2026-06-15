@@ -27,6 +27,7 @@ import {
   loadUsers,
 } from "../config/users.js";
 import { TurnOrchestrator } from "../orchestrator/turn.js";
+import { readFrames } from "../sensor/frame.js";
 import { WorkingMemory } from "../memory/working.js";
 import { LanceEpisodeStore } from "../memory/lancedb.js";
 import { InMemoryEpisodeStore } from "../memory/episode.js";
@@ -271,6 +272,7 @@ export async function createApp(
     contextTokenBudget: settings.contextTokenBudget,
     languageNumPredict: settings.languageNumPredict ?? 400,
     timeZone: settings.timeZone ?? "Asia/Tokyo",
+    readFrames: () => readFrames(settings.imageFeedSource),
     getPersona: async () => personaText,
     dialogue: { resolveUserDisplayName, resolveUserProfile },
     actionDeps,
