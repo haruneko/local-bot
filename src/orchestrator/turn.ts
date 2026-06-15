@@ -90,6 +90,9 @@ export type TurnDeps = {
   timeZone?: string;
   /** 視覚センサー: いま視界に入っているフレーム（base64）を返す。未設定 = 視覚オフ */
   readFrames?: () => string[] | Promise<string[]>;
+  /** 自発 distill: 静穏 idle ハートビートで蒸留を回す。新素材が足りなければ内部でスキップする。
+   *  未設定 = 自発 distill オフ（`npm run dream` の手動運用のみ） */
+  runDistill?: () => Promise<{ ran: boolean; factsUpserted: number; skippedReason?: string }>;
   getPersona: () => Promise<string>;
   dialogue: DialogueFormatOptions;
   actionDeps?: {
@@ -384,6 +387,28 @@ export class TurnOrchestrator {
       focusStreak: this.focusStreak,
     });
     v?.stateTransition(prevState, this.state);
+
+    // 自発 distill: 静穏 idle ハートビート（手が空いた時）に蒸留を回す。睡眠中の記憶整理のイメージ。
+    // runDistill は dream-state で「新素材が足りなければ即スキップ」するので毎回呼んで安全。
+    if (
+      this.deps.runDistill &&
+      trigger.type === "heartbeat" &&
+      this.state === "静穏" &&
+      !episodePersisted
+    ) {
+      try {
+        const d = await this.deps.runDistill();
+        if (v) {
+          console.error(
+            d.ran
+              ? `[distill] ${d.factsUpserted} 件の意味記憶を蒸留`
+              : `[distill] skip (${d.skippedReason ?? "新素材なし"})`,
+          );
+        }
+      } catch (err) {
+        v?.error("distill", err);
+      }
+    }
 
     const result: TurnResult = {
       turnId,

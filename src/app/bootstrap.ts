@@ -28,6 +28,7 @@ import {
 } from "../config/users.js";
 import { TurnOrchestrator } from "../orchestrator/turn.js";
 import { readFrames } from "../sensor/frame.js";
+import { runDream } from "../roles/dream.js";
 import { WorkingMemory } from "../memory/working.js";
 import { LanceEpisodeStore } from "../memory/lancedb.js";
 import { InMemoryEpisodeStore } from "../memory/episode.js";
@@ -273,6 +274,15 @@ export async function createApp(
     languageNumPredict: settings.languageNumPredict ?? 400,
     timeZone: settings.timeZone ?? "Asia/Tokyo",
     readFrames: () => readFrames(settings.imageFeedSource),
+    // 自発 distill: 静穏 idle で蒸留（タネは適用しない＝外界 grounded のエピソード蒸留のみ）。
+    // 新素材が足りなければ runDream が内部でスキップする。
+    runDistill: () =>
+      runDream({
+        llm,
+        episodes,
+        semantic,
+        minEpisodes: resolveDreamMinEpisodes(settings),
+      }),
     getPersona: async () => personaText,
     dialogue: { resolveUserDisplayName, resolveUserProfile },
     actionDeps,

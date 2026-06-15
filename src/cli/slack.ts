@@ -4,6 +4,8 @@ import { parseArgs } from "./args.js";
 import { printTurnSummary } from "./output.js";
 
 const DEFAULT_HEARTBEAT_MS = 60 * 60 * 1000;
+/** これを超える成果物は inline で流さず Slack snippet（折りたたみ添付）にする */
+const ARTIFACT_INLINE_MAX = 1200;
 
 type SlackFile = {
   mimetype?: string;
@@ -50,10 +52,30 @@ async function main(): Promise<void> {
     return out;
   }
 
+  // 成果物の投稿: 短いものは通常メッセージ、長いものは Slack snippet（折りたたみ添付）で
+  // チャットを流さない。snippet 失敗時は通常投稿にフォールバック（壊さない）。
+  async function postArtifact(channel: string, text: string): Promise<void> {
+    if (text.length <= ARTIFACT_INLINE_MAX) {
+      await bolt.client.chat.postMessage({ channel, text });
+      return;
+    }
+    try {
+      await bolt.client.files.uploadV2({
+        channel_id: channel,
+        content: text,
+        filename: "result.md",
+        title: "（長い成果物）",
+      });
+    } catch {
+      await bolt.client.chat.postMessage({ channel, text });
+    }
+  }
+
   async function handleMessage(
     text: string,
     userId: string,
     images: string[],
+    channel: string,
     reply: (t: string) => Promise<unknown>,
   ): Promise<void> {
     const content = text.replace(/<@[A-Z0-9]+>/g, "").trim();
@@ -69,8 +91,8 @@ async function main(): Promise<void> {
     printTurnSummary(result, verbose);
 
     if (result.speech) await reply(result.speech);
-    // 成果物（生成物・調査結果・読み上げ）は speech とは別に全文を投稿する（チャットチャンネル）
-    for (const artifact of result.artifacts) await reply(artifact);
+    // 成果物（生成物・調査結果・読み上げ）は speech とは別経路。長尺は snippet で流さない。
+    for (const artifact of result.artifacts) await postArtifact(channel, artifact);
   }
 
   // DM のみ（チャンネルは app_mention で処理するため channel_type で絞る）
@@ -78,6 +100,7 @@ async function main(): Promise<void> {
     const m = message as {
       subtype?: string;
       channel_type?: string;
+      channel?: string;
       text?: string;
       user?: string;
       files?: SlackFile[];
@@ -86,19 +109,19 @@ async function main(): Promise<void> {
     if (m.subtype !== undefined && m.subtype !== "file_share") return;
     if (m.channel_type !== "im") return;
     const user = m.user;
-    if (!user) return;
+    if (!user || !m.channel) return;
     const images = await downloadSlackImages(m.files);
-    await handleMessage(m.text ?? "", user, images, (t) => say(t));
+    await handleMessage(m.text ?? "", user, images, m.channel, (t) => say(t));
   });
 
   // チャンネルでの @メンション
   bolt.event("app_mention", async ({ event, say }) => {
     const user = event.user;
-    if (!user) return;
+    if (!user || !event.channel) return;
     const images = await downloadSlackImages(
       (event as { files?: SlackFile[] }).files,
     );
-    await handleMessage(event.text ?? "", user, images, (t) => say(t));
+    await handleMessage(event.text ?? "", user, images, event.channel, (t) => say(t));
   });
 
   // heartbeat: SLACK_HEARTBEAT_CHANNEL が設定されていれば定期実行
@@ -119,10 +142,7 @@ async function main(): Promise<void> {
           });
         }
         for (const artifact of result.artifacts) {
-          await bolt.client.chat.postMessage({
-            channel: heartbeatChannel,
-            text: artifact,
-          });
+          await postArtifact(heartbeatChannel, artifact);
         }
       } catch (err) {
         console.error(

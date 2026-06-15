@@ -343,4 +343,64 @@ describe("TurnOrchestrator", () => {
     const last = msgs[msgs.length - 1]!;
     expect(last.images).toEqual(["TRIGGER"]);
   });
+
+  it("自発 distill: 静穏 idle ハートビートで runDistill を呼ぶ", async () => {
+    const llm = new FakeLlmClient([lang("", "静穏")]); // idle heartbeat = 1 call
+    let distillCalls = 0;
+    const orch = new TurnOrchestrator(
+      "静穏",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        runDistill: async () => {
+          distillCalls++;
+          return { ran: false, factsUpserted: 0, skippedReason: "test" };
+        },
+      }),
+    );
+
+    await orch.run({ type: "heartbeat" });
+
+    expect(distillCalls).toBe(1);
+  });
+
+  it("自発 distill: user_message では呼ばない", async () => {
+    const llm = new FakeLlmClient([lang("返答"), "内省", '{"tags":[]}', "気分"]);
+    let distillCalls = 0;
+    const orch = new TurnOrchestrator(
+      "静穏",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        runDistill: async () => {
+          distillCalls++;
+          return { ran: false, factsUpserted: 0 };
+        },
+      }),
+    );
+
+    await orch.run({ type: "user_message", content: "やあ", speakerId: "u1" });
+
+    expect(distillCalls).toBe(0);
+  });
+
+  it("自発 distill: 静穏 以外のハートビートでは呼ばない", async () => {
+    const llm = new FakeLlmClient([lang("", "対話")]);
+    let distillCalls = 0;
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        runDistill: async () => {
+          distillCalls++;
+          return { ran: false, factsUpserted: 0 };
+        },
+      }),
+    );
+
+    await orch.run({ type: "heartbeat" });
+
+    expect(distillCalls).toBe(0);
+  });
 });

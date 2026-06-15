@@ -127,19 +127,16 @@
 **状態:** 解決済み（filesystem MCP は不要になった）  
 当初の課題「エージェントがサブディレクトリにファイルを書く手段がない」は、**統合 `memo` actor の `writeNoteContent`（`safePath` でサブディレクトリ保全・親フォルダ自動作成）** で解消。MOC ツリーが話題フォルダを自前で作り、`_index.md` を機械再生成する（[MEMO-TREE.md](MEMO-TREE.md)）。旧 `normalizeWriteArgs` のフラット化制約を回避する専用プリミティブ（`writeNoteContent`）を用意したため、外部 filesystem MCP に頼る必要がなくなった。
 
-### 2. 自発的な `distill`（蒸留を会話中にも）
+### 2. 自発的な `distill`（静穏 idle で蒸留）✅ 実装済（2026-06-15）
 
-**状態:** 蒸留は `npm run dream` バッチで動作中。会話中に自発実行する action-tool 経路は、legacy カテゴリ・サブエージェント削除（2026-06）と共に撤去済み＝再導入は新規作業。  
-**前提:** なし（filesystem MCP 不要に）
+**起動＝静穏 idle ハートビート**（手が空いた時・睡眠中の記憶整理のイメージ。会話中ではない）。
 
-実装することで会話中にエージェントが自発的に知識整理できるようになる。
+- `runDream`（既に in-process 関数・`src/roles/dream.ts`）を `TurnDeps.runDistill` として注入（`bootstrap.ts`）。
+- orchestrator が **heartbeat ＋ state==="静穏" ＋ idle（episode 未保存）** のとき `runDistill` を呼ぶ（`src/orchestrator/turn.ts`）。
+- `runDream` は dream-state で「新素材が足りなければ即スキップ」するので毎ターン呼んで安全。タネは適用しない（外界 grounded のエピソード蒸留のみ）。
+- `npm run dream` は従来どおり手動バッチとして残る（同じ `runDream`）。
 
-- **中身**: `npm run dream` の処理（エピソード → 意味記憶の蒸留）を in-process 関数として切り出す
-- **memo_index 同期を含める**: `distill` 実行時に `data/notes/` をスキャンしてインデックス未登録ファイルを upsert（外部注入ファイルの取り込み）
-- **`npm run dream` はラッパーとして残す**: 同じ関数を CLI から呼ぶだけにする
-- **heartbeat との連携**: heartbeat が「メモや記憶が増えてきた」と判断したとき自発的に `distill` を呼べる（フェーズ 5 への布石）
-
-> 現状は `npm run dream` の手作業運用で十分。
+**残（任意）**: memo_index 同期（`distill` 実行時に `data/notes/` をスキャンして未登録ファイルを upsert）は未実装。
 
 ### 3. LINE 連携（フェーズ 2）
 
@@ -207,7 +204,7 @@ express MCP サーバに追加し、express サブエージェントがカタロ
 
 ### 8. 細かい改善・積み残し
 
-- **research 長尺の Slack snippet 化**: 調査結果をチャットに流すと長い。全文 dump を出さないのは対処済み（要約だけ返す・Phase 1）。残りは「長尺は Slack の snippet として投稿」（B 案）。
+- ~~**research 長尺の Slack snippet 化**~~ ✅ 実装済（2026-06-15）: `ARTIFACT_INLINE_MAX`（1200字）超の成果物は `chat.postMessage` の inline でなく `files.uploadV2` の snippet（折りたたみ添付）で投稿＝チャットを流さない。短いものは従来どおり inline。失敗時は inline にフォールバック（`src/cli/slack.ts`）。全文 dump を出さない Phase 1（要約だけ返す）と合わせて完了。
 - **符号化ロンダリングの本丸**: 作話（幻覚）を招く経路を断つ A/B/C は実装済み。importance は内心更新側へ移した。残るのは「内省が事後に語った内容が、検証なく確信的な記憶として固まる」流れ（符号化ロンダリング）の詰め。
 
 ### 9. embedding サブシステムの骨 🟢（TS だけで作れる・視覚記憶の橋）
