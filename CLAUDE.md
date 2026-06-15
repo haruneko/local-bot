@@ -79,7 +79,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 
 環境変数: `OLLAMA_HOST`（settings より優先）, `OLLAMA_THINK`（`roles[*].think` より低優先）, `EXPRESS_DRY_RUN`, `TAVILY_API_KEY`（web 検索＝研究 actor 用。`.env` に置く）。
 
-研究の web 検索は **Tavily API**（`scripts/mcp-research.mjs`、Docker 不要・`browse_url` は素の fetch）。旧 searxng/Docker は不要（`docker-compose.yml` と `searxng:*` スクリプトは legacy）。`mcp-research.mjs` は `.env` から `TAVILY_API_KEY` を自前読み込みする。
+研究の web 検索は **Tavily API**（`scripts/mcp-research.mjs`、Docker 不要・`browse_url` は素の fetch）。旧 searxng/Docker は撤去済み（`docker-compose.yml`・`config/searxng/`・`searxng:*` スクリプトは 2026-06-15 に削除）。`mcp-research.mjs` は `.env` から `TAVILY_API_KEY` を自前読み込みする。
 
 ランタイム: TypeScript / Node 20+ / npm / Vitest。LLM は Ollama（`LlmClient` アダプタで差し替え可、`src/llm/`）。
 
@@ -87,7 +87,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 
 - キーワードマッチでの直行ルーティング
 - ロールごとに想起・会話ログの入れ方を変えること
-- ヒューリスティックによるエージェントのスキップ（活性化判断は必ず LLM で行う）
+- **判断を要するアクター**の起動をキーワード/ヒューリスティックで代替・スキップすること（判断系は必ず LLM。起動が客観条件で決まるアクター＝recall=常時・視覚=画像の有無・distill=静穏idle は機械ゲート可・ARCH-NEXT §1.6）
 - メモ（`data/notes/`）本文を LLM で**要約**すること（劣化するから）。構造保存的な op 編集（厳密置換・見出し差し替え）は read-before-edit ＋厳密一致確認をコードで強制した上でのみ可
 - メモ書き込み成功時に `episodes` へ直接追記すること（`memo_index` へ書く）
 - 理由のない暗黙トリム（preview・verbose の truncate は別）
