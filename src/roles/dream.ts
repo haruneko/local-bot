@@ -13,11 +13,20 @@ import {
   loadDreamState,
   saveDreamState,
 } from "../state/dream-state.js";
+import type { MemoIndexStore } from "../memory/memo-index.js";
+import {
+  listNoteFilenames,
+  readNoteContent,
+  truncateNotePreview,
+} from "../tools/notes.js";
 
 export type RunDreamInput = {
   llm: LlmClient;
   episodes: EpisodeStore;
   semantic: SemanticStore;
+  /** あれば distill 実行時に data/notes/ をスキャンし、memo_index 未登録の本文を upsert
+   *  （外部から置かれたメモの取り込み）。LLM 不要（preview は機械的に切るだけ） */
+  memoIndex?: MemoIndexStore;
   dreamStatePath?: string;
   minEpisodes?: number;
   /** 夢のタネ（内省風断片）。applySeed=true のとき蒸留入力に含める */
@@ -36,7 +45,31 @@ export type DreamResult = {
   factsUpserted: number;
   lastDreamAt: string | null;
   seedAppliedAt: string | null;
+  /** memo_index に新規取り込みしたメモ数（distill 実行時のみ・memoIndex 未指定なら 0） */
+  memoIndexSynced?: number;
 };
+
+/** data/notes/ をスキャンし、memo_index 未登録の本文を upsert（LLM 不要・preview は機械切り）。
+ *  外部から data/notes/ に置かれたメモを所在記憶に取り込む。戻り値 = 新規取り込み数。 */
+async function syncMemoIndex(memoIndex: MemoIndexStore): Promise<number> {
+  const files = await listNoteFilenames();
+  const indexed = new Set((await memoIndex.list()).map((e) => e.path));
+  const now = new Date().toISOString();
+  let added = 0;
+  for (const path of files) {
+    if (indexed.has(path)) continue;
+    const body = (await readNoteContent(path)) ?? "";
+    if (!body.trim()) continue;
+    await memoIndex.upsert({
+      path,
+      preview: truncateNotePreview(body, 200),
+      createdAt: now,
+      updatedAt: now,
+    });
+    added += 1;
+  }
+  return added;
+}
 
 function buildDreamUserContent(
   episodes: readonly EpisodeRecord[],
@@ -179,6 +212,11 @@ export async function runDream(input: RunDreamInput): Promise<DreamResult> {
     factCount: allFacts.length,
   });
 
+  // distill 実行時に memo_index を同期（外部から置かれたメモの取り込み）。あれば。
+  const memoIndexSynced = input.memoIndex
+    ? await syncMemoIndex(input.memoIndex)
+    : 0;
+
   return {
     ran: true,
     episodesProcessed: episodes.length,
@@ -186,5 +224,6 @@ export async function runDream(input: RunDreamInput): Promise<DreamResult> {
     factsUpserted,
     lastDreamAt,
     seedAppliedAt,
+    memoIndexSynced,
   };
 }

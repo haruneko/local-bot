@@ -1,9 +1,10 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { InMemoryEpisodeStore } from "../src/memory/episode.js";
 import { InMemorySemanticStore } from "../src/memory/semantic.js";
+import { InMemoryMemoIndexStore } from "../src/memory/memo-index.js";
 import { FakeLlmClient } from "../src/llm/fake.js";
 import { runDream } from "../src/roles/dream.js";
 import { loadDreamState } from "../src/state/dream-state.js";
@@ -68,6 +69,47 @@ describe("runDream", () => {
       await rm(dir, { recursive: true, force: true });
     } catch {
       /* ignore */
+    }
+  });
+
+  it("memo_index 同期: distill 実行時に未登録メモ(data/notes)を取り込む", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "local-bot-dream-mi-"));
+    const dreamStatePath = path.join(dir, "dream-state.json");
+    const notes = path.join(dir, "notes");
+    await mkdir(notes, { recursive: true });
+    await writeFile(path.join(notes, "memo-a.md"), "# メモA\n中身がある");
+    const prev = process.env.MEMO_NOTES_DIR;
+    process.env.MEMO_NOTES_DIR = notes;
+    try {
+      const episodes = new InMemoryEpisodeStore();
+      await episodes.append(
+        episode("t1", "ユーザーが話した", "2026-06-01T10:00:00.000Z"),
+      );
+      const memoIndex = new InMemoryMemoIndexStore();
+      const llm = new FakeLlmClient([
+        JSON.stringify({ facts: [{ body: "x", tags: [] }] }),
+      ]);
+
+      const result = await runDream({
+        llm,
+        episodes,
+        semantic: new InMemorySemanticStore(),
+        memoIndex,
+        dreamStatePath,
+        minEpisodes: 1,
+      });
+
+      expect(result.memoIndexSynced).toBe(1);
+      const indexed = await memoIndex.list();
+      expect(indexed.some((e) => e.path === "memo-a.md")).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.MEMO_NOTES_DIR;
+      else process.env.MEMO_NOTES_DIR = prev;
+      try {
+        await rm(dir, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
     }
   });
 

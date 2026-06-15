@@ -34,6 +34,7 @@ async function main(): Promise<void> {
     llm: app.llm,
     episodes: app.episodes,
     semantic: app.semantic,
+    memoIndex: app.memoIndex,
     minEpisodes: resolveDreamMinEpisodes(app.settings),
     seed,
     applySeed: seedRequested,
@@ -52,6 +53,9 @@ async function main(): Promise<void> {
     console.log(
       `夢完了: ${source} から ${result.factsUpserted} 件の意味記憶を蒸留しました`,
     );
+    if (result.memoIndexSynced) {
+      console.log(`memo_index に ${result.memoIndexSynced} 件の未登録メモを取り込みました`);
+    }
     if (result.seedAppliedAt) {
       console.log(`seedAppliedAt: ${result.seedAppliedAt}`);
     }

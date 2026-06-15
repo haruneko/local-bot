@@ -136,7 +136,7 @@
 - `runDream` は dream-state で「新素材が足りなければ即スキップ」するので毎ターン呼んで安全。タネは適用しない（外界 grounded のエピソード蒸留のみ）。
 - `npm run dream` は従来どおり手動バッチとして残る（同じ `runDream`）。
 
-**残（任意）**: memo_index 同期（`distill` 実行時に `data/notes/` をスキャンして未登録ファイルを upsert）は未実装。
+**memo_index 同期** ✅ 実装済（2026-06-15）: `runDream` が distill 実行時に `data/notes/` をスキャンし、`memo_index` 未登録の本文を upsert（外部から置かれたメモの取り込み・LLM 不要・preview は機械切り）。`memoIndex` 未指定なら何もしない。
 
 ### 3. LINE 連携（フェーズ 2）
 

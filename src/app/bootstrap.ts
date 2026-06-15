@@ -281,6 +281,7 @@ export async function createApp(
         llm,
         episodes,
         semantic,
+        memoIndex,
         minEpisodes: resolveDreamMinEpisodes(settings),
       }),
     getPersona: async () => personaText,
