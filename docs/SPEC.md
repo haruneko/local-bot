@@ -195,7 +195,7 @@ type ActionOutcome = { attempted: false } | {
 
 - センサー: システム時刻（ISO8601）を常に含める
 - 作業記憶: 直近 `workingMemoryTurns` 件
-- エピソード想起: 直近ユーザー発話（なければ空文字）で embed → top-k → **直近 `recencyExclusionTurns` ターンの turnId を除外**（`excludeTurnIds`）→ 距離分類 → `summarize`/`vague` は LLM が作業状況に照らして提示文を生成（無関係なら省略）
+- エピソード想起: 直近ユーザー発話（なければ空文字）で embed → top-k → **直近 `recencyExclusionTurns` ターンの turnId を除外**（`excludeTurnIds`）→ 距離分類（`full`/`summarize`、`summarizeMax` 超は `omit`）→ `summarize` は LLM が作業状況に照らして提示文を生成（無関係なら省略）
 - 計画チャンネル: `state==="集中"` かつ `data/state.json` の `focusPlan`（取り組み中 plan id）があれば、`data/plans/<id>.json` を `renderPlan` して `ctx.plan` に載せ言語野・plan チャンネル actor に常駐注入。集中以外は空
 - トークン超過時: 8B でチャンネル要約（失敗時のみ機械切り詰め）
 
