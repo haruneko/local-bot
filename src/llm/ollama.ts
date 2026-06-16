@@ -51,8 +51,26 @@ export class OllamaLlmClient implements LlmClient {
 export class OllamaEmbedClient {
   private readonly client: Ollama;
 
-  constructor(host: string, private readonly model: string) {
+  /**
+   * @param prefixes モデルのタスク接頭辞（embedPrefixFor で決める）。未指定＝接頭辞なし。
+   *   embedQuery/embedDocument が query/doc 接頭辞を前置きする。raw な embed() は付けない。
+   */
+  constructor(
+    host: string,
+    private readonly model: string,
+    private readonly prefixes: { query: string; doc: string } = { query: "", doc: "" },
+  ) {
     this.client = new Ollama({ host });
+  }
+
+  /** 想起クエリの埋め込み（query 接頭辞を付ける）。 */
+  embedQuery(text: string): Promise<number[]> {
+    return this.embed(this.prefixes.query + text);
+  }
+
+  /** 符号化（保存）するドキュメントの埋め込み（doc 接頭辞を付ける）。 */
+  embedDocument(text: string): Promise<number[]> {
+    return this.embed(this.prefixes.doc + text);
   }
 
   async embed(text: string): Promise<number[]> {

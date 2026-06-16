@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import * as lancedb from "@lancedb/lancedb";
 import { loadSettings } from "../config/settings.js";
+import { lancedbDir } from "../config/paths.js";
 import { OllamaEmbedClient } from "../llm/ollama.js";
+import { embedPrefixFor } from "../llm/embed-prefix.js";
 import { ImageBindClient } from "../embedding/xmodal.js";
 import { cosineSimilarity } from "../recall/distance.js";
 import {
@@ -25,21 +28,18 @@ import { INDEX_FILENAME } from "../memo/tree.js";
  */
 
 type Embed = (text: string) => Promise<number[] | null>;
-type GoldCase = { query: string; expect: string[]; kind?: string; holdout?: boolean };
+type GoldCase = { query: string; expect?: string[]; anchorId?: string; kind?: string; holdout?: boolean };
 type Gold = { cases: GoldCase[] };
 type Doc = { path: string; embedText: string };
 
 /**
- * モデル別のタスク接頭辞（query/document）。付け忘れると nomic/ruri/e5 は本来の性能が出ない＝
- * 公正比較に必須。bge-m3 等は不要（空）。`--no-prefix` で無効化できる。
+ * モデル別のタスク接頭辞（query/document）。本番（bootstrap）と同じ embedPrefixFor を使う＝
+ * 単一情報源。付け忘れると nomic/ruri/e5 は本来の性能が出ない。`--no-prefix` で無効化できる。
  */
 function prefixFor(model: string, noPrefix: boolean): { q: string; d: string } {
   if (noPrefix) return { q: "", d: "" };
-  const m = model.toLowerCase();
-  if (m.includes("nomic")) return { q: "search_query: ", d: "search_document: " };
-  if (m.includes("ruri")) return { q: "検索クエリ: ", d: "検索文書: " };
-  if (m.includes("e5")) return { q: "query: ", d: "passage: " };
-  return { q: "", d: "" };
+  const p = embedPrefixFor(model);
+  return { q: p.query, d: p.doc };
 }
 
 function makeEmbedder(model: string, host: string): Embed {
@@ -70,6 +70,19 @@ async function buildCorpus(embedTarget: string): Promise<Doc[]> {
     const embedText =
       embedTarget === "content" ? content : `${f} ${preview}`;
     docs.push({ path: f, embedText });
+  }
+  return docs;
+}
+
+/** episode コーパス: LanceDB episodes の本文を全件。doc 識別子＝turnId。ファイル名は無い＝純粋な意味検索。 */
+async function buildEpisodeCorpus(): Promise<Doc[]> {
+  const conn = await lancedb.connect(lancedbDir());
+  const rows = (await (await conn.openTable("episodes")).query().toArray()) as Record<string, unknown>[];
+  const docs: Doc[] = [];
+  for (const r of rows) {
+    const id = String(r.turnId ?? r.turn_id ?? r.id ?? "");
+    const body = String(r.body ?? r.text ?? "");
+    if (id && body.trim()) docs.push({ path: id, embedText: body });
   }
   return docs;
 }
@@ -121,7 +134,7 @@ async function scoreModel(
     const ranked = docVecs
       .map((d) => ({ path: d.path, sim: cosineSimilarity(qv, d.vec) }))
       .sort((a, b) => b.sim - a.sim);
-    const rank = bestRank(ranked.map((r) => r.path), c.expect);
+    const rank = bestRank(ranked.map((r) => r.path), c.expect ?? []);
     const buckets = [bump(kind), bump("ALL")];
     if (c.holdout) buckets.push(bump("holdout"));
     for (const acc of buckets) {
@@ -157,7 +170,8 @@ async function main(): Promise<void> {
   const settings = await loadSettings();
   const host = process.env.OLLAMA_HOST ?? settings.ollamaHost;
   if (models.length === 0) models.push(settings.embedModel);
-  const goldPath = get("--gold", "eval/memo-locate.gold.json")!;
+  const corpus = get("--corpus", "memo")!;
+  const goldPath = get("--gold", corpus === "episode" ? "eval/episode-recall.gold.draft.json" : "eval/memo-locate.gold.json")!;
   const topk = Number(get("--topk", "8"));
   const embedTarget = get("--embed-target", "path+preview")!;
   const showWorst = args.includes("--worst");
@@ -166,9 +180,13 @@ async function main(): Promise<void> {
   const gold = JSON.parse(
     await readFile(path.join(process.cwd(), goldPath), "utf8"),
   ) as Gold;
-  const docs = await buildCorpus(embedTarget);
+  // anchorId しか持たない episode gold は expect=[anchorId] に正規化（アンカー想起 Recall を測る）。
+  for (const c of gold.cases) {
+    if (!c.expect && c.anchorId) c.expect = [c.anchorId];
+  }
+  const docs = corpus === "episode" ? await buildEpisodeCorpus() : await buildCorpus(embedTarget);
   console.error(
-    `eval:retrieval — corpus ${docs.length}件 / gold ${gold.cases.length}件 / embed-target=${embedTarget} / topk=${topk}`,
+    `eval:retrieval — corpus=${corpus} ${docs.length}件 / gold ${gold.cases.length}件 / embed-target=${embedTarget} / topk=${topk}`,
   );
 
   const scores: ModelScore[] = [];

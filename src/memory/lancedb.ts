@@ -106,7 +106,7 @@ export class LanceEpisodeStore implements EpisodeStore {
   async append(record: EpisodeRecord): Promise<void> {
     const table = await this.ensureTable();
     const vector =
-      record.vector ?? (await this.embedder.embed(record.body));
+      record.vector ?? (await this.embedder.embedDocument(record.body));
     const row: EpisodeRow = {
       id: record.metadata.turnId,
       body: record.body,
@@ -190,7 +190,7 @@ export class LanceEpisodeStore implements EpisodeStore {
     if (count === 0) return [];
 
     const excludeSize = excludeTurnIds?.size ?? 0;
-    const vector = await this.embedder.embed(queryText || ".");
+    const vector = await this.embedder.embedQuery(queryText || ".");
     const escaped = filterState?.replace(/'/g, "''") ?? "";
     let where = filterState
       ? `deleted = false AND state = '${escaped}'`

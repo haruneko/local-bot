@@ -1,6 +1,7 @@
 import { loadSettings } from "../config/settings.js";
 import { lancedbDir } from "../config/paths.js";
 import { OllamaEmbedClient } from "../llm/ollama.js";
+import { embedPrefixFor } from "../llm/embed-prefix.js";
 import { LanceMemoIndexStore } from "../memory/memo-index-lancedb.js";
 import { reindexNotes } from "../memo/reindex.js";
 
@@ -8,7 +9,7 @@ import { reindexNotes } from "../memo/reindex.js";
 async function main(): Promise<void> {
   const settings = await loadSettings();
   const host = process.env.OLLAMA_HOST ?? settings.ollamaHost;
-  const embedder = new OllamaEmbedClient(host, settings.embedModel);
+  const embedder = new OllamaEmbedClient(host, settings.embedModel, embedPrefixFor(settings.embedModel));
   const dbPath = lancedbDir();
 
   console.error("reindex: data/notes/ を memo_index に索引中…");

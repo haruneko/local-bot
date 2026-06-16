@@ -1,6 +1,7 @@
 import { loadSettings, resolveOllamaThink } from "../config/settings.js";
 import { lancedbDir } from "../config/paths.js";
 import { OllamaEmbedClient, OllamaLlmClient } from "../llm/ollama.js";
+import { embedPrefixFor } from "../llm/embed-prefix.js";
 import { LanceEpisodeStore } from "../memory/lancedb.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -30,7 +31,7 @@ async function main(): Promise<void> {
   const think = resolveOllamaThink(settings);
 
   const llm = new OllamaLlmClient({ host, model: settings.chatModel, think, numCtx: settings.ollamaNumCtx });
-  const embedder = new OllamaEmbedClient(host, settings.embedModel);
+  const embedder = new OllamaEmbedClient(host, settings.embedModel, embedPrefixFor(settings.embedModel));
   const dbPath = lancedbDir();
   const store = await LanceEpisodeStore.open(dbPath, embedder);
 

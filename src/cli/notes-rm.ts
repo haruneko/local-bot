@@ -3,6 +3,7 @@ import path from "node:path";
 import { loadSettings } from "../config/settings.js";
 import { lancedbDir } from "../config/paths.js";
 import { OllamaEmbedClient } from "../llm/ollama.js";
+import { embedPrefixFor } from "../llm/embed-prefix.js";
 import { LanceMemoIndexStore } from "../memory/memo-index-lancedb.js";
 import { deleteNote, notesDir, safePath } from "../tools/notes.js";
 import { regenerateIndexChain } from "../memo/tree.js";
@@ -31,7 +32,7 @@ async function fileExists(rel: string): Promise<boolean> {
 async function openStore(): Promise<LanceMemoIndexStore> {
   const settings = await loadSettings();
   const host = process.env.OLLAMA_HOST ?? settings.ollamaHost;
-  const embedder = new OllamaEmbedClient(host, settings.embedModel);
+  const embedder = new OllamaEmbedClient(host, settings.embedModel, embedPrefixFor(settings.embedModel));
   return LanceMemoIndexStore.open(lancedbDir(), embedder);
 }
 

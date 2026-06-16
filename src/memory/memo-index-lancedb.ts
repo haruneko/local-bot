@@ -88,7 +88,7 @@ export class LanceMemoIndexStore implements MemoIndexStore {
     const table = await this.ensureTable();
     const escaped = entry.path.replace(/'/g, "''");
     await table.delete(`id = '${escaped}'`);
-    const vector = await this.embedder.embed(entry.path + " " + entry.preview);
+    const vector = await this.embedder.embedDocument(entry.path + " " + entry.preview);
     const parts = parsePathParts(entry.path);
     const row: MemoIndexRow = {
       id: entry.path,
@@ -107,7 +107,7 @@ export class LanceMemoIndexStore implements MemoIndexStore {
     const table = await this.ensureTable();
     const count = await table.countRows();
     if (count === 0) return [];
-    const vector = await this.embedder.embed(queryText || ".");
+    const vector = await this.embedder.embedQuery(queryText || ".");
     const results = await table
       .vectorSearch(vector)
       .where("deleted = false")

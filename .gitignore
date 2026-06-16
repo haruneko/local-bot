@@ -1,6 +1,6 @@
 node_modules/
 dist/
-data/lancedb/
+data/lancedb*/
 data/state.json
 data/dream-state.json
 data/notes/*

@@ -4,12 +4,12 @@
   "episodeRecallTopK": 3,
   "recencyExclusionTurns": 4,
   "recallDistance": {
-    "fullMax": 0.45,
-    "summarizeMax": 0.72,
-    "vagueMax": 0.78
+    "fullMax": 0.35,
+    "summarizeMax": 0.52,
+    "vagueMax": 0.62
   },
   "chatModel": "qwen3.6:35b-a3b",
-  "embedModel": "nomic-embed-text:latest",
+  "embedModel": "hf.co/Targoyle/ruri-v3-310m-GGUF:latest",
   "ollamaHost": "http://192.168.16.1:11434",
   "ollamaThink": false,
   "ollamaNumCtx": 30000,

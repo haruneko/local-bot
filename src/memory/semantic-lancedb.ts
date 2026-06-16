@@ -91,7 +91,7 @@ export class LanceSemanticStore implements SemanticStore {
   async upsert(input: SemanticUpsertInput): Promise<SemanticFact> {
     const table = await this.ensureTable();
     const now = new Date().toISOString();
-    const vector = input.vector ?? (await this.embedder.embed(input.body));
+    const vector = input.vector ?? (await this.embedder.embedDocument(input.body));
     const mergeMax =
       input.mergeDistanceMax ?? DEFAULT_SEMANTIC_MERGE_DISTANCE_MAX;
     const tags = input.tags ?? [];
@@ -175,7 +175,7 @@ export class LanceSemanticStore implements SemanticStore {
     const count = await table.countRows("deleted = false");
     if (count === 0) return [];
 
-    const vector = await this.embedder.embed(queryText || ".");
+    const vector = await this.embedder.embedQuery(queryText || ".");
     const results = await table
       .vectorSearch(vector)
       .where("deleted = false")

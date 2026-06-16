@@ -46,6 +46,7 @@ import {
 } from "../memory/xmodal-lancedb.js";
 import { createXmodalEmbedder, type XmodalEmbedder } from "../embedding/xmodal.js";
 import { OllamaEmbedClient, OllamaLlmClient } from "../llm/ollama.js";
+import { embedPrefixFor } from "../llm/embed-prefix.js";
 import { configureLlmConcurrency } from "../llm/limit.js";
 import { withVerboseLlm } from "../llm/logging.js";
 import type { EpisodeStore } from "../memory/episode.js";
@@ -190,7 +191,7 @@ export async function createApp(
     memoIndex = new InMemoryMemoIndexStore();
     if (xmodalEmbedder.enabled) xmodal = new InMemoryXmodalStore();
   } else {
-    const embedder = new OllamaEmbedClient(host, settings.embedModel);
+    const embedder = new OllamaEmbedClient(host, settings.embedModel, embedPrefixFor(settings.embedModel));
     const dbPath = lancedbDir();
     episodes = await LanceEpisodeStore.open(dbPath, embedder);
     semantic = await LanceSemanticStore.open(dbPath, embedder);
