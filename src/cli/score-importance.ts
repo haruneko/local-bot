@@ -1,5 +1,5 @@
-import path from "node:path";
 import { loadSettings, resolveOllamaThink } from "../config/settings.js";
+import { lancedbDir } from "../config/paths.js";
 import { OllamaEmbedClient, OllamaLlmClient } from "../llm/ollama.js";
 import { LanceEpisodeStore } from "../memory/lancedb.js";
 import { z } from "zod";
@@ -31,7 +31,7 @@ async function main(): Promise<void> {
 
   const llm = new OllamaLlmClient({ host, model: settings.chatModel, think, numCtx: settings.ollamaNumCtx });
   const embedder = new OllamaEmbedClient(host, settings.embedModel);
-  const dbPath = path.join(process.cwd(), "data", "lancedb");
+  const dbPath = lancedbDir();
   const store = await LanceEpisodeStore.open(dbPath, embedder);
 
   const all = await store.listSince();

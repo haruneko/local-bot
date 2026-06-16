@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { lancedbDir } from "../config/paths.js";
 import {
   loadSettings,
   resolveDreamMinEpisodes,
@@ -190,7 +191,7 @@ export async function createApp(
     if (xmodalEmbedder.enabled) xmodal = new InMemoryXmodalStore();
   } else {
     const embedder = new OllamaEmbedClient(host, settings.embedModel);
-    const dbPath = path.join(process.cwd(), "data", "lancedb");
+    const dbPath = lancedbDir();
     episodes = await LanceEpisodeStore.open(dbPath, embedder);
     semantic = await LanceSemanticStore.open(dbPath, embedder);
     memoIndex = await LanceMemoIndexStore.open(dbPath, embedder);
