@@ -79,6 +79,15 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 
 環境変数: `OLLAMA_HOST`（settings より優先）, `OLLAMA_THINK`（`roles[*].think` より低優先）, `EXPRESS_DRY_RUN`, `TAVILY_API_KEY`（web 検索＝研究 actor 用。`.env` に置く）。
 
+### embed（記憶想起）— ⚠️ embedModel を変えたら必ず再 index ＋ 全テーブル再 embed
+
+想起の質は `embedModel`（`config/settings.json`）で決まる。既定は **`ruri-v3`**（日本語特化・768 次元）。
+
+- **embedModel を変更したら、必ず `npm run reindex`（memo_index 再生成）＋ `scripts/reembed-tables.mts`（episodes/semantic の vector 再計算）を回す。** 書き込み時と想起時で埋め込み（モデル＋**タスク接頭辞**）が揃っている前提でベクトルが整合するため。揃わないと recall が静かに劣化する。
+- タスク接頭辞の単一情報源は `src/llm/embed-prefix.ts`（ruri は**非対称**＝query `検索クエリ: ` / document `検索文書: `。bge-m3 等は不要）。stores は write→`embedDocument` / recall→`embedQuery`。
+- `recallDistance` 閾値（full/summarize/omit）は**モデルの距離分布に依存**する（ruri 実測で 0.30/0.40/0.48）。モデルを変えたら距離分布を測り直して調整する。
+- モデル選定は当て推量でなく **`npm run eval:retrieval`**（自前 gold で Recall@k・MRR を横並び比較。`--corpus episode` でエピソード想起も。経緯は `research/embedding-locate-eval-2026-06-17.md`）。
+
 研究の web 検索は **Tavily API**（`scripts/mcp-research.mjs`、Docker 不要・`browse_url` は素の fetch）。旧 searxng/Docker は撤去済み（`docker-compose.yml`・`config/searxng/`・`searxng:*` スクリプトは 2026-06-15 に削除）。`mcp-research.mjs` は `.env` から `TAVILY_API_KEY` を自前読み込みする。
 
 ランタイム: TypeScript / Node 20+ / npm / Vitest。LLM は Ollama（`LlmClient` アダプタで差し替え可、`src/llm/`）。
