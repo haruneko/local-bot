@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { RecallDistanceThresholds } from "../recall/distance.js";
-import { DEFAULT_RECALL_DISTANCE_THRESHOLDS } from "../recall/distance.js";
+import {
+  DEFAULT_RECALL_DISTANCE_THRESHOLDS,
+  DEFAULT_XMODAL_RECALL_DISTANCE_THRESHOLDS,
+} from "../recall/distance.js";
 
 /** Ollama `think` API（推論モード）。false で thinking off */
 export type OllamaThinkSetting = boolean | "high" | "medium" | "low";
@@ -92,6 +95,18 @@ export type AppSettings = {
    *  起動判定は軽い判断なので小型・高速モデルを充て、actor 数が増えても安く保つ。 */
   activatorModel?: string;
   embedModel: string;
+  /** 横断 embedding（音/絵/文字を 1 空間・ImageBind on Docker）。未設定/enabled=false で OFF＝
+   *  今の nomic だけ挙動。docs/ARCH-NEXT.md「横断 embedding の設計」。 */
+  crossmodal?: {
+    /** 既定 false。true かつ host があるときだけ横断が立つ。 */
+    enabled?: boolean;
+    /** ImageBind HTTP サービス（例 http://localhost:8800）。 */
+    host?: string;
+    /** 1 リクエストのタイムアウト ms（既定 10000）。落ちてたら待たず null へ degrade。 */
+    timeoutMs?: number;
+    /** 横断ヒットのグラデーション距離閾値。未設定は横断既定（distance.ts）。実機で詰める。 */
+    recallDistance?: Partial<RecallDistanceThresholds>;
+  };
   ollamaHost: string;
   /** 未指定時は false（thinking off） */
   ollamaThink?: OllamaThinkSetting;
@@ -127,6 +142,16 @@ export function resolveRecallDistanceThresholds(
   return {
     ...DEFAULT_RECALL_DISTANCE_THRESHOLDS,
     ...settings.recallDistance,
+  };
+}
+
+/** 横断（ImageBind）ヒットのグラデーション閾値。未設定は横断既定。 */
+export function resolveXmodalRecallDistanceThresholds(
+  settings: AppSettings,
+): RecallDistanceThresholds {
+  return {
+    ...DEFAULT_XMODAL_RECALL_DISTANCE_THRESHOLDS,
+    ...settings.crossmodal?.recallDistance,
   };
 }
 

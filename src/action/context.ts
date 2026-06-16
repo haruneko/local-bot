@@ -1,5 +1,6 @@
 import type { EpisodeStore } from "../memory/episode.js";
 import type { MemoIndexStore } from "../memory/memo-index.js";
+import type { XmodalStore } from "../memory/xmodal-lancedb.js";
 import type { TurnContext } from "../context/turn-context.js";
 import type { McpToolProvider } from "../mcp/types.js";
 import type { CatalogTool } from "../tools/catalog.js";
@@ -15,6 +16,8 @@ export type RunActionDeps = {
   toolCatalog?: readonly CatalogTool[];
   expressDryRun?: boolean;
   memoIndex?: MemoIndexStore;
+  /** 横断ベクトルの別テーブル。忘却（forget）でエピソードと一緒に横断行も消す。 */
+  xmodal?: XmodalStore;
 };
 
 export type RunActionInput = {

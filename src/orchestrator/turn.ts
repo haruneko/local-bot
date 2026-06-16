@@ -11,9 +11,12 @@ import type { RecallDistanceThresholds } from "../recall/distance.js";
 import { presentRecallEpisodes } from "../recall/llm-present.js";
 import { fitTurnContext } from "../context/preprocess.js";
 import { buildContextClock } from "../sensor/datetime.js";
-import type { EpisodeStore } from "../memory/episode.js";
+import type { EpisodeRecallHit, EpisodeStore } from "../memory/episode.js";
 import type { SemanticStore } from "../memory/semantic.js";
 import type { MemoIndexStore } from "../memory/memo-index.js";
+import type { XmodalStore } from "../memory/xmodal-lancedb.js";
+import type { XmodalEmbedder, XmodalInput } from "../embedding/xmodal.js";
+import { reciprocalRankFusion } from "../recall/fuse.js";
 import { presentSemanticFacts } from "../recall/semantic-present.js";
 import { collectUserArtifacts, formatActionFactContent } from "../action/present.js";
 import { WorkingMemory } from "../memory/working.js";
@@ -53,6 +56,8 @@ export type TurnTrigger =
       speakerId: string;
       /** 相手が添えてきた画像（base64・文字起こししない）。あれば image_feed に乗る */
       images?: string[];
+      /** 相手が添えてきた音声（base64・文字起こししない）。あれば audio_feed に乗る */
+      audio?: string[];
     }
   | { type: "heartbeat" };
 
@@ -76,12 +81,18 @@ export type TurnDeps = {
   activatorLlm?: LlmClient;
   episodes: EpisodeStore;
   semantic: SemanticStore;
+  /** 横断（ImageBind 1024）ベクトルの別テーブル。未設定 = 横断オフ。 */
+  xmodal?: XmodalStore;
+  /** 横断 embedder。enabled=false / null 返し = 横断オフ（degrade）。 */
+  xmodalEmbedder?: XmodalEmbedder;
   workingMemory: WorkingMemory;
   episodeRecallTopK: number;
   semanticRecallTopK: number;
   semanticRecallMaxDistance: number;
   recencyExclusionTurns: number;
   recallDistanceThresholds: RecallDistanceThresholds;
+  /** 横断（ImageBind）ヒットのグラデーション閾値。未設定 = 横断既定（distance.ts）。 */
+  xmodalRecallDistanceThresholds?: RecallDistanceThresholds;
   initialAffect?: string;
   initialConcern?: string;
   initialFocusPlan?: string;
@@ -311,19 +322,9 @@ export class TurnOrchestrator {
       ? allRecentTurns.slice(-workingMemoryTurns)
       : allRecentTurns;
 
-    // --- プリプロセス: 想起 ---
-    const { recalled, semanticFacts, memoHits } = await this.recallMemories(
-      trigger,
-      startState,
-      episodeRecallTopK,
-      clock.currentDateTime,
-    );
-
-    // 計画チャンネル: 集中 State のときだけ取り組み中のゴールノート全文を常駐させる
-    const plan = await this.loadPlanChannel(startState);
-
     // 視覚チャンネル(image_feed): いま視界に入っているフレーム。
     // 相手が添えてきた画像（トリガー）を優先し、無ければファイルセンサー（環境の視界）にフォールバック。
+    // 想起より先に確定させる＝横断で「いまの景色」を画像クエリにして引く（画像→画像 recognition）ため。
     const triggerImages =
       trigger.type === "user_message" ? trigger.images : undefined;
     const imageFeed = triggerImages?.length
@@ -331,6 +332,21 @@ export class TurnOrchestrator {
       : this.deps.readFrames
         ? await this.deps.readFrames()
         : [];
+    // 聴覚チャンネル(audio_feed): 相手が添えてきた音声。現状は符号化の横断ベクトル付与のみが消費。
+    const audioFeed =
+      trigger.type === "user_message" ? (trigger.audio ?? []) : [];
+
+    // --- プリプロセス: 想起 ---
+    const { recalled, semanticFacts, memoHits } = await this.recallMemories(
+      trigger,
+      startState,
+      episodeRecallTopK,
+      clock.currentDateTime,
+      imageFeed,
+    );
+
+    // 計画チャンネル: 集中 State のときだけ取り組み中のゴールノート全文を常駐させる
+    const plan = await this.loadPlanChannel(startState);
 
     let ctx = createTurnContext({
       turnId,
@@ -342,6 +358,7 @@ export class TurnOrchestrator {
       semanticFacts,
       recalledNotes: memoHits,
       imageFeed,
+      audioFeed,
       affect: this.affect,
       concern: this.concern,
       plan,
@@ -366,6 +383,7 @@ export class TurnOrchestrator {
       toolCatalog: this.deps.actionDeps?.toolCatalog,
       expressDryRun: this.deps.actionDeps?.expressDryRun,
       memoIndex: this.deps.memoIndex,
+      xmodal: this.deps.xmodal,
     };
 
     // --- activate → actor pool ---
@@ -494,6 +512,7 @@ export class TurnOrchestrator {
     startState: AgentState,
     episodeRecallTopK: number,
     currentDateTime: string,
+    imageFeed: readonly string[],
   ): Promise<{
     recalled: Awaited<ReturnType<typeof presentRecallEpisodes>>;
     semanticFacts: ReturnType<typeof presentSemanticFacts>;
@@ -507,19 +526,38 @@ export class TurnOrchestrator {
       this.affect,
       this.concern,
     );
-    if (recallQuery === null) {
+    // 横断で「いまの景色」を画像クエリにして引けるなら、テキストクエリが無くても想起する（recognition）。
+    const canXmodalImage =
+      !!this.deps.xmodalEmbedder?.enabled &&
+      !!this.deps.xmodal &&
+      imageFeed.length > 0;
+    if (recallQuery === null && !canXmodalImage) {
       return { recalled: [], semanticFacts: [], memoHits: [] };
     }
+    const queryLabel = recallQuery ?? "（画像のみ・recognition）";
 
     const recallStart = Date.now();
     const excludeTurnIds = this.excludeTurnIds();
-    const recallHits = await this.deps.episodes.recall(
+    // テキストチャンネルはテキストクエリがある時だけ。無ければ横断（画像）チャンネルのみで想起する。
+    const textHits =
+      recallQuery !== null
+        ? await this.deps.episodes.recall(
+            recallQuery,
+            episodeRecallTopK,
+            excludeTurnIds,
+            startState,
+          )
+        : [];
+    // 横断（ImageBind）が有効なら横断チャンネル（テキストクエリ／画像クエリ）を RRF で融合。
+    // OFF（既定）/degrade は textHits のまま。
+    const recallHits = await this.fuseXmodalRecall(
       recallQuery,
+      textHits,
       episodeRecallTopK,
       excludeTurnIds,
-      startState,
+      imageFeed,
     );
-    v?.recall(recallQuery, recallHits, Date.now() - recallStart, {
+    v?.recall(queryLabel, recallHits, Date.now() - recallStart, {
       excludedTurnIds: [...excludeTurnIds],
     });
 
@@ -533,32 +571,134 @@ export class TurnOrchestrator {
     const recalled = await presentRecallEpisodes(
       this.deps.llm,
       recallHits,
-      { state: startState, currentDateTime, triggerLabel, recallQuery },
+      { state: startState, currentDateTime, triggerLabel, recallQuery: queryLabel },
       this.deps.recallDistanceThresholds,
       {
         inhibitionBuffer: this.getActiveInhibitionVectors(),
         currentSpeaker:
           trigger.type === "user_message" ? trigger.speakerId : undefined,
       },
+      this.deps.xmodalRecallDistanceThresholds,
     );
     v?.recallFilter(recallHits, recalled, Date.now() - filterStart);
 
+    // 意味記憶・memoIndex はテキスト想起のみ（テキストクエリが無ければスキップ）。
     const semanticStart = Date.now();
-    const semanticHits = await this.deps.semantic.recall(
-      recallQuery,
-      this.deps.semanticRecallTopK,
-    );
+    const semanticHits =
+      recallQuery !== null
+        ? await this.deps.semantic.recall(recallQuery, this.deps.semanticRecallTopK)
+        : [];
     const semanticFacts = presentSemanticFacts(
       semanticHits,
       this.deps.semanticRecallMaxDistance,
     );
-    v?.semanticRecall(recallQuery, semanticHits, semanticFacts, Date.now() - semanticStart);
+    v?.semanticRecall(queryLabel, semanticHits, semanticFacts, Date.now() - semanticStart);
 
-    const memoHits = this.deps.memoIndex
-      ? await this.deps.memoIndex.recall(recallQuery, this.deps.memoIndexTopK ?? 3)
-      : [];
+    const memoHits =
+      this.deps.memoIndex && recallQuery !== null
+        ? await this.deps.memoIndex.recall(recallQuery, this.deps.memoIndexTopK ?? 3)
+        : [];
 
     return { recalled, semanticFacts, memoHits };
+  }
+
+  /**
+   * テキスト想起に横断（ImageBind）チャンネルを RRF で融合する。横断クエリは2系統:
+   * (a) テキストクエリ→知覚（text→image/audio）、(b) いまの画像→過去の画像（画像→画像 recognition）。
+   * 横断 OFF / どのクエリも embed できない（サービス落ち）/ 横断ヒット 0 なら textHits をそのまま返す。
+   * 横断のみで出た turnId は本文をハイドレートし距離は横断空間の値を載せる（別閾値・docs/ARCH-NEXT.md §4）。
+   */
+  private async fuseXmodalRecall(
+    recallQuery: string | null,
+    textHits: EpisodeRecallHit[],
+    topK: number,
+    excludeTurnIds: ReadonlySet<string>,
+    imageFeed: readonly string[],
+  ): Promise<EpisodeRecallHit[]> {
+    const embedder = this.deps.xmodalEmbedder;
+    const store = this.deps.xmodal;
+    const getByTurnIds = this.deps.episodes.getByTurnIds?.bind(this.deps.episodes);
+    if (!embedder?.enabled || !store || !getByTurnIds) return textHits;
+
+    const queries: XmodalInput[] = [];
+    if (recallQuery) queries.push({ kind: "text", text: recallQuery });
+    if (imageFeed.length > 0) {
+      queries.push({ kind: "image", imageBase64: imageFeed[0] });
+    }
+    if (queries.length === 0) return textHits;
+
+    // 各横断クエリを別チャンネルとして RRF へ。距離は複数クエリに出たら近い方（min）を採る。
+    const xmodalChannels: string[][] = [];
+    const xDistById = new Map<string, number>();
+    for (const q of queries) {
+      const qv = await embedder.embed(q);
+      if (!qv) continue; // このクエリだけ degrade
+      const hits = (await store.recall(qv, topK)).filter(
+        (h) => !excludeTurnIds.has(h.turnId),
+      );
+      if (hits.length === 0) continue;
+      xmodalChannels.push(hits.map((h) => h.turnId));
+      for (const h of hits) {
+        const prev = xDistById.get(h.turnId);
+        if (prev === undefined || h.distance < prev) xDistById.set(h.turnId, h.distance);
+      }
+    }
+    if (xmodalChannels.length === 0) return textHits;
+
+    const textById = new Map(textHits.map((h) => [h.turnId, h]));
+    const fused = reciprocalRankFusion([
+      textHits.map((h) => h.turnId),
+      ...xmodalChannels,
+    ]).slice(0, topK);
+
+    const needHydrate = fused
+      .map((f) => f.turnId)
+      .filter((id) => !textById.has(id));
+    const hydrated = needHydrate.length ? await getByTurnIds(needHydrate) : [];
+    const hydratedById = new Map(
+      hydrated.map((h) => [
+        h.turnId,
+        {
+          ...h,
+          distance: xDistById.get(h.turnId) ?? h.distance,
+          space: "xmodal" as const,
+        },
+      ]),
+    );
+
+    const out: EpisodeRecallHit[] = [];
+    for (const f of fused) {
+      const hit = textById.get(f.turnId) ?? hydratedById.get(f.turnId);
+      if (hit) out.push(hit);
+    }
+    return out.length ? out : textHits;
+  }
+
+  /**
+   * 符号化時に知覚エピソード（画像 or 音声）へ横断ベクトルを付ける。画像を優先（omni の主入力）。
+   * OFF/degrade/知覚なしなら何もしない。best-effort: 失敗しても本体エピソード（nomic）は残る＝turn を壊さない。
+   */
+  private async persistXmodalVector(
+    turnId: string,
+    imageFeed: readonly string[],
+    audioFeed: readonly string[],
+  ): Promise<void> {
+    const embedder = this.deps.xmodalEmbedder;
+    const store = this.deps.xmodal;
+    if (!embedder?.enabled || !store) return;
+    const input =
+      imageFeed.length > 0
+        ? ({ kind: "image", imageBase64: imageFeed[0] } as const)
+        : audioFeed.length > 0
+          ? ({ kind: "audio", audioBase64: audioFeed[0] } as const)
+          : null;
+    if (!input) return;
+    try {
+      const vec = await embedder.embed(input);
+      if (vec) await store.append(turnId, vec);
+    } catch {
+      // 横断付与は best-effort
+    }
   }
 
   /** activate（各 actor 並列）→ 起動した actor を並列実行し ctx.actions に積む */
@@ -731,6 +871,7 @@ export class TurnOrchestrator {
         groundedFacts: groundedFacts || undefined,
       };
       await this.deps.episodes.append({ body: introspection, metadata });
+      await this.persistXmodalVector(turnId, ctx.imageFeed, ctx.audioFeed);
       this.pushRecentEpisodeTurnId(turnId);
       v?.episodeSaved(metadata);
       return { introspection, episodePersisted: true };

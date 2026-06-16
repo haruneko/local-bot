@@ -153,6 +153,30 @@ export class LanceEpisodeStore implements EpisodeStore {
     }));
   }
 
+  // id は小文字列なので無クォートで安全に引ける（softDelete のコメント参照）。
+  async getByTurnIds(turnIds: readonly string[]): Promise<EpisodeRecallHit[]> {
+    if (turnIds.length === 0) return [];
+    const table = await this.ensureTable();
+    const clause = turnIds
+      .map((id) => `id = '${id.replace(/'/g, "''")}'`)
+      .join(" OR ");
+    const rows = (await table
+      .query()
+      .where(`deleted = false AND (${clause})`)
+      .toArray()) as EpisodeRow[];
+    return rows
+      .filter((r) => r.body?.trim())
+      .map((r) => ({
+        turnId: r.turnId,
+        body: r.body,
+        distance: Number.POSITIVE_INFINITY,
+        timestamp: r.timestamp,
+        vector: Array.isArray(r.vector) ? (r.vector as number[]) : undefined,
+        importance: typeof r.importance === "number" ? r.importance : undefined,
+        participants: parseParticipants(r.participants),
+      }));
+  }
+
   async recall(
     queryText: string,
     topK: number,

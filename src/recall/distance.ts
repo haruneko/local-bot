@@ -54,6 +54,14 @@ export const DEFAULT_RECALL_DISTANCE_THRESHOLDS: RecallDistanceThresholds = {
   vagueMax: 0.85,
 };
 
+/** 横断（ImageBind）空間の既定閾値。サービスが L2 正規化して返す前提（L2∈[0,2]）だが、
+ *  nomic と意味距離の分布が違うので別物にする。実機で詰める（docs/ARCH-NEXT.md §4 のツマミ）。 */
+export const DEFAULT_XMODAL_RECALL_DISTANCE_THRESHOLDS: RecallDistanceThresholds = {
+  fullMax: 0.8,
+  summarizeMax: 1.1,
+  vagueMax: 1.3,
+};
+
 /** 半減期 ~70日。長く使って違和感があれば調整 */
 const RECENCY_DECAY_LAMBDA = 0.01;
 
@@ -118,17 +126,21 @@ export function classifyRecallHits(
   hits: readonly EpisodeRecallHit[],
   thresholds: RecallDistanceThresholds = DEFAULT_RECALL_DISTANCE_THRESHOLDS,
   options: RecallScoreOptions = {},
+  xmodalThresholds?: RecallDistanceThresholds,
 ): ClassifiedRecallHit[] {
   const result: ClassifiedRecallHit[] = [];
   const buffer = options.inhibitionBuffer ?? [];
 
   for (let id = 0; id < hits.length; id++) {
     const hit = hits[id]!;
-    const presentation = presentationFromDistance(hit.distance, thresholds);
+    // 横断（ImageBind）ヒットは別空間＝別閾値（無ければ text 閾値にフォールバック）。
+    const th =
+      hit.space === "xmodal" && xmodalThresholds ? xmodalThresholds : thresholds;
+    const presentation = presentationFromDistance(hit.distance, th);
     if (presentation === "omit") continue;
 
     const baseRelevance =
-      distanceToRelevance(hit.distance, thresholds.vagueMax) *
+      distanceToRelevance(hit.distance, th.vagueMax) *
       recencyDecay(hit.timestamp);
 
     const importanceScore =

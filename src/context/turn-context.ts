@@ -62,6 +62,9 @@ export type TurnContext = {
   /** 視覚チャンネル(image_feed): いま視界に入っているフレーム（base64・文字起こししない）。
    *  空 = 画像なし。image_feed を宣言したモジュール（当面は言語野）だけが生のまま受け取る */
   imageFeed: string[];
+  /** 聴覚チャンネル(audio_feed): いま聞こえている音声（base64・文字起こししない）。空 = 音声なし。
+   *  現状の消費者は符号化の横断ベクトル付与のみ（omni 音声入力は後）。docs/ARCH-NEXT.md「音声も同じ形」 */
+  audioFeed: string[];
 
   /** withPersona で設定（言語野用） */
   persona?: string;
@@ -83,6 +86,7 @@ export type CreateTurnContextInput = {
   semanticFacts?: SemanticFactView[];
   recalledNotes?: MemoIndexHit[];
   imageFeed?: string[];
+  audioFeed?: string[];
   affect?: string;
   concern?: string;
   plan?: string;
@@ -134,6 +138,7 @@ export function createTurnContext(input: CreateTurnContextInput): TurnContext {
     semanticFacts: [...(input.semanticFacts ?? [])],
     recalledNotes: [...(input.recalledNotes ?? [])],
     imageFeed: [...(input.imageFeed ?? [])],
+    audioFeed: [...(input.audioFeed ?? [])],
     affect: input.affect ?? "",
     concern: input.concern ?? "",
     plan: input.plan ?? "",

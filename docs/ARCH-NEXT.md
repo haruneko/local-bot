@@ -104,7 +104,7 @@
 ### 記憶のしかた（3層・役割が違う）
 
 - **言葉（意味ラベル）**: 内省が「会話で起きたこと＝エバの反応」をエピソードに書く（既存・v1）。画像のキャプションではなく彼女の言葉。
-- **embedding（視覚記憶の核）**: 画像を embed したベクトルをエピソードに一緒に保存。新しい画像が来たら embed して**似た過去を想起（recognition）**。非言語のまま・キャプションしない。符号化時に embed してピクセルは捨てる＝人間と同じ。想起は再構成的＝ふんわり想起（full/vague）に乗る。**画像用の埋め込みモデル（CLIP 系）が要る**（サーバに今は無い・要 pull）。
+- **embedding（視覚記憶の核）**: 画像を embed したベクトルをエピソードに一緒に保存。新しい画像が来たら embed して**似た過去を想起（recognition）**。非言語のまま・キャプションしない。符号化時に embed してピクセルは捨てる＝人間と同じ。想起は再構成的＝ふんわり想起（full/vague）に乗る。embedding は **横断モデル（ImageBind・下のサブシステム）** に乗せる＝画像/音/文字が1空間（2026-06-16 に Docker/CPU で実測確定）。
 - **ピクセル（写真アルバム・脳には無い超人機能）**: 残すのは**能動メモ限定**。エバが「とっておこう」と決めた画像だけ `data/notes/` に保存しノートから参照。受動の記憶＝揮発／能動の記録＝残す、の B'（記憶 vs 記録）に乗る。受動のエピソードはピクセルを持たない。
 
 ### 各ループの扱い
@@ -123,16 +123,66 @@
 
 `LlmClient`（chat を差し替え可能にしてる）と同じ思想で、embedding も backend を差し替え可能にする。
 
-- **窓口は TS**: `EmbeddingProvider`（`embedText` / `embedImage`）。呼ぶ側（recall・視覚想起）は**どこで embed してるか知らない**。
-- **backend はモダリティごと**:
-  - text → Ollama `nomic-embed-text`（既存・HTTP）
-  - image → 別 backend（下記）。落ちてる/未設定なら **null を返す**＝視覚見分けは systematic 起動なのでただスキップ（壊れない・Slack の files:read 無しと同じ degrade）。
-- **2026-06-15 に判明: Ollama は画像 embed 不可**。専用 embed モデルは `images` を無視、vision 生成モデルは `/api/embed` が **501 Not Implemented**。上流 issue（multimodal embedding 対応）は open。＝画像 embedding は Ollama の外で回すしかない。
-- **画像 backend の選択肢**:
-  - **in-process（推し）**: transformers.js / onnxruntime-node で CLIP を Node プロセス内で回す。外部サービスも subprocess も無し＝ただのライブラリ呼び出し。初回に ONNX を DL してキャッシュ。
-  - 外部 HTTP サーバ（Python・nomic-embed-vision を常駐）: 別プロセス管理が要る（ops がめんどい）。
-- **クロスモーダル（言葉↔画像を同空間で）＝保留だが捨てない**: nomic-embed-text ↔ nomic-embed-vision は同空間だが Ollama が画像を出せない。in-process で同空間にするなら text も画像も jina-clip 等に寄せる＝**既存エピソードの再 embed（移行）が要る**。recognition（画像→画像）は別空間でも効くので、先に画像 backend だけでも視覚記憶は立つ。クロスモーダルはその後の判断。
-- **将来**: Ollama が画像 embed 対応したら image backend を Ollama に差し替えるだけ（窓口・呼ぶ側は無変更）。
+- **窓口は TS**: text は既存 `OllamaEmbedClient`（nomic）、横断は `XmodalEmbedder`（ImageBind・画像/音/文字を 1 空間）。呼ぶ側（recall・視覚/聴覚想起）は**どこで embed してるか知らない**（落ちてたら null＝degrade）。
+- **デュアルベクトル（2026-06-16 確定）**: エピソードは**2本のベクトルを両持ち**する。① **text → `nomic-embed-text`（768・既存・Ollama HTTP）**＝text-text 想起の質を落とさない（メモ本文を要約しない硬ルールと同じ"劣化禁止"思想）。② **横断 → ImageBind（1024・下記）**＝画像/音/文字を**1つの共有空間**に縛り、言葉を介さない連想（声→顔・匂い→情景）を効かせる。recall は2空間を引いてマージ。
+  - 完全統一（text も ImageBind のみ）は ImageBind の text encoder が純テキスト検索で弱く、既存エピソード全件の再 embed も要るので**却下**。ハイブリッド（text=nomic・知覚=ImageBind だが**別空間**）は横断が効かず**却下**。
+  - **「既存エピソード再 embed 移行」はデュアルだと不要**＝既存の text-only はそのまま、ImageBind ベクトルは**これから入る知覚エピソード（画像/音）にだけ**付く。
+- **横断 backend ＝ ImageBind on Docker（CPU・2026-06-16 実測で確定）**:
+  - ImageBind（Meta・1.2B）を **Python の Docker HTTP 常駐サービス**にして bot は HTTP で叩く。ImageBind は PyTorch 物で in-process（transformers.js）に乗らないので、これが素直。落ちてる/未設定なら **null を返す**＝知覚見分けは systematic 起動なのでただスキップ（壊れない・Slack の files:read 無しと同じ degrade）。
+  - 実測（Strix Halo・CPU 16スレッド・単発 forward median）: **text 137ms / audio 245ms(5s) / image 649ms**、共有 **dim=1024**、**GPU 不使用**（Ollama=iGPU と計算ユニット別＝並列・VRAM 非競合）。起動ロード 21s（常駐なら1回）。常駐メモリ fp32 ~4.8GB（統合プール共有・**重さがダメなら fp16~2.5/int8~1.2GB へ量子化**）。
+  - 検証 scaffold は上流戻しで削除済（下流実験を残さない）。Docker イメージ `imagebind-bench` と checkpoint（`~/.cache/imagebind/imagebind_huge.pth`）はキャッシュ温存。
+- **2026-06-15 に判明: Ollama は画像 embed 不可**。専用 embed モデルは `images` を無視、vision 生成モデルは `/api/embed` が **501 Not Implemented**。＝画像/横断 embedding は Ollama の外（＝上記 ImageBind サービス）で回す。
+- **将来**: Ollama 等が横断 embed に対応したら横断 backend を差し替えるだけ（窓口・呼ぶ側は無変更）。
+
+---
+
+## 横断 embedding の設計（dual-vector・実装済 2026-06-16）
+
+OFF 既定で実装済み（既存挙動ゼロ変更・全テスト緑）。細かいツマミは §4。
+
+### オン/オフできる（デュアルの副産物）
+
+横断は **additive ＝タダでオン/オフできる**。nomic 側（`OllamaEmbedClient`）は常に効くので、ImageBind 層を切れば**そのまま今の nomic だけ挙動**に戻る。`settings.crossmodal.enabled=false`（または host 未設定）で横断 embedder が `NullXmodalEmbedder`（`enabled=false`）になり、符号化は横断ベクトルを書かず recall は横断チャンネルを引かない＝degrade パスがそのままオフスイッチ。**禁止条項も特別分岐も要らない**。知覚エピソードは text ラベル（nomic）だけ持ち、知覚類似での想起ができないだけ。
+
+### ① 2 本の embedder（窓口）
+
+統一ファサードは作らず、**既存の nomic はそのまま据え置き＋横断だけ足す**（既存を触らない）。
+- **text → `OllamaEmbedClient.embed`（768・nomic・既存・常時）**。
+- **横断 → `XmodalEmbedder`（`src/embedding/xmodal.ts`・1024・ImageBind）**: `embed(input) -> number[1024] | null`。`input = {kind:"text"|"image"|"audio", ...}`。`ImageBindClient`（HTTP）/ `NullXmodalEmbedder`（OFF）/ `createXmodalEmbedder(settings.crossmodal)` factory。どんな失敗でも throw せず null＝degrade。
+
+### ② ImageBind HTTP サービス（`scripts/imagebind-service/`）
+
+- Python・Docker 常駐。`POST /embed {modality:"text"|"vision"|"audio", data:str}` → `{vector:[...1024]}`、`GET /health`。出力は **L2 正規化**して返す（横断グラデーション閾値の regime を [0,2] に揃える）。起動ロード 21s は常駐で1回。
+- bot は `settings.crossmodal.host` を叩くだけ（Ollama と同じ作法）。落ちてたら null＝degrade。
+- ピン（実証済・memory `project-crossmodal-embedding`）: py3.9 / torch2.1.2 / torchvision0.16.2 / numpy<2 / timm0.9.16。イメージ `imagebind-service`・checkpoint `~/.cache/imagebind/` 温存済（E2E 検証済）。
+
+### ③ 横断ベクトルは別テーブル（`episodes_xmodal`）
+
+- `episodes` に nullable vector を足すと固定長 list 列の地雷を踏むので、**横断ベクトルは別テーブル `episodes_xmodal`(id, vector1024)**（`src/memory/xmodal-lancedb.ts`）。`memo_index` と同じ「別テーブル（補助の記憶）」流儀。
+- **移行不要**: 既存 text-only エピソードは横断テーブルに行を持たない。横断ベクトルは**これから入る知覚エピソード（画像/音）にだけ**付く。
+- 忘却（forget）は episodes の softDelete と一緒に `episodes_xmodal` 行も `remove`。
+
+### ④ recall の2空間マージ（設計の山場＝RRF で逃げる）
+
+- nomic 距離（768）と ImageBind 距離（1024）は**物差しが違う**＝生スコアを足すのは脆い。
+- **Reciprocal Rank Fusion**（`src/recall/fuse.ts`）: 各チャンネルで順位を取り `score = Σ 1/(k+rank)` で融合。スコア正規化が要らず異種 retriever 融合の定石。
+- チャンネル（最大3本）: (a) nomic: text recall query × 全エピソード（既存 `episodes.recall`）。(b) 横断・テキストクエリ: `XmodalEmbedder.embed({kind:"text",...})` × `episodes_xmodal`＝**テキスト→画像/音の横断**。(c) 横断・画像クエリ: いまの `imageFeed[0]` を embed × `episodes_xmodal`＝**画像→画像 recognition**。各々を RRF の別チャンネルにし、id で dedup、横断のみのヒットは `episodes.getByTurnIds` で本文をハイドレート（複数横断クエリに出たら近い方の距離を採る）。
+- テキストクエリが無くても（`buildRecallQuery`=null）、いまの景色（imageFeed）があれば**画像チャンネルだけで想起する**（recognition）。その場合 nomic/意味記憶/memoIndex はスキップ。
+- **想起グラデーション**: ヒットに `space`("text"|"xmodal") を付け、`classifyRecallHits` が空間ごとに閾値を出し分ける（横断は `DEFAULT_XMODAL_RECALL_DISTANCE_THRESHOLDS`・`settings.crossmodal.recallDistance` で上書き）。閾値の実値は §4 のツマミ。
+
+### ⑤ 知覚の入口
+
+- 符号化時（内省→LanceDB 書き込み・`turn.ts` `persistXmodalVector`）、その turn に知覚チャンネル（`imageFeed`/`audioFeed`）があれば**生入力を `XmodalEmbedder.embed`** して `episodes_xmodal` へ（画像優先）。text ラベルは常に nomic。best-effort（失敗しても本体は残る）。
+- 想起時は④の通り imageFeed を画像クエリにして引く（画像→画像 recognition・実装済）。
+- `audioFeed` チャンネル＋trigger の `audio?` は配線済みだが**音源 producer は未配線**（マイク/omni 音声入力が来たら繋ぐ）。音声の想起クエリ化（音→音）は producer が来てから。
+
+### ⑥ 設定（`config/settings.json`）
+
+`crossmodal = { enabled, host, timeoutMs, recallDistance? }`。未設定で OFF。量子化（fp16/int8）はサービス側で持つ想定（bot 設定には未追加）。
+
+### ⑦ degrade
+
+サービス落ち/オフ → 横断 embedder が null → 横断ベクトルを書かない・横断チャンネルを引かない。**nomic 側で想起は完全に生存**（systematic 起動の degrade と同じ・壊れない）。
 
 ---
 

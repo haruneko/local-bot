@@ -124,8 +124,9 @@ export async function presentRecallEpisodes(
   situation: RecallSituation,
   thresholds: RecallDistanceThresholds,
   scoreOptions: RecallScoreOptions = {},
+  xmodalThresholds?: RecallDistanceThresholds,
 ): Promise<RecalledEpisode[]> {
-  const classified = classifyRecallHits(hits, thresholds, scoreOptions);
+  const classified = classifyRecallHits(hits, thresholds, scoreOptions, xmodalThresholds);
   const llmSummarized = await llmPresentSummarizeHits(llm, classified, situation);
   return assembleRecalledEpisodes(classified, llmSummarized);
 }

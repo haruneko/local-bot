@@ -5,6 +5,7 @@ import {
   resolveDreamMinEpisodes,
   resolveOllamaThink,
   resolveRecallDistanceThresholds,
+  resolveXmodalRecallDistanceThresholds,
   resolveRecencyExclusionTurns,
   resolveActionModel,
   resolveActivatorModel,
@@ -37,6 +38,12 @@ import { LanceSemanticStore } from "../memory/semantic-lancedb.js";
 import type { SemanticStore } from "../memory/semantic.js";
 import { InMemoryMemoIndexStore, type MemoIndexStore } from "../memory/memo-index.js";
 import { LanceMemoIndexStore } from "../memory/memo-index-lancedb.js";
+import {
+  InMemoryXmodalStore,
+  LanceXmodalStore,
+  type XmodalStore,
+} from "../memory/xmodal-lancedb.js";
+import { createXmodalEmbedder, type XmodalEmbedder } from "../embedding/xmodal.js";
 import { OllamaEmbedClient, OllamaLlmClient } from "../llm/ollama.js";
 import { configureLlmConcurrency } from "../llm/limit.js";
 import { withVerboseLlm } from "../llm/logging.js";
@@ -172,16 +179,22 @@ export async function createApp(
   let episodes: EpisodeStore;
   let semantic: SemanticStore;
   let memoIndex: MemoIndexStore;
+  // 横断 embedder（音/絵/文字を 1 空間）。crossmodal.enabled=false（既定）なら Null＝OFF。
+  const xmodalEmbedder: XmodalEmbedder = createXmodalEmbedder(settings.crossmodal);
+  // 横断ストアは ON のときだけ作る（OFF で episodes_xmodal テーブルを無駄に生やさない）。
+  let xmodal: XmodalStore | undefined;
   if (options.memory === "memory") {
     episodes = new InMemoryEpisodeStore();
     semantic = new InMemorySemanticStore();
     memoIndex = new InMemoryMemoIndexStore();
+    if (xmodalEmbedder.enabled) xmodal = new InMemoryXmodalStore();
   } else {
     const embedder = new OllamaEmbedClient(host, settings.embedModel);
     const dbPath = path.join(process.cwd(), "data", "lancedb");
     episodes = await LanceEpisodeStore.open(dbPath, embedder);
     semantic = await LanceSemanticStore.open(dbPath, embedder);
     memoIndex = await LanceMemoIndexStore.open(dbPath, embedder);
+    if (xmodalEmbedder.enabled) xmodal = await LanceXmodalStore.open(dbPath);
   }
 
   const personaPath = path.join(process.cwd(), "persona", "character.md");
@@ -264,12 +277,15 @@ export async function createApp(
     episodes,
     semantic,
     memoIndex,
+    xmodal,
+    xmodalEmbedder,
     workingMemory: wm,
     episodeRecallTopK: settings.episodeRecallTopK,
     semanticRecallTopK: resolveSemanticRecallTopK(settings),
     semanticRecallMaxDistance: resolveSemanticRecallMaxDistance(settings),
     recencyExclusionTurns: resolveRecencyExclusionTurns(settings),
     recallDistanceThresholds: resolveRecallDistanceThresholds(settings),
+    xmodalRecallDistanceThresholds: resolveXmodalRecallDistanceThresholds(settings),
     initialAffect: session.affect,
     initialConcern: session.concern,
     initialFocusPlan: session.focusPlan,

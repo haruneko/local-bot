@@ -108,6 +108,8 @@ export async function runForget(
       message: `turnId ${turnId} のソフト削除に失敗`,
     });
   }
+  // 横断ベクトルも一緒に消す（あれば）。横断オフ/該当なしなら no-op。
+  await input.xmodal?.remove(turnId);
 
   return actionSucceeded(action, { kind: "forget", body: summary });
 }

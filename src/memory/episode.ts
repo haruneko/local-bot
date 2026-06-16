@@ -19,6 +19,9 @@ export type EpisodeRecallHit = {
   importance?: number;
   /** このエピソードの参加話者 ID。話者バイアスのリランクに使う */
   participants?: string[];
+  /** どの空間から来たヒットか。"xmodal"（ImageBind）は nomic と距離の物差しが違うので
+   *  グラデーション閾値を出し分ける。未指定 = "text"（nomic）。 */
+  space?: "text" | "xmodal";
 };
 
 export interface EpisodeStore {
@@ -33,6 +36,9 @@ export interface EpisodeStore {
   ): Promise<EpisodeRecallHit[]>;
   /** timestamp 昇順で列挙（sinceIso 以降のみ。省略時は全件） */
   listSince(sinceIso?: string, limit?: number): Promise<EpisodeRecord[]>;
+  /** turnId 群を EpisodeRecallHit としてハイドレートする（横断チャンネルのヒット本文を引く）。
+   *  distance は呼び出し側が横断空間の値で上書きする想定なので +Inf を入れる。 */
+  getByTurnIds?(turnIds: readonly string[]): Promise<EpisodeRecallHit[]>;
   /** ソフト削除。該当 turnId があれば true */
   softDelete(turnId: string): Promise<boolean>;
   /** importance を更新する（score-importance バッチ用） */
@@ -91,6 +97,24 @@ export class InMemoryEpisodeStore implements EpisodeStore {
     });
     const capped = limit ? filtered.slice(0, limit) : filtered;
     return capped.map((r) => ({ ...r }));
+  }
+
+  async getByTurnIds(turnIds: readonly string[]): Promise<EpisodeRecallHit[]> {
+    const want = new Set(turnIds);
+    return this.records
+      .filter(
+        (r) =>
+          want.has(r.metadata.turnId) &&
+          !this.deletedTurnIds.has(r.metadata.turnId) &&
+          r.body.trim(),
+      )
+      .map((r) => ({
+        turnId: r.metadata.turnId,
+        body: r.body,
+        distance: Number.POSITIVE_INFINITY,
+        timestamp: r.metadata.timestamp,
+        participants: r.metadata.participants,
+      }));
   }
 
   async softDelete(turnId: string): Promise<boolean> {
