@@ -200,6 +200,8 @@ export async function createApp(
         concern: "",
         focusPlan: "",
         focusStreak: 0,
+        focusStall: 0,
+        focusBaseline: 0,
       };
   const wm = new WorkingMemory(
     settings.workingMemoryTurns,
@@ -213,6 +215,8 @@ export async function createApp(
         concern: string;
         focusPlan: string;
         focusStreak: number;
+        focusStall: number;
+        focusBaseline: number;
       }) => saveSession(statePath, next)
     : undefined;
 
@@ -270,6 +274,8 @@ export async function createApp(
     initialConcern: session.concern,
     initialFocusPlan: session.focusPlan,
     initialFocusStreak: session.focusStreak,
+    initialFocusStall: session.focusStall,
+    initialFocusBaseline: session.focusBaseline,
     contextTokenBudget: settings.contextTokenBudget,
     languageNumPredict: settings.languageNumPredict ?? 400,
     timeZone: settings.timeZone ?? "Asia/Tokyo",

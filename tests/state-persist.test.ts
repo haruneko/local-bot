@@ -16,6 +16,8 @@ describe("session persist", () => {
         concern: "",
         focusPlan: "",
         focusStreak: 0,
+        focusStall: 0,
+        focusBaseline: 0,
       });
 
       await saveSession(file, {
@@ -40,6 +42,8 @@ describe("session persist", () => {
         concern: "買い物リストの整理",
         focusPlan: "shopping",
         focusStreak: 3,
+        focusStall: 0,
+        focusBaseline: 0,
       });
 
       const raw = JSON.parse(await readFile(file, "utf8")) as {
@@ -75,6 +79,8 @@ describe("session persist", () => {
         concern: "",
         focusPlan: "",
         focusStreak: 0,
+        focusStall: 0,
+        focusBaseline: 0,
       });
     } finally {
       await rm(dir, { recursive: true, force: true });

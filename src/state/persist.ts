@@ -15,6 +15,10 @@ export type PersistedSession = {
   focusPlan: string;
   /** 集中が連続したターン数（集中力の上限＝強制ギプス用。ハートビート跨ぎで永続）。 */
   focusStreak: number;
+  /** focusPlan に進捗が無いまま集中したターン数（進捗ベース卒業＝見限り用）。 */
+  focusStall: number;
+  /** focusPlan で観測した最高進捗（停滞判定の基準。planProgress 値）。 */
+  focusBaseline: number;
   updatedAt: string;
 };
 
@@ -47,7 +51,7 @@ function parseWorkingMemory(raw: unknown): ConversationTurn[] {
 export async function loadSession(
   filePath: string,
   fallbackState: AgentState = DEFAULT_AGENT_STATE,
-): Promise<Pick<PersistedSession, "state" | "workingMemory" | "affect" | "concern" | "focusPlan" | "focusStreak">> {
+): Promise<Pick<PersistedSession, "state" | "workingMemory" | "affect" | "concern" | "focusPlan" | "focusStreak" | "focusStall" | "focusBaseline">> {
   try {
     const raw = await readFile(filePath, "utf8");
     const parsed = JSON.parse(raw) as Partial<PersistedSession & { innerState?: string }>;
@@ -69,6 +73,14 @@ export async function loadSession(
       typeof parsed.focusStreak === "number" && parsed.focusStreak >= 0
         ? parsed.focusStreak
         : 0;
+    const focusStall =
+      typeof parsed.focusStall === "number" && parsed.focusStall >= 0
+        ? parsed.focusStall
+        : 0;
+    const focusBaseline =
+      typeof parsed.focusBaseline === "number" && parsed.focusBaseline >= 0
+        ? parsed.focusBaseline
+        : 0;
     return {
       state,
       workingMemory: parseWorkingMemory(parsed.workingMemory),
@@ -76,6 +88,8 @@ export async function loadSession(
       concern,
       focusPlan,
       focusStreak,
+      focusStall,
+      focusBaseline,
     };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
@@ -83,7 +97,7 @@ export async function loadSession(
       console.warn("[session] load failed, using defaults", err);
     }
   }
-  return { state: fallbackState, workingMemory: [], affect: "", concern: "", focusPlan: "", focusStreak: 0 };
+  return { state: fallbackState, workingMemory: [], affect: "", concern: "", focusPlan: "", focusStreak: 0, focusStall: 0, focusBaseline: 0 };
 }
 
 /** @deprecated loadSession を使う */
@@ -103,6 +117,8 @@ export async function saveSession(
     concern?: string;
     focusPlan?: string;
     focusStreak?: number;
+    focusStall?: number;
+    focusBaseline?: number;
   },
 ): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -113,6 +129,8 @@ export async function saveSession(
     concern: session.concern ?? "",
     focusPlan: session.focusPlan ?? "",
     focusStreak: session.focusStreak ?? 0,
+    focusStall: session.focusStall ?? 0,
+    focusBaseline: session.focusBaseline ?? 0,
     updatedAt: new Date().toISOString(),
   };
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");

@@ -16,6 +16,8 @@ export type PlanState = {
   current: string | null;
   /** 起きた事実の追記ログ（過去形） */
   log: PlanLogEntry[];
+  /** 進捗が無く見限った（卒業した）目標。集中の対象から外れ、自動復帰しない */
+  retired?: boolean;
   createdAt: string;
   updatedAt: string;
 };

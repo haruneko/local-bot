@@ -61,7 +61,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 | 作業記憶 | `data/state.json` | ユーザーとボットの**表面発話のみ**。各エージェントの判断・ツール結果は含めない |
 | affect（感情余韻） | `data/state.json` `affect` | 持ち越す生の感情（余韻）。旧 `innerState`。内省後に毎ターン書き換え。空＝起きたて |
 | concern（関心事） | `data/state.json` `concern` | 認知的焦点（何に注目しているか）。affect と同じ LLM 呼び出しで更新。actor activate / recall クエリに使う |
-| focusPlan（取り組み中の計画） | `data/state.json` `focusPlan` | 集中 State で取り組み中の plan id（`data/plans/<id>.json`）。`state==="集中"` のとき renderPlan して計画チャンネルに常駐注入。`plan` actor が差し替え |
+| focusPlan（取り組み中の計画） | `data/state.json` `focusPlan` | 集中 State で取り組み中の plan id（`data/plans/<id>.json`）。`state==="集中"` のとき renderPlan して計画チャンネルに常駐注入。`plan` actor が差し替え。集中の制御は4段（入口/sticky/疲労`focusStreak`/見限り`focusStall`＝進捗ベース卒業で `retired` 化）＝DECISIONS §集中モード |
 
 `memo_index` はエピソード記憶・意味記憶とは別テーブル（情報源記憶）。`episodes` に書かない（DECISIONS.md §メモインデックスの設計 参照）。  
 想起グラデーションは `src/recall/distance.ts`（距離分類）+ `src/recall/llm-present.ts`（LLM 提示）。閾値は `DEFAULT_RECALL_DISTANCE_THRESHOLDS`。

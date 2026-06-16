@@ -28,8 +28,9 @@ import {
 } from "./episode-persist.js";
 import { runActivator } from "./activator.js";
 import { getActor } from "../actors/registry.js";
-import { loadPlan } from "../plan/state.js";
+import { loadPlan, savePlan } from "../plan/state.js";
 import { renderPlan } from "../plan/render.js";
+import { planProgress, evaluateFocusGraduation } from "../plan/focus.js";
 import type { VerboseLogger, VerboseLoggerImpl } from "../util/verbose.js";
 import { noopVerbose } from "../util/verbose.js";
 import { formatActionMeta } from "../action/types.js";
@@ -85,6 +86,8 @@ export type TurnDeps = {
   initialConcern?: string;
   initialFocusPlan?: string;
   initialFocusStreak?: number;
+  initialFocusStall?: number;
+  initialFocusBaseline?: number;
   contextTokenBudget: number;
   languageNumPredict?: number;
   timeZone?: string;
@@ -118,6 +121,8 @@ export type TurnDeps = {
     concern: string;
     focusPlan: string;
     focusStreak: number;
+    focusStall: number;
+    focusBaseline: number;
   }) => Promise<void>;
   verbose?: VerboseLogger;
 };
@@ -129,12 +134,18 @@ const INHIBITION_WINDOW_TURNS = 4;
  *  ハートビートで未達 goal を永遠にループ＝「ずっと同じことを考え続ける」のを防ぐ＝人間の疲労の代替。 */
 const MAX_FOCUS_STREAK = 10;
 
+/** 進捗が無いまま集中したターンがこの数続いたら、その goal を見限る（卒業＝retired）。
+ *  疲労（MAX_FOCUS_STREAK＝休む）より小さくして、進捗の出ない goal は休む前に見限られるようにする。 */
+const MAX_FOCUS_STALL = 6;
+
 export class TurnOrchestrator {
   private turnContext: TurnContext | null = null;
   private affect: string;
   private concern: string;
   private focusPlan: string;
   private focusStreak: number;
+  private focusStall: number;
+  private focusBaseline: number;
   private readonly recentEpisodeTurnIds: string[] = [];
   /** 直近ターンで想起済みのベクトル群。INHIBITION_WINDOW_TURNS ターン後に期限切れ */
   private readonly inhibitionBuffer: { vector: number[]; expiresAtTurn: number }[] = [];
@@ -148,6 +159,8 @@ export class TurnOrchestrator {
     this.concern = deps.initialConcern ?? "";
     this.focusPlan = deps.initialFocusPlan ?? "";
     this.focusStreak = deps.initialFocusStreak ?? 0;
+    this.focusStall = deps.initialFocusStall ?? 0;
+    this.focusBaseline = deps.initialFocusBaseline ?? 0;
   }
 
   getAffect(): string {
@@ -156,6 +169,41 @@ export class TurnOrchestrator {
 
   getConcern(): string {
     return this.concern;
+  }
+
+  /**
+   * 進捗ベース卒業（達成不能 goal の見限り）。集中して focusPlan に取り組んでいるターンで、
+   * 進捗（planProgress）が伸びないまま MAX_FOCUS_STALL 続いたら、その計画を retired にして手放す。
+   * 疲労（focusStreak＝休む・goal は残す）と違い、こちらは「見限り」＝自動復帰しない。
+   */
+  private async applyFocusGraduation(): Promise<void> {
+    if (this.state !== "集中" || !this.focusPlan) return;
+    const plan = await loadPlan(this.focusPlan);
+    if (!plan) return;
+    const result = evaluateFocusGraduation({
+      progress: planProgress(plan),
+      stall: this.focusStall,
+      baseline: this.focusBaseline,
+      maxStall: MAX_FOCUS_STALL,
+    });
+    this.focusStall = result.stall;
+    this.focusBaseline = result.baseline;
+    if (result.graduated) {
+      const now = new Date().toISOString();
+      await savePlan({
+        ...plan,
+        retired: true,
+        updatedAt: now,
+        log: [
+          ...plan.log,
+          {
+            date: now.slice(0, 10),
+            text: `進捗が出ないので目標「${plan.title}」から一旦離れた`,
+          },
+        ],
+      });
+      this.focusPlan = "";
+    }
   }
 
   private excludeTurnIds(): ReadonlySet<string> {
@@ -204,6 +252,8 @@ export class TurnOrchestrator {
       concern: this.concern,
       focusPlan: this.focusPlan,
       focusStreak: this.focusStreak,
+      focusStall: this.focusStall,
+      focusBaseline: this.focusBaseline,
     });
   }
 
@@ -332,6 +382,7 @@ export class TurnOrchestrator {
       }
     }
     // ゴール達成 → 集中対象から外す（言語野が次の State を選ぶ）
+    const prevFocusPlan = this.focusPlan;
     if (planAchieved) this.focusPlan = "";
 
     // --- language-agent（常に起動） ---
@@ -349,6 +400,13 @@ export class TurnOrchestrator {
     if (this.focusStreak >= MAX_FOCUS_STREAK) {
       this.focusPlan = "";
       this.focusStreak = 0;
+    }
+
+    // focusPlan が乗り換わった／手放された → 進捗ベース卒業の停滞カウントは新規にする
+    // （別の目標の停滞を引き継がない・空になったらリセット）。
+    if (this.focusPlan !== prevFocusPlan) {
+      this.focusStall = 0;
+      this.focusBaseline = 0;
     }
 
     // 事後ルール（sticky）: 未達の計画（focusPlan）を持っているあいだ集中を維持する。ただし
@@ -378,6 +436,8 @@ export class TurnOrchestrator {
     this.state = applyNextState(this.state, ctx.nextState ?? this.state);
     // 集中力カウンタ: 集中が続けば加算、抜けたら 0。MAX を超えると次ターンの強制ギプスで切れる。
     this.focusStreak = this.state === "集中" ? this.focusStreak + 1 : 0;
+    // 進捗ベース卒業: 集中して取り組んでいるのに進捗が出ないターンが続いたら、その goal を見限る（retired）。
+    await this.applyFocusGraduation();
     await this.deps.onSessionPersist?.({
       state: this.state,
       workingMemory: this.deps.workingMemory.getRecent(),
@@ -385,6 +445,8 @@ export class TurnOrchestrator {
       concern: this.concern,
       focusPlan: this.focusPlan,
       focusStreak: this.focusStreak,
+      focusStall: this.focusStall,
+      focusBaseline: this.focusBaseline,
     });
     v?.stateTransition(prevState, this.state);
 
