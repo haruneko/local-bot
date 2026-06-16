@@ -4,9 +4,9 @@
   "episodeRecallTopK": 3,
   "recencyExclusionTurns": 4,
   "recallDistance": {
-    "fullMax": 0.35,
-    "summarizeMax": 0.52,
-    "vagueMax": 0.62
+    "fullMax": 0.3,
+    "summarizeMax": 0.4,
+    "vagueMax": 0.48
   },
   "chatModel": "qwen3.6:35b-a3b",
   "embedModel": "hf.co/Targoyle/ruri-v3-310m-GGUF:latest",
