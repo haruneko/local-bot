@@ -93,8 +93,6 @@ function assembleRecalledEpisodes(
 
     if (hit.presentation === "full") {
       presented = hit.body.trim() || null;
-    } else if (hit.presentation === "vague") {
-      presented = resolvePresentedMechanical("vague", hit.body);
     } else {
       const fromLlm = llmSummarized.get(hit.id);
       if (fromLlm !== undefined) {

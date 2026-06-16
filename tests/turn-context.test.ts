@@ -190,7 +190,7 @@ describe("TurnContext", () => {
     expect(langBody).not.toMatch(/過去の内省全文.{0,20}…/);
   });
 
-  it("tags vague and summarize in language render", () => {
+  it("tags summarize; full has no tag in language render", () => {
     const ctx = createTurnContext({
       turnId: "t4",
       state: "対話",
@@ -204,13 +204,14 @@ describe("TurnContext", () => {
         { role: "user", speakerId: "user_001", content: "ねえ" },
       ],
       recalledEpisodes: [
-        { presented: "なんとなく寂しい", relevance: 0.3, presentation: "vague" },
+        { presented: "なんとなく寂しい", relevance: 0.3, presentation: "full" },
         { presented: "昨日話した", relevance: 0.5, presentation: "summarize" },
       ],
     });
 
     const body = renderLanguageUserContent(ctx);
-    expect(body).toContain("（おぼろげ）なんとなく寂しい");
+    expect(body).toContain("なんとなく寂しい");
+    expect(body).not.toContain("（おぼろげ）");
     expect(body).toContain("（要約）昨日話した");
   });
 

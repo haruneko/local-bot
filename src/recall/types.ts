@@ -1,5 +1,5 @@
-/** 文脈との関連度に応じた提示レベル */
-export type RecallPresentation = "vague" | "summarize" | "full";
+/** 文脈との関連度に応じた提示レベル（遠いものは omit＝出さない。旧 vague は廃止） */
+export type RecallPresentation = "summarize" | "full";
 
 export type RecalledEpisode = {
   /** コンテキストに載せる本文（フィルター後） */

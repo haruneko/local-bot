@@ -6,30 +6,27 @@ import {
   distanceToRelevance,
   filterRecallByDistance,
   recencyDecay,
-  VAGUE_PRESENTED,
 } from "../src/recall/distance.js";
 
 describe("recall distance filter", () => {
-  it("maps L2 distance to presentation levels", () => {
+  it("maps L2 distance to presentation levels（vague 廃止＝summarizeMax 超は omit）", () => {
     const result = filterRecallByDistance(
       [
-        { body: "原文A", distance: 0.4 },
-        { body: "原文B", distance: 0.65 },
-        { body: "原文C", distance: 0.8 },
-        { body: "原文D", distance: 1.0 },
+        { body: "原文A", distance: 0.4 }, // ≤fullMax → full
+        { body: "原文B", distance: 0.65 }, // ≤summarizeMax → summarize
+        { body: "原文C", distance: 0.8 }, // 旧 vague → omit
+        { body: "原文D", distance: 1.0 }, // omit
       ],
       DEFAULT_RECALL_DISTANCE_THRESHOLDS,
     );
 
-    expect(result).toHaveLength(3);
+    expect(result).toHaveLength(2);
     expect(result[0].presented).toBe("原文A");
     expect(result[0].presentation).toBe("full");
     expect(result.find((e) => e.presentation === "summarize")?.presented).toMatch(
       /^原文B/,
     );
-    expect(result.find((e) => e.presentation === "vague")?.presented).toBe(
-      VAGUE_PRESENTED,
-    );
+    expect(result.some((e) => (e.presentation as string) === "vague")).toBe(false);
   });
 
   it("omits hits above vagueMax (strict)", () => {

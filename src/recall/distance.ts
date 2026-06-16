@@ -37,11 +37,8 @@ function maxInhibition(vector: number[] | undefined, buffer: readonly number[][]
 
 export const SUMMARIZE_MAX_CHARS = 80;
 
-/** vague は固有名詞・事実を落とすため固定フレーズのみ */
-export const VAGUE_PRESENTED =
-  "（おぼろげな感触だけが残っている）";
-
-/** LanceDB 既定の L2 距離（小さいほど類似）。厳しめ omit。 */
+/** LanceDB 既定の L2 距離（小さいほど類似）。厳しめ omit。
+ *  vagueMax は presentation の段ではなく relevance 正規化（0 になる距離）の上限として残す。 */
 export type RecallDistanceThresholds = {
   fullMax: number;
   summarizeMax: number;
@@ -88,10 +85,9 @@ export function presentationFromDistance(
   distance: number,
   thresholds: RecallDistanceThresholds,
 ): RecallPresentation | "omit" {
-  if (distance > thresholds.vagueMax) return "omit";
   if (distance <= thresholds.fullMax) return "full";
   if (distance <= thresholds.summarizeMax) return "summarize";
-  return "vague";
+  return "omit";
 }
 
 export function resolvePresentedMechanical(
@@ -100,8 +96,7 @@ export function resolvePresentedMechanical(
 ): string | null {
   if (presentation === "omit") return null;
   if (presentation === "full") return body.trim();
-  if (presentation === "summarize") return mechanicalSummarize(body);
-  return VAGUE_PRESENTED;
+  return mechanicalSummarize(body); // summarize
 }
 
 export type ClassifiedRecallHit = {

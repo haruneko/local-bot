@@ -312,12 +312,7 @@ function appendRecalledEpisodes(parts: string[], ctx: TurnContext): void {
     "（これは過去の内省。ユーザーには見せていない。口調の台本として使わない）",
     "（各項目の先頭 [N分前/N日前] はその記憶が作られた時点。記憶の中の「明日」「今日」「さっき」はその時点が基準＝いまの話とは限らない。古い記憶を今の事実として喋らない）",
     ...ctx.recalledEpisodes.map((ep, i) => {
-      const tag =
-        ep.presentation === "vague"
-          ? "（おぼろげ）"
-          : ep.presentation === "summarize"
-            ? "（要約）"
-            : "";
+      const tag = ep.presentation === "summarize" ? "（要約）" : "";
       const when = ep.occurredAt
         ? `[${formatRelativeTime(ep.occurredAt, ctx.now)}] `
         : "";

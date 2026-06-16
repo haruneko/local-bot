@@ -1,16 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { FakeLlmClient } from "../src/llm/fake.js";
-import {
-  DEFAULT_RECALL_DISTANCE_THRESHOLDS,
-  VAGUE_PRESENTED,
-} from "../src/recall/distance.js";
+import { DEFAULT_RECALL_DISTANCE_THRESHOLDS } from "../src/recall/distance.js";
 import {
   presentRecallEpisodes,
   summarizeRecallActionHits,
 } from "../src/recall/llm-present.js";
 
 describe("presentRecallEpisodes", () => {
-  it("uses LLM for summarize only; vague is mechanical; full as-is", async () => {
+  it("uses LLM for summarize only; full as-is; 旧 vague 帯は omit", async () => {
     const llm = new FakeLlmClient([
       JSON.stringify({
         items: [{ id: 1, presented: "要点だけ残したB" }],
@@ -20,10 +17,10 @@ describe("presentRecallEpisodes", () => {
     const recalled = await presentRecallEpisodes(
       llm,
       [
-        { body: "原文A", distance: 0.4 },
-        { body: "原文Bは長い記憶の本文です", distance: 0.65 },
-        { body: "原文Cの遠い記憶", distance: 0.8 },
-        { body: "原文D", distance: 1.0 },
+        { body: "原文A", distance: 0.4 }, // full
+        { body: "原文Bは長い記憶の本文です", distance: 0.65 }, // summarize（LLM）
+        { body: "原文Cの遠い記憶", distance: 0.8 }, // 旧 vague → omit
+        { body: "原文D", distance: 1.0 }, // omit
       ],
       {
         state: "対話",
@@ -37,19 +34,17 @@ describe("presentRecallEpisodes", () => {
     expect(llm.calls).toHaveLength(1);
     expect(llm.calls[0].options?.format).toBeDefined();
     expect(llm.calls[0].messages[0].content).toContain("summarize");
-    expect(recalled).toHaveLength(3);
+    expect(recalled).toHaveLength(2);
     expect(recalled.find((e) => e.presentation === "full")?.presented).toBe(
       "原文A",
     );
     expect(
       recalled.find((e) => e.presentation === "summarize")?.presented,
     ).toBe("要点だけ残したB");
-    expect(recalled.find((e) => e.presentation === "vague")?.presented).toBe(
-      VAGUE_PRESENTED,
-    );
+    expect(recalled.some((e) => (e.presentation as string) === "vague")).toBe(false);
   });
 
-  it("uses mechanical vague without LLM when only vague hits exist", async () => {
+  it("旧 vague 帯のみのヒットは LLM 無しで omit（空）", async () => {
     const llm = new FakeLlmClient([]);
 
     const recalled = await presentRecallEpisodes(
@@ -65,13 +60,7 @@ describe("presentRecallEpisodes", () => {
     );
 
     expect(llm.calls).toHaveLength(0);
-    expect(recalled).toEqual([
-      {
-        presented: VAGUE_PRESENTED,
-        relevance: expect.any(Number),
-        presentation: "vague",
-      },
-    ]);
+    expect(recalled).toEqual([]);
   });
 
   it("omits summarize hit when LLM returns empty presented", async () => {
@@ -96,13 +85,13 @@ describe("presentRecallEpisodes", () => {
     expect(recalled).toHaveLength(0);
   });
 
-  it("skips LLM call when all hits are full or vague", async () => {
+  it("skips LLM call when there are no summarize hits（full のみ・遠いのは omit）", async () => {
     const llm = new FakeLlmClient([]);
     const recalled = await presentRecallEpisodes(
       llm,
       [
-        { body: "近い記憶", distance: 0.3 },
-        { body: "遠い記憶", distance: 0.8 },
+        { body: "近い記憶", distance: 0.3 }, // full
+        { body: "遠い記憶", distance: 0.8 }, // 旧 vague → omit
       ],
       {
         state: "対話",
@@ -114,12 +103,9 @@ describe("presentRecallEpisodes", () => {
     );
 
     expect(llm.calls).toHaveLength(0);
-    expect(recalled).toHaveLength(2);
+    expect(recalled).toHaveLength(1);
     expect(recalled.find((e) => e.presentation === "full")?.presented).toBe(
       "近い記憶",
-    );
-    expect(recalled.find((e) => e.presentation === "vague")?.presented).toBe(
-      VAGUE_PRESENTED,
     );
   });
 });
