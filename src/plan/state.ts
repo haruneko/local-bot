@@ -1,8 +1,16 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-/** 構造化plan の保存先（真実の源）。markdown はここから派生レンダリングするビュー */
-export const PLANS_DIR = path.join(process.cwd(), "data", "plans");
+const PLANS_DIR_DEFAULT = path.join(process.cwd(), "data", "plans");
+
+/**
+ * 構造化plan の保存先（真実の源）。markdown はここから派生レンダリングするビュー。
+ * テスト隔離のため `PLANS_DIR` 環境変数で差し替え可能（既定 data/plans）。
+ * notes.ts の `notesDir()`・paths.ts の `lancedbDir()` と同じ思想＝本物の記憶を汚さずに実機/テストを回す。
+ */
+export function plansDir(): string {
+  return process.env.PLANS_DIR?.trim() || PLANS_DIR_DEFAULT;
+}
 
 export type Milestone = { id: string; text: string; done: boolean };
 export type PlanLogEntry = { date: string; text: string };
@@ -34,7 +42,7 @@ export function planSlug(title: string): string {
 }
 
 function planFilePath(id: string): string {
-  return path.join(PLANS_DIR, `${id}.json`);
+  return path.join(plansDir(), `${id}.json`);
 }
 
 export async function loadPlan(id: string): Promise<PlanState | null> {
@@ -48,7 +56,7 @@ export async function loadPlan(id: string): Promise<PlanState | null> {
 }
 
 export async function savePlan(state: PlanState): Promise<void> {
-  await mkdir(PLANS_DIR, { recursive: true });
+  await mkdir(plansDir(), { recursive: true });
   await writeFile(
     planFilePath(state.id),
     `${JSON.stringify(state, null, 2)}\n`,

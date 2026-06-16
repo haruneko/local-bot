@@ -16,7 +16,7 @@ import type { LlmClient } from "../llm/types.js";
 import { loadPlan, savePlan, type PlanState } from "../plan/state.js";
 import { applyPlanOp, type PlanOp } from "../plan/ops.js";
 import { renderPlan } from "../plan/render.js";
-import { NOTES_DIR } from "../tools/notes.js";
+import { notesDir } from "../tools/notes.js";
 
 /** 意味のある中身（updatedAt 等を除く）が同じか。効果ゼロ op の検出に使う */
 function planContentEqual(a: PlanState, b: PlanState): boolean {
@@ -37,7 +37,7 @@ function allMilestonesDone(p: PlanState): boolean {
 
 /** 構造化plan から Obsidian 互換の markdown ミラーを書き出す（派生ビューなので決定的に上書き） */
 async function writePlanMirror(id: string, body: string): Promise<string> {
-  const dir = path.join(NOTES_DIR, "goals");
+  const dir = path.join(notesDir(), "goals");
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, `${id}.md`), `${body}\n`, "utf8");
   return `goals/${id}.md`;

@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { rm } from "node:fs/promises";
+import { beforeEach, afterEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { applyPlanOp } from "../src/plan/ops.js";
 import { renderPlan } from "../src/plan/render.js";
-import { loadPlan, savePlan, PLANS_DIR, type PlanState } from "../src/plan/state.js";
+import { loadPlan, savePlan, plansDir, type PlanState } from "../src/plan/state.js";
 import { runPlan } from "../src/roles/plan.js";
 import { FakeLlmClient } from "../src/llm/fake.js";
 import { InMemoryEpisodeStore } from "../src/memory/episode.js";
@@ -13,9 +14,23 @@ import {
   renderLanguageUserContent,
   withAction,
 } from "../src/context/turn-context.js";
-import { NOTES_DIR } from "../src/tools/notes.js";
+import { notesDir } from "../src/tools/notes.js";
 
 const NOW = new Date("2026-06-12T00:00:00.000Z");
+
+// 本物の data/plans・data/notes/goals を汚さないよう temp に隔離する
+// （plansDir() は PLANS_DIR、notesDir() は MEMO_NOTES_DIR を優先する）。
+let tmpRoot: string;
+beforeEach(async () => {
+  tmpRoot = await mkdtemp(path.join(tmpdir(), "plan-"));
+  process.env.PLANS_DIR = path.join(tmpRoot, "plans");
+  process.env.MEMO_NOTES_DIR = path.join(tmpRoot, "notes");
+});
+afterEach(async () => {
+  delete process.env.PLANS_DIR;
+  delete process.env.MEMO_NOTES_DIR;
+  await rm(tmpRoot, { recursive: true, force: true });
+});
 
 function samplePlan(): PlanState {
   return {
@@ -85,7 +100,7 @@ describe("renderPlan", () => {
 describe("plan store", () => {
   it("save→load で往復し、無ければ null", async () => {
     const s = { ...samplePlan(), id: "__test-store__" };
-    const fpath = path.join(PLANS_DIR, `${s.id}.json`);
+    const fpath = path.join(plansDir(),`${s.id}.json`);
     try {
       expect(await loadPlan(s.id)).toBeNull();
       await savePlan(s);
@@ -123,16 +138,16 @@ describe("runPlan（op→決定的適用）", () => {
         expect(saved!.milestones).toHaveLength(2);
         expect(saved!.current).toBe("m1");
       } finally {
-        await rm(path.join(PLANS_DIR, `${id}.json`), { force: true });
-        await rm(path.join(NOTES_DIR, "goals", `${id}.md`), { force: true });
+        await rm(path.join(plansDir(),`${id}.json`), { force: true });
+        await rm(path.join(notesDir(), "goals",`${id}.md`), { force: true });
       }
     }
   });
 
   it("既存 plan に complete op を当てると in-place 更新（重複なし・履歴保持）", async () => {
     const id = "__test-runplan-complete__";
-    const fpath = path.join(PLANS_DIR, `${id}.json`);
-    const mpath = path.join(NOTES_DIR, "goals", `${id}.md`);
+    const fpath = path.join(plansDir(),`${id}.json`);
+    const mpath = path.join(notesDir(), "goals",`${id}.md`);
     await savePlan({ ...samplePlan(), id });
     try {
       const llm = new FakeLlmClient([JSON.stringify({ op: "complete", id: "m1" })]);
@@ -156,8 +171,8 @@ describe("runPlan（op→決定的適用）", () => {
 
   it("最後のマイルストーンを complete するとゴール達成（achieved=true＋達成ログ）", async () => {
     const id = "__test-achieve__";
-    const fpath = path.join(PLANS_DIR, `${id}.json`);
-    const mpath = path.join(NOTES_DIR, "goals", `${id}.md`);
+    const fpath = path.join(plansDir(),`${id}.json`);
+    const mpath = path.join(notesDir(), "goals",`${id}.md`);
     await savePlan({
       ...samplePlan(),
       id,
@@ -214,7 +229,7 @@ describe("runPlan（op→決定的適用）", () => {
 
   it("効果ゼロの op（存在しない id への complete）は notAttempted", async () => {
     const id = "__test-noeffect__";
-    const fpath = path.join(PLANS_DIR, `${id}.json`);
+    const fpath = path.join(plansDir(),`${id}.json`);
     await savePlan({ ...samplePlan(), id });
     try {
       const llm = new FakeLlmClient([JSON.stringify({ op: "complete", id: "m999" })]);
