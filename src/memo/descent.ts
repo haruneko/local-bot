@@ -8,6 +8,8 @@ import {
 import { tryParseJsonWithSchema } from "../action/parse-json.js";
 import type { MemoIndexStore } from "../memory/memo-index.js";
 import { readNoteContent } from "../tools/notes.js";
+import { lexicalRank } from "../recall/lexical.js";
+import { reciprocalRankFusion } from "../recall/fuse.js";
 
 /** 無限ループ防止。木がこれより深くなることは当面ない */
 const MAX_DEPTH = 6;
@@ -80,13 +82,33 @@ export async function descendToTarget(
  * 同じノートへ繰り返し戻る用途で頑健（断片化を防ぐ）。明確に一致する候補があれば**必ず再利用**し、
  * 重複を作らない。明確な一致が無ければ null（→ descent フォールバック / 新規作成へ）。
  */
+/** 字句チャンネルを混ぜるゲート。クエリとファイル名のバイグラム Dice がこれ超えで初めて融合する。
+ *  低くすると topical/oblique クエリにノイズが混ざって vector を汚す（eval で実測・0.4 が安全点）。 */
+const LEXICAL_MIN_DICE = 0.4;
+
 export async function recallRecognizeTarget(
   llm: LlmClient,
   memoIndex: MemoIndexStore,
   intent: string,
   topK = 8,
 ): Promise<string | null> {
-  const hits = await memoIndex.recall(intent, topK);
+  const vhits = await memoIndex.recall(intent, topK);
+  // hybrid: 「名前そのまま」クエリは意味ベクトルが弱いので字句一致（ファイル名）を RRF 融合する。
+  // ただしゲート（強い字句一致のときだけ）で話題クエリへのノイズ注入を防ぐ（eval:retrieval で検証）。
+  const all = await memoIndex.list();
+  const lexPaths = lexicalRank(
+    intent,
+    all.map((e) => ({ key: e.path, text: e.path })),
+    LEXICAL_MIN_DICE,
+  );
+  let hits = vhits;
+  if (lexPaths.length > 0) {
+    const previewByPath = new Map(all.map((e) => [e.path, e.preview]));
+    for (const h of vhits) previewByPath.set(h.path, h.preview);
+    hits = reciprocalRankFusion([vhits.map((h) => h.path), lexPaths])
+      .slice(0, topK)
+      .map((f) => ({ path: f.turnId, preview: previewByPath.get(f.turnId) ?? "", distance: 0 }));
+  }
   if (hits.length === 0) return null; // 候補ゼロ → LLM を呼ばない
   const list = hits.map((h) => `${h.path} — ${h.preview}`).join("\n");
   const format = memoReadPickJsonSchema as Record<string, unknown>;

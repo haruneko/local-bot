@@ -7,6 +7,8 @@ import { OllamaEmbedClient } from "../llm/ollama.js";
 import { embedPrefixFor } from "../llm/embed-prefix.js";
 import { ImageBindClient } from "../embedding/xmodal.js";
 import { cosineSimilarity } from "../recall/distance.js";
+import { reciprocalRankFusion } from "../recall/fuse.js";
+import { lexicalRank } from "../recall/lexical.js";
 import {
   listNoteFilenames,
   readNoteContent,
@@ -109,6 +111,7 @@ async function scoreModel(
   gold: Gold,
   topk: number,
   prefix: { q: string; d: string },
+  hybrid: boolean,
 ): Promise<ModelScore | null> {
   const embed = makeEmbedder(model, host);
   // corpus を埋め込む（失敗＝このモデルは計測不能）
@@ -134,7 +137,14 @@ async function scoreModel(
     const ranked = docVecs
       .map((d) => ({ path: d.path, sim: cosineSimilarity(qv, d.vec) }))
       .sort((a, b) => b.sim - a.sim);
-    const rank = bestRank(ranked.map((r) => r.path), c.expect ?? []);
+    // hybrid: 意味(ベクトル)順位＋字句(ファイル名)順位を RRF 融合
+    const order = hybrid
+      ? reciprocalRankFusion([
+          ranked.map((r) => r.path),
+          lexicalRank(c.query, docs.map((d) => ({ key: d.path, text: d.path })), 0.4),
+        ]).map((f) => f.turnId)
+      : ranked.map((r) => r.path);
+    const rank = bestRank(order, c.expect ?? []);
     const buckets = [bump(kind), bump("ALL")];
     if (c.holdout) buckets.push(bump("holdout"));
     for (const acc of buckets) {
@@ -176,6 +186,7 @@ async function main(): Promise<void> {
   const embedTarget = get("--embed-target", "path+preview")!;
   const showWorst = args.includes("--worst");
   const noPrefix = args.includes("--no-prefix");
+  const hybrid = args.includes("--hybrid");
 
   const gold = JSON.parse(
     await readFile(path.join(process.cwd(), goldPath), "utf8"),
@@ -194,7 +205,7 @@ async function main(): Promise<void> {
     const prefix = prefixFor(m, noPrefix);
     const pfxLabel = prefix.q || prefix.d ? `prefix: q="${prefix.q}" d="${prefix.d}"` : "prefix: なし";
     console.error(`\n■ ${m} を採点中…（${pfxLabel}）`);
-    const s = await scoreModel(m, host, docs, gold, topk, prefix);
+    const s = await scoreModel(m, host, docs, gold, topk, prefix, hybrid);
     if (s) scores.push(s);
   }
 
