@@ -115,7 +115,7 @@ function assembleRecalledEpisodes(
   return result.sort((a, b) => b.relevance - a.relevance);
 }
 
-/** 距離分類 → summarize は LLM、vague は機械固定 → RecalledEpisode */
+/** 距離分類 → full はそのまま・summarize は LLM 要約（失敗時は機械要約） → RecalledEpisode */
 export async function presentRecallEpisodes(
   llm: LlmClient,
   hits: readonly EpisodeRecallHit[],

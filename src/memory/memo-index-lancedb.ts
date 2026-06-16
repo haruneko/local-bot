@@ -123,6 +123,12 @@ export class LanceMemoIndexStore implements MemoIndexStore {
       }));
   }
 
+  async delete(path: string): Promise<void> {
+    const table = await this.ensureTable();
+    const escaped = path.replace(/'/g, "''");
+    await table.delete(`id = '${escaped}'`);
+  }
+
   async list(): Promise<MemoIndexEntry[]> {
     const table = await this.ensureTable();
     const rows = (await table

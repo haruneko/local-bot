@@ -37,6 +37,40 @@ describe("InMemoryMemoIndexStore", () => {
     expect(list[0].preview).toBe("更新後");
   });
 
+  it("delete で索引エントリを消す（recall/list から外れる）", async () => {
+    const store = new InMemoryMemoIndexStore();
+    await store.upsert({
+      path: "stale.md",
+      preview: "消えるメモ",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await store.upsert({
+      path: "keep.md",
+      preview: "残るメモ",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await store.delete("stale.md");
+    const list = await store.list();
+    expect(list).toHaveLength(1);
+    expect(list[0].path).toBe("keep.md");
+    const hits = await store.recall("消えるメモ", 5);
+    expect(hits.map((h) => h.path)).not.toContain("stale.md");
+  });
+
+  it("delete は存在しない path でも no-op", async () => {
+    const store = new InMemoryMemoIndexStore();
+    await store.upsert({
+      path: "only.md",
+      preview: "唯一",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await store.delete("missing.md");
+    expect(await store.list()).toHaveLength(1);
+  });
+
   it("recall が距離順で返る", async () => {
     const store = new InMemoryMemoIndexStore();
     await store.upsert({

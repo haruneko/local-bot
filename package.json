@@ -16,7 +16,9 @@
     "slack": "tsx src/cli/slack.ts",
     "smoke": "tsx scripts/smoke-ollama.ts",
     "score-importance": "tsx src/cli/score-importance.ts",
-    "reindex": "tsx src/cli/reindex.ts"
+    "reindex": "tsx src/cli/reindex.ts",
+    "notes:rm": "tsx src/cli/notes-rm.ts",
+    "eval:retrieval": "tsx src/cli/eval-retrieval.ts"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.22.0",

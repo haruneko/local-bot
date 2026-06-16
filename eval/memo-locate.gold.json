@@ -1,0 +1,48 @@
+{
+  "corpus": "memo",
+  "note": "memo locate の想起評価。query→正解ノート(相対パス)。kind=名前echo(name)/話題paraphrase(topical)/暗示oblique/紛らわしい単一正解(disambig)。topical・oblique・disambig がパス語に頼らない本番の難所。expect は any-of（どれかが上位に来れば正解）。holdout=true はチューニング非使用の最終確認用。",
+  "cases": [
+    { "query": "ambiguity", "expect": ["DesignPrinciples/ambiguity.md"], "kind": "name" },
+    { "query": "買い物リスト", "expect": ["買い物リスト.md"], "kind": "name" },
+    { "query": "Fコードのマスター", "expect": ["goals/fコードのマスター.md"], "kind": "name" },
+    { "query": "ギターコード習得計画", "expect": ["goals/ギターコード習得計画.md"], "kind": "name" },
+    { "query": "novel ideas mineral collection", "expect": ["novel_ideas-mineral_collection.md"], "kind": "name" },
+
+    { "query": "曖昧さは足せばいいものじゃないという気づき", "expect": ["DesignPrinciples/ambiguity.md"], "kind": "topical" },
+    { "query": "中身のない曖昧さはノイズになるという設計上の学び", "expect": ["DesignPrinciples/ambiguity.md"], "kind": "topical", "holdout": true },
+    { "query": "Fコードが安定して押さえられるようになりたい", "expect": ["goals/fコードのマスター.md"], "kind": "topical" },
+    { "query": "冷蔵庫に何が残っているかの在庫リスト", "expect": ["goals/冷蔵庫の在庫メモ作成.md"], "kind": "topical" },
+    { "query": "牛乳や卵が残っているか確認して記録する", "expect": ["goals/冷蔵庫の在庫メモ作成.md"], "kind": "topical", "holdout": true },
+    { "query": "鉱物採集をテーマにした小説のアイデア", "expect": ["novel_ideas-mineral_collection.md"], "kind": "topical" },
+    { "query": "瑠璃の宝石の読書メモのフォーマット", "expect": ["reading-notes-Ruri-no-Houseki-format.md", "reading-notes-Ruri-no-Houseki-plan.md"], "kind": "topical" },
+    { "query": "最近のJ-POPヒット曲のコード進行を調べる計画", "expect": ["goals/j-popヒット曲5曲のコード進行調査とまとめ.md", "works/最近のヒット曲5曲のコード進行の特徴を分析・要約する.md", "works/最近のヒット曲5曲のコード進行と-それらが奏でる感情や音色の傾向をまとめる.md"], "kind": "topical" },
+    { "query": "歌詞をブラッシュアップする目標", "expect": ["goals/歌詞のブラッシュアップ.md"], "kind": "topical" },
+    { "query": "ギターのコードを覚えて曲が弾けるようになる計画", "expect": ["goals/ギターコード習得計画.md"], "kind": "topical" },
+    { "query": "カメラを首振り（パンチルト）させる電子工作の検討", "expect": ["USB-camera-pan-tilt-control-plan.md", "USB-camera-pan-tilt-control-esp32-servo-plan.md", "ESP32-M5Camera-Servo-implementation-plan.md"], "kind": "topical" },
+    { "query": "AIエージェントの記憶アーキテクチャのベストプラクティス", "expect": ["AI-Architecture-memory-best-practices.md"], "kind": "topical" },
+    { "query": "人間の記憶特性から学ぶAIの記憶設計の原則", "expect": ["AI-Architecture-memory-best-practices.md"], "kind": "topical", "holdout": true },
+    { "query": "2026年のAIの動向のまとめ", "expect": ["Research/AI_2026_Summary.md"], "kind": "topical" },
+    { "query": "歌詞の作り方の基本とコツ", "expect": ["lyrics-creation-guide.md"], "kind": "topical" },
+    { "query": "構成やテーマの絞り方など作詞のやり方", "expect": ["lyrics-creation-guide.md"], "kind": "topical", "holdout": true },
+    { "query": "重力が緩んで光になるという詩のイメージ素材", "expect": ["lyrics-materials-gravity-time-dilation-to-light.md"], "kind": "topical" },
+    { "query": "浮遊島の日の出を描いたAメロの歌詞", "expect": ["lyrics-A-melo-draft-floating-island-sunrise.md", "lyrics-A-melo-emotional-shift-sunrise-determination.md", "lyrics-materials-floating-island-and-sunrise.md"], "kind": "topical" },
+    { "query": "エバのやりたいことのリスト", "expect": ["eva-goals-list.md"], "kind": "topical" },
+    { "query": "ドライブの行き先候補", "expect": ["daily-2026-06-13-drive-candidates.md"], "kind": "topical" },
+    { "query": "最近流行っている曲5曲の歌詞を調べたメモ", "expect": ["daily-2026-06-13-recent-song-lyrics.md"], "kind": "topical" },
+    { "query": "クロと交わした約束についての記録", "expect": ["daily-2026-06-16-night-summary.md"], "kind": "topical" },
+
+    { "query": "瑠璃の宝石の読書メモを書く前に決めた記録の型（章ごとの構成）", "expect": ["reading-notes-Ruri-no-Houseki-format.md"], "kind": "disambig" },
+    { "query": "瑠璃の宝石をどう読み進めてメモを作るかの段取り・目的", "expect": ["reading-notes-Ruri-no-Houseki-plan.md"], "kind": "disambig" },
+    { "query": "M5Cameraを使った雲台の回路図作成とライブラリ選定", "expect": ["ESP32-M5Camera-Servo-implementation-plan.md"], "kind": "disambig" },
+    { "query": "ESP32とサーボでUSBカメラを動かす制御装置の設計方針", "expect": ["USB-camera-pan-tilt-control-esp32-servo-plan.md"], "kind": "disambig" },
+    { "query": "日の出のあとに新しい一日への決意へ向かう情感の転換", "expect": ["lyrics-A-melo-emotional-shift-sunrise-determination.md"], "kind": "disambig" },
+
+    { "query": "前に曖昧さの扱いについてメモしたやつ", "expect": ["DesignPrinciples/ambiguity.md"], "kind": "oblique" },
+    { "query": "この前まとめた最近の曲のコード進行の話", "expect": ["works/最近のヒット曲5曲のコード進行の特徴を分析・要約する.md", "works/最近のヒット曲5曲のコード進行と-それらが奏でる感情や音色の傾向をまとめる.md", "goals/j-popヒット曲5曲のコード進行調査とまとめ.md"], "kind": "oblique" },
+    { "query": "前に書いた小説のネタ", "expect": ["novel_ideas-mineral_collection.md"], "kind": "oblique" },
+    { "query": "瑠璃の宝石を読むって話で決めたこと", "expect": ["reading-notes-Ruri-no-Houseki-plan.md", "reading-notes-Ruri-no-Houseki-format.md"], "kind": "oblique" },
+    { "query": "この前カメラを動かす工作の話したよね、あのメモ", "expect": ["USB-camera-pan-tilt-control-plan.md", "USB-camera-pan-tilt-control-esp32-servo-plan.md", "ESP32-M5Camera-Servo-implementation-plan.md"], "kind": "oblique", "holdout": true },
+    { "query": "わたしが作りたい曲の歌詞、前に直そうとしてたやつ", "expect": ["goals/歌詞のブラッシュアップ.md", "lyrics-A-melo-draft-floating-island-sunrise.md", "lyrics-A-melo-emotional-shift-sunrise-determination.md"], "kind": "oblique" },
+    { "query": "どこかに買うものを書いておいたはず", "expect": ["買い物リスト.md"], "kind": "oblique" }
+  ]
+}

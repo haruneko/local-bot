@@ -17,6 +17,8 @@ export interface MemoIndexStore {
   upsert(entry: MemoIndexEntry): Promise<void>;
   recall(queryText: string, topK: number): Promise<MemoIndexHit[]>;
   list(): Promise<MemoIndexEntry[]>;
+  /** path の索引エントリを消す（存在しなくても no-op）。ノート削除/orphan 掃除用。 */
+  delete(path: string): Promise<void>;
 }
 
 function l2Distance(a: number[], b: number[]): number {
@@ -55,6 +57,10 @@ export class InMemoryMemoIndexStore implements MemoIndexStore {
       }))
       .sort((a, b) => a.distance - b.distance)
       .slice(0, topK);
+  }
+
+  async delete(path: string): Promise<void> {
+    this.records = this.records.filter((r) => r.path !== path);
   }
 
   async list(): Promise<MemoIndexEntry[]> {
