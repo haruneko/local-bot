@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createUserProfileResolver,
   createUserResolver,
@@ -14,11 +17,38 @@ describe("loadUsers", () => {
     expect(kuro?.note).toContain("相棒");
   });
 
-  it("entries without a note still load (note is optional)", async () => {
-    const users = await loadUsers();
-    const kimi = users.find((u) => u.id === "U043VEVM2");
-    expect(kimi?.display_name).toBe("kimikimi");
-    expect(kimi?.note).toBeUndefined();
+  describe("note is optional (fixture, not coupled to real config)", () => {
+    let dir: string;
+    let file: string;
+    beforeEach(async () => {
+      dir = await mkdtemp(path.join(tmpdir(), "users-"));
+      file = path.join(dir, "users.yaml");
+    });
+    afterEach(async () => {
+      await rm(dir, { recursive: true, force: true });
+    });
+
+    it("entries without a note still load", async () => {
+      await writeFile(
+        file,
+        [
+          "users:",
+          "  - id: with_note",
+          "    display_name: のあり",
+          "    note: 関係性の一文",
+          "  - id: no_note",
+          "    display_name: のなし",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+      const users = await loadUsers(file);
+      const noNote = users.find((u) => u.id === "no_note");
+      expect(noNote?.display_name).toBe("のなし");
+      expect(noNote?.note).toBeUndefined();
+      const withNote = users.find((u) => u.id === "with_note");
+      expect(withNote?.note).toBe("関係性の一文");
+    });
   });
 });
 

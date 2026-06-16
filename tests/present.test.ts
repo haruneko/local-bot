@@ -16,6 +16,7 @@ describe("formatActionForLanguage", () => {
       facts: { kind: "memo_read", filename: "状況.md", body: "眠くなった" },
       summary: "data/notes/状況.md を読んだ:\n眠くなった",
     });
+    expect(text).toContain("結果: できた");
     expect(text).toContain("状況.md のメモを読んでみた");
     expect(text).toContain("眠くなった");
     expect(text).not.toMatch(/わたし|私は/);
@@ -30,9 +31,31 @@ describe("formatActionForLanguage", () => {
       facts: { kind: "memo_write", filename: "状況.md", body: "本文です" },
       summary: "data/notes/状況.md に書き込んだ:\n本文です",
     });
+    expect(text).toContain("結果: できた");
     expect(text).toContain("状況.md のメモに書き込んだ");
     expect(text).toContain("本文です");
     expect(text).not.toMatch(/わたし|私は/);
+  });
+
+  it("failure is labeled so 言語野が成功と取り違えない", () => {
+    const text = formatActionForLanguage({
+      attempted: true,
+      kind: "memory",
+      intent: "状況",
+      status: "failed",
+      summary:
+        "失敗\n原因コード: llm_parse_failed\n詳細: --- LLM応答 1 ---\n{\"bad\":json}",
+      error: {
+        code: "llm_parse_failed",
+        message: "JSONとして解釈できなかった",
+        detail: '--- LLM応答 1 ---\n{"bad":json}',
+      },
+    });
+    expect(text).toContain("結果: できなかった");
+    expect(text).toContain("成功したことにして話さない");
+    expect(text).toContain("原因: JSONとして解釈できなかった");
+    // 内省同様、生の LLM ダンプは載せない
+    expect(text).not.toContain("LLM応答");
   });
 });
 

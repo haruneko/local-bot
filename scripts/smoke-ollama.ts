@@ -1,31 +1,24 @@
 import { OllamaEmbedClient, OllamaLlmClient } from "../src/llm/ollama.js";
-import { createTurnContext } from "../src/context/turn-context.js";
-import { runJudge } from "../src/roles/judge.js";
+import { loadSettings } from "../src/config/settings.js";
 
-const host = process.env.OLLAMA_HOST ?? "http://192.168.16.1:11434";
+// Ollama の疎通確認。設定（config/settings.json）の chatModel / embedModel /
+// ollamaHost をそのまま使い、chat と embed が実際に返るかだけ見る軽いスモーク。
+// judge は廃止されたので、特定ロールに依存せず生の chat 1往復 + embed で確認する。
+const settings = await loadSettings();
+const host = process.env.OLLAMA_HOST ?? settings.ollamaHost;
 
-const llm = new OllamaLlmClient({ host, model: "gemma4:e4b" });
-const ctx = createTurnContext({
-  turnId: "smoke",
-  state: "対話",
-  trigger: {
-    type: "user_message",
-    content: "こんにちは",
-    speakerId: "user_001",
-  },
-  dialogue: {
-    resolveUserDisplayName: () => "ユーザー",
-  },
-  recentTurns: [
-    { role: "user", speakerId: "user_001", content: "こんにちは" },
+const llm = new OllamaLlmClient({ host, model: settings.chatModel });
+const reply = await llm.chat(
+  [
+    { role: "system", content: "あなたは疎通確認の応答器。短く一言だけ返す。" },
+    { role: "user", content: "「ok」とだけ返して。" },
   ],
-  recalledEpisodes: [],
-  now: new Date(),
-});
+  { temperature: 0 },
+);
+console.log(`chat  [${settings.chatModel}] @ ${host}: ${reply.trim().slice(0, 80)}`);
 
-const judge = await runJudge(llm, ctx);
-console.log("judge:", judge);
-
-const emb = new OllamaEmbedClient(host, "nomic-embed-text:latest");
+const emb = new OllamaEmbedClient(host, settings.embedModel);
 const v = await emb.embed("test");
-console.log("embed dim:", v.length);
+console.log(`embed [${settings.embedModel}]: dim=${v.length}`);
+
+console.log("smoke OK");

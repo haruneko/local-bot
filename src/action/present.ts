@@ -213,15 +213,24 @@ export function formatActionForIntrospection(action: ActionOutcome): string {
   ].join("\n");
 }
 
-/** 言語野向け。一人称は載せず事実のみ（口調は character.md に任せる） */
+/**
+ * 言語野向け。一人称は載せず事実のみ（口調は character.md に任せる）。
+ * 内省と同じく成否を明示する＝失敗した行動を「やった」と発話する言行不一致を防ぐ
+ * （ラベルが無いと言語野が生の summary から失敗を察し損ねて「保存したよ」と言う）。
+ */
 export function formatActionForLanguage(action: ActionOutcome): string {
   if (!action.attempted) {
     return "（このターンでは行動していない）";
   }
   if (action.status === "failed") {
-    return action.summary;
+    const detail = action.error
+      ? formatActionFailureForIntrospection(action.error)
+      : action.summary;
+    return ["結果: できなかった（成功したことにして話さない）", detail].join(
+      "\n",
+    );
   }
-  return formatActionFactContent(action);
+  return ["結果: できた", formatActionFactContent(action)].join("\n");
 }
 
 export function silenceLine(): string {

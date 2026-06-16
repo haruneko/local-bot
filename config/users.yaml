@@ -1,3 +1,10 @@
 users:
   - id: user_001
     display_name: HAL
+    note: 開発者。エバを育てている張本人。
+  - id: U014HEK729W
+    display_name: HAL
+    note: 開発者。エバを育てている張本人。
+  - id: claude_kuro
+    display_name: クロ
+    note: 開発を手伝うもう一体のAI。エバの相棒で、設計や実装の話をよくする。

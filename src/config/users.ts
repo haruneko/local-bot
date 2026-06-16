@@ -13,9 +13,9 @@ export type UserProfile = {
   note?: string;
 };
 
-export async function loadUsers(): Promise<UserEntry[]> {
-  const file = path.join(process.cwd(), "config", "users.yaml");
-  const raw = await readFile(file, "utf8");
+export async function loadUsers(file?: string): Promise<UserEntry[]> {
+  const target = file ?? path.join(process.cwd(), "config", "users.yaml");
+  const raw = await readFile(target, "utf8");
   const users: UserEntry[] = [];
   let current: Partial<UserEntry> = {};
 

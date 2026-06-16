@@ -195,8 +195,8 @@ describe("runPlan（op→決定的適用）", () => {
       kind: "research",
       intent: "曲のコードを調べる",
       status: "failed",
-      summary: "探索ツールに接続できない（fetch failed）",
-      error: { code: "tool_failed", message: "x" },
+      summary: "失敗",
+      error: { code: "tool_failed", message: "探索ツールに接続できない（fetch failed）" },
     });
     const llm = new FakeLlmClient([JSON.stringify({ op: "noop" })]);
     await runPlan(llm, {
@@ -207,6 +207,8 @@ describe("runPlan（op→決定的適用）", () => {
     });
     const prompt = llm.calls[0]!.messages[1].content;
     expect(prompt).toContain("このターンで実際に起きたこと");
+    // 失敗が明示ラベル＋理由として見える（事後グラウンディング）
+    expect(prompt).toContain("結果: できなかった");
     expect(prompt).toContain("探索ツールに接続できない");
   });
 
