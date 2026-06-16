@@ -8,6 +8,7 @@
     "summarizeMax": 0.4,
     "vagueMax": 0.48
   },
+  "semanticRecallMaxDistance": 0.45,
   "chatModel": "qwen3.6:35b-a3b",
   "embedModel": "hf.co/Targoyle/ruri-v3-310m-GGUF:latest",
   "ollamaHost": "http://192.168.16.1:11434",
