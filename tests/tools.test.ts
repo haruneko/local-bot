@@ -1,18 +1,20 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { executeTool } from "../src/tools/registry.js";
 
-const NOTES_DIR = path.join(process.cwd(), "data", "notes");
-
+// 本物の data/notes/ を汚さないよう temp ディレクトリへ隔離する（notesDir() が MEMO_NOTES_DIR を優先）。
+let dir: string;
 describe("executeTool", () => {
   beforeEach(async () => {
-    await mkdir(NOTES_DIR, { recursive: true });
+    dir = await mkdtemp(path.join(tmpdir(), "tools-"));
+    process.env.MEMO_NOTES_DIR = dir;
   });
 
   afterEach(async () => {
-    const testFile = path.join(NOTES_DIR, "test-note.txt");
-    await rm(testFile, { force: true });
+    delete process.env.MEMO_NOTES_DIR;
+    await rm(dir, { recursive: true, force: true });
   });
 
   it("write_note and read_note work", async () => {

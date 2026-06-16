@@ -2,7 +2,7 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { safePath } from "./notes.js";
 import path from "node:path";
 import {
-  NOTES_DIR,
+  notesDir,
   listNoteFilenames,
   normalizeReadArgs,
   normalizeWriteArgs,
@@ -33,7 +33,7 @@ export async function listNotesSummary(): Promise<string> {
 }
 
 export async function executeTool(call: ToolCall): Promise<ToolResult> {
-  await mkdir(NOTES_DIR, { recursive: true });
+  await mkdir(notesDir(), { recursive: true });
 
   switch (call.name) {
     case "write_note": {
@@ -67,7 +67,7 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
 
 async function writeNote(args: WriteNoteArgs): Promise<ToolResult> {
   const safe = safePath(args.filename) ?? args.filename;
-  const target = path.join(NOTES_DIR, safe);
+  const target = path.join(notesDir(), safe);
   await mkdir(path.dirname(target), { recursive: true });
   if (args.append) {
     try {
@@ -84,7 +84,7 @@ async function writeNote(args: WriteNoteArgs): Promise<ToolResult> {
 
 async function readNote(args: ReadNoteArgs): Promise<ToolResult> {
   try {
-    const text = await readFile(path.join(NOTES_DIR, args.filename), "utf8");
+    const text = await readFile(path.join(notesDir(), args.filename), "utf8");
     const preview = text.length > 200 ? `${text.slice(0, 200)}…` : text;
     return { ok: true, summary: `メモ ${args.filename} を読んだ: ${preview}` };
   } catch {
