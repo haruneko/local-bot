@@ -229,7 +229,7 @@ express MCP サーバに追加し、express サブエージェントがカタロ
 
 **状態:** 横断 embedding（ImageBind・OFF既定）の実装で実質達成。詳細は [ARCH-NEXT.md](ARCH-NEXT.md)「横断 embedding の設計」。
 
-- text は既存 `OllamaEmbedClient`（nomic）据え置き、横断は `XmodalEmbedder`（ImageBind・画像/音/文字を1空間）＝差し替え可能 backend の窓口。
+- text は既存 `OllamaEmbedClient`（ruri-v3。2026-06-17 に nomic から変更・768 次元は不変）据え置き、横断は `XmodalEmbedder`（ImageBind・画像/音/文字を1空間）＝差し替え可能 backend の窓口。
 - 落ちてる/未設定なら null＝degrade（systematic なのでスキップ）。別テーブル `episodes_xmodal`＋RRF 融合。
 - ※当初案の「in-process transformers.js で CLIP」は ImageBind（PyTorch・Docker HTTP）に置換。identity 同定（顔/声）は別 faculty（recognition・未実装）。
 

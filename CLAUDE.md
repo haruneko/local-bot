@@ -22,6 +22,9 @@ npm test             # Vitest（LLM 統合テストなし）
 npm run test:watch
 npm run build        # tsc
 npm run smoke        # Ollama 疎通確認
+npm run reindex      # data/notes/ を memo_index に再索引（embedModel 変更時は必須・§embed）
+npm run notes:rm -- <相対パス>...   # ノート削除を3点セット（ファイル/memo_index/MOC）で。--prune-orphans / --list-orphans
+npm run eval:retrieval -- --model <embed>  # 想起評価（自前 gold で Recall@k/MRR 横並び）。--corpus episode で想起も
 ```
 
 CLI 共通オプション: `-v`/`--verbose`（debug=全文ダンプ）, `-q`/`--quiet`（サマリ無し）, `--user <id>`, `--memory-only`（インメモリ記憶・テスト用）。ログは3段階（`src/util/verbose.ts`）: `quiet`（発話＋state のみ）/ `info`（1ターン十数行の構造化サマリ・stderr）/ `debug`（全 LLM prompt/response・context 全文）。既定は REPL=`quiet`・Slack/heartbeat=`info`。
