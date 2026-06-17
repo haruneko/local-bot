@@ -1,5 +1,6 @@
 import {
   buildReflectionMessages,
+  perceptionInputLine,
   type TurnContext,
 } from "../context/turn-context.js";
 import { INTROSPECTION_SYSTEM } from "../prompts/roles.js";
@@ -28,7 +29,7 @@ export async function runIntrospection(
   const messages: ChatMessage[] = [
     {
       role: "system",
-      content: `${INTROSPECTION_SYSTEM}\n\n（状況: ${ctx.state} / ${ctx.currentDateTime}）`,
+      content: `${INTROSPECTION_SYSTEM}\n\n（状況: ${ctx.state} / ${ctx.currentDateTime}）\n（このターンの知覚入力: ${perceptionInputLine(ctx)}）`,
     },
     ...buildReflectionMessages(ctx),
     {

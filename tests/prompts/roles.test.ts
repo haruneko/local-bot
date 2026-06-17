@@ -12,9 +12,9 @@ describe("role prompts", () => {
     expect(LANGUAGE_SYSTEM_PREFIX).not.toMatch(/あなたは.*担当/);
   });
 
-  it("LANGUAGE_HEARTBEAT_SYSTEM_PREFIX uses positive templates", () => {
-    expect(LANGUAGE_HEARTBEAT_SYSTEM_PREFIX).toContain("独り言の型");
-    expect(LANGUAGE_HEARTBEAT_SYSTEM_PREFIX).toContain("良い例:");
+  it("LANGUAGE_HEARTBEAT_SYSTEM_PREFIX shows a positive example without prohibition framing", () => {
+    expect(LANGUAGE_HEARTBEAT_SYSTEM_PREFIX).toContain("例:");
+    expect(LANGUAGE_HEARTBEAT_SYSTEM_PREFIX).not.toContain("悪い例");
     expect(LANGUAGE_HEARTBEAT_SYSTEM_PREFIX).not.toContain("質問で返さない");
   });
 

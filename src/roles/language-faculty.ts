@@ -17,13 +17,6 @@ import {
   stripThinkBlocks,
 } from "../action/parse-json.js";
 
-export type GenerateLanguageOptions = {
-  persona: string;
-  systemPrefix: string;
-  userContent: string;
-  temperature?: number;
-};
-
 export type LanguageOutput = { speech: string; nextState: string };
 
 const languageOutputSchema = z.object({
@@ -98,22 +91,6 @@ function parseLanguageOutput(raw: string, fallbackState: string): LanguageOutput
   return { speech: "", nextState: fallbackState };
 }
 
-export async function generateLanguageText(
-  llm: LlmClient,
-  options: GenerateLanguageOptions,
-): Promise<string> {
-  return llm.chat(
-    [
-      {
-        role: "system",
-        content: `${options.systemPrefix}\n\n## キャラクタールール\n${options.persona}`,
-      },
-      { role: "user", content: options.userContent },
-    ],
-    { temperature: options.temperature ?? 0.7 },
-  );
-}
-
 function collectUniqueSpeakerNames(ctx: TurnContext): string[] {
   const names = new Map<string, string>();
   for (const turn of ctx.priorTurns) {
@@ -155,7 +132,7 @@ function buildLanguageDialogueMessages(
   }
 
   const systemContent =
-    `${systemPrefix}\n\n## キャラクタールール\n${persona}` +
+    `${systemPrefix}\n\n${persona}` +
     situationLine +
     partnerBlock +
     buildLanguageContextSuffix(ctx);

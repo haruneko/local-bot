@@ -59,10 +59,13 @@ export type TurnContext = {
   /** memo_index から想起した関連メモの所在 */
   recalledNotes: MemoIndexHit[];
 
-  /** 視覚チャンネル(image_feed): いま視界に入っているフレーム（base64・文字起こししない）。
-   *  空 = 画像なし。image_feed を宣言したモジュール（当面は言語野）だけが生のまま受け取る */
+  /** 視覚チャンネル(image_feed): **環境（live）**＝この目で直に捉えた目の前の世界のフレーム（base64・文字起こししない）。
+   *  空 = 画像なし。この内容は「世界の事実」として符号化してよい（カメラ＝目はここに流す）。
+   *  ⚠ 写真・動画など"見せられた作品"（鑑賞 stance）はここに混ぜない＝別チャンネル（未実装・docs/ARCH-NEXT.md）。
+   *  image_feed を宣言したモジュール（当面は言語野）だけが生のまま受け取る */
   imageFeed: string[];
-  /** 聴覚チャンネル(audio_feed): いま聞こえている音声（base64・文字起こししない）。空 = 音声なし。
+  /** 聴覚チャンネル(audio_feed): **環境（live）**＝この耳で直に捉えた周囲の音（base64・文字起こししない）。空 = 音声なし。
+   *  imageFeed と同じく環境 stance。録音など"聞かされた作品"は別チャンネル（未実装）。
    *  現状の消費者は符号化の横断ベクトル付与のみ（omni 音声入力は後）。docs/ARCH-NEXT.md「音声も同じ形」 */
   audioFeed: string[];
 
@@ -269,6 +272,17 @@ export function memorySnapshot(ctx: TurnContext) {
     concern: ctx.concern,
     plan: ctx.plan,
   };
+}
+
+/** このターン知覚チャンネルへ入力があったかの正直な要約。
+ *  内省が「見た・聞いた」を実際の知覚に錨付けするための事実（妄想と本物の知覚を分ける）。
+ *  imageFeed/audioFeed は環境（live）stance なので「見えている／聞こえている」と明示＝いまの視界・音。
+ *  入力が無ければ「なし」＝嘘をつかない。能動の目・音声が来れば同じ口が運ぶ。 */
+export function perceptionInputLine(ctx: TurnContext): string {
+  const parts: string[] = [];
+  if (ctx.imageFeed.length > 0) parts.push(`見えている映像${ctx.imageFeed.length}枚`);
+  if (ctx.audioFeed.length > 0) parts.push("聞こえている音");
+  return parts.length > 0 ? parts.join("・") : "なし";
 }
 
 /** 計画チャンネル（集中 State で取り組み中のゴールノート全文）を注入する */

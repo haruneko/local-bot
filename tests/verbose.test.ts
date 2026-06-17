@@ -4,6 +4,8 @@ import { detectLlmRole } from "../src/util/verbose.js";
 import {
   AFFECT_CONCERN_SYSTEM,
   INTROSPECTION_SYSTEM,
+  LANGUAGE_SYSTEM_PREFIX,
+  LANGUAGE_HEARTBEAT_SYSTEM_PREFIX,
 } from "../src/prompts/roles.js";
 
 const roleOf = (content: string) =>
@@ -35,10 +37,9 @@ describe("verbose CLI", () => {
 });
 
 describe("detectLlmRole", () => {
-  it("detects language from character rule prefix", () => {
-    expect(roleOf("キャラクタールールに従い、会話相手へのセリフだけを")).toBe(
-      "language",
-    );
+  it("detects language from the real dialogue and heartbeat prefixes", () => {
+    expect(roleOf(LANGUAGE_SYSTEM_PREFIX)).toBe("language");
+    expect(roleOf(LANGUAGE_HEARTBEAT_SYSTEM_PREFIX)).toBe("language");
   });
 
   it("detects activate with the actor name", () => {
