@@ -12,6 +12,8 @@ export function notAttempted(): ActionOutcome {
 export function actionSucceeded(
   action: AbstractAction,
   result: ActionFacts | string,
+  /** result が文字列（facts 無しの成功＝空振り等）のときの op。facts ありなら facts.kind を採る。 */
+  op?: ActionFacts["kind"],
 ): ActionOutcome {
   if (typeof result === "string") {
     return {
@@ -19,6 +21,7 @@ export function actionSucceeded(
       kind: action.kind,
       intent: action.intent,
       status: "succeeded",
+      op,
       summary: result,
     };
   }
@@ -27,6 +30,7 @@ export function actionSucceeded(
     kind: action.kind,
     intent: action.intent,
     status: "succeeded",
+    op: result.kind,
     facts: result,
     summary: formatActionSummary(result),
   };
@@ -36,12 +40,15 @@ export function actionFailed(
   action: AbstractAction,
   headline: string,
   error: ActionErrorInfo,
+  /** 失敗した op（recall/memo_write/…）。失敗時も op 別の文言を出すために載せる。 */
+  op?: ActionFacts["kind"],
 ): ActionOutcome {
   return {
     attempted: true,
     kind: action.kind,
     intent: action.intent,
     status: "failed",
+    op,
     summary: formatFailureSummary(headline, error),
     error,
   };

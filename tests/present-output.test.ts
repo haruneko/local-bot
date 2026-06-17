@@ -3,7 +3,6 @@ import { actionSucceeded } from "../src/action/outcome.js";
 import {
   collectUserArtifacts,
   formatActionForLanguage,
-  formatActionForIntrospection,
 } from "../src/action/present.js";
 import type { ActionFacts } from "../src/action/facts.js";
 
@@ -40,20 +39,11 @@ describe("出力の3宛先非対称（ユーザー全文 / 言語野・内省は
 
   it("言語野: 長い成果物は冒頭に縮め『書き写すな』注記が付く", () => {
     const text = formatActionForLanguage(
-      outcome({ kind: "synthesize", filename: "works/a.md", body: long }),
+      outcome({ kind: "memo_read", filename: "n.md", body: long }),
     );
     expect(text).toContain("…"); // 冒頭で切れている
     expect(text.length).toBeLessThan(long.length); // 全文より短い
-    expect(text).toContain("書き写さず"); // 二重生成を抑える注記
-  });
-
-  it("内省: 長い成果物は冒頭＋分量メタ（全文は入れない）", () => {
-    const text = formatActionForIntrospection(
-      outcome({ kind: "synthesize", filename: "works/a.md", body: long }),
-    );
-    expect(text).toContain("…");
-    expect(text).toContain("全300字"); // 量感メタ
-    expect(text).not.toContain(long); // 全文は焼かない
+    expect(text).toContain("書き写さず"); // 二重生成を抑える注記（届く kind のみ）
   });
 
   it("短い facts（recall）は縮めずそのまま", () => {

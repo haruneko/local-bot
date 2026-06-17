@@ -359,8 +359,8 @@ function oneLine(text: string, max: number): string {
 export function detectLlmRole(messages: ChatMessage[]): string {
   const sys = messages.find((m) => m.role === "system")?.content ?? "";
 
-  // 言語野（対話・heartbeat）— 出力スキーマの nextState が固有の目印
-  if (sys.includes("nextState")) return "language";
+  // 言語野（対話・heartbeat）— 出力スキーマの "speech" が固有の目印
+  if (sys.includes('"speech"')) return "language";
 
   // actor の起動判定（activate）— actor 名まで出す
   const act = sys.match(/あなたは\s*(\S+?)\s*の起動判定係/);

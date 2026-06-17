@@ -85,7 +85,7 @@ describe("runIntrospection の入力（role 構造で自他を分離）", () => 
       summary: "data/notes/予定.md に書き込んだ:\n買い物と会議",
     });
     const asst = joinByRole(msgs, "assistant");
-    expect(asst).toContain("結果: できた");
+    expect(asst).toContain("メモに書き込んだ");
     expect(asst).toContain("買い物と会議");
   });
 
@@ -99,7 +99,7 @@ describe("runIntrospection の入力（role 構造で自他を分離）", () => 
       error: { code: "llm_parse_failed", message: "JSON解釈失敗" },
     });
     const asst = joinByRole(msgs, "assistant");
-    expect(asst).toContain("結果: できなかった");
+    expect(asst).toContain("うまくいかなかった");
     expect(asst).toContain("原因コード: llm_parse_failed");
   });
 

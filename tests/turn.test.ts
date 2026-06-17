@@ -205,7 +205,7 @@ describe("TurnOrchestrator", () => {
     // 意味記憶は language agent の system message (calls[0].messages[0]) に含まれる
     const languageSystem = llm.calls[0]!.messages[0]!.content;
     expect(languageSystem).toContain("夏目漱石");
-    expect(languageSystem).toContain("意味記憶");
+    expect(languageSystem).toContain("覚えている事実");
   });
 
   it("updates inner state after introspection and persists to session", async () => {
@@ -384,14 +384,16 @@ describe("TurnOrchestrator", () => {
     expect(distillCalls).toBe(0);
   });
 
-  it("自発 distill: 静穏 以外のハートビートでは呼ばない", async () => {
-    const llm = new FakeLlmClient([lang("", "対話")]);
+  it("自発 distill: 集中ハートビート（focusPlan あり）では呼ばない", async () => {
+    // 新設計では state は観測導出: heartbeat で focusPlan があれば集中（＝静穏でない）。
+    const llm = new FakeLlmClient([lang("")]);
     let distillCalls = 0;
     const orch = new TurnOrchestrator(
-      "対話",
+      "集中",
       baseTurnDeps({
         llm,
         workingMemory: new WorkingMemory(20),
+        initialFocusPlan: "dummy-plan",
         runDistill: async () => {
           distillCalls++;
           return { ran: false, factsUpserted: 0 };

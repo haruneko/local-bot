@@ -50,11 +50,11 @@ describe("generateDialogueSpeech — heartbeat/dialogue 統一フォーマット
     expect(sys?.content).toContain(LANGUAGE_SYSTEM_PREFIX.slice(0, 20));
   });
 
-  it("heartbeat: 状況行に「ハートビート」が含まれる", async () => {
-    const llm = new FakeLlmClient(['{"speech":"","nextState":"静穏"}']);
+  it("heartbeat: 状況行に内部語『ハートビート』を出さない", async () => {
+    const llm = new FakeLlmClient(['{"speech":""}']);
     await generateDialogueSpeech(llm, makeHeartbeatCtx());
     const sys = llm.calls[0].messages.find((m) => m.role === "system");
-    expect(sys?.content).toContain("ハートビート");
+    expect(sys?.content).not.toContain("ハートビート");
   });
 
   it("heartbeat: prior の独り言が assistant メッセージとして届く", async () => {
@@ -81,13 +81,13 @@ describe("generateDialogueSpeech — heartbeat/dialogue 統一フォーマット
     expect(assistantMsgs.some((m) => m.content.includes("独り言だけ"))).toBe(true);
   });
 
-  it("heartbeat: 最終メッセージが role:user で「（ハートビート）」", async () => {
-    const llm = new FakeLlmClient(['{"speech":"","nextState":"静穏"}']);
+  it("heartbeat: 最終メッセージが role:user で「（発話はなかった）」", async () => {
+    const llm = new FakeLlmClient(['{"speech":""}']);
     await generateDialogueSpeech(llm, makeHeartbeatCtx());
     const msgs = llm.calls[0].messages;
     const last = msgs[msgs.length - 1];
     expect(last.role).toBe("user");
-    expect(last.content).toContain("（ハートビート）");
+    expect(last.content).toContain("（発話はなかった）");
   });
 
   it("user_message: note ありの話者では「## 相手について」が system に注入される", async () => {
@@ -205,7 +205,6 @@ describe("parseLanguageOutput — 生の思考・壊れたJSONを絶対に漏ら
     const llm = new FakeLlmClient([raw]);
     const out = await generateDialogueSpeech(llm, makeHeartbeatCtx());
     expect(out.speech).toBe("文書を仕上げた。次に進もう。");
-    expect(out.nextState).toBe("静穏");
     expect(out.speech).not.toContain("<think>");
     expect(out.speech).not.toContain("{");
   });
@@ -219,7 +218,6 @@ describe("parseLanguageOutput — 生の思考・壊れたJSONを絶対に漏ら
     expect(out.speech).toBe("見つからなかったみたい。好きなジャンルは決まってる？");
     expect(out.speech).not.toContain("nextState");
     expect(out.speech).not.toContain("{");
-    expect(out.nextState).toBe("対話");
   });
 
   it("素のテキスト（JSONでない）はそのまま発話として扱う", async () => {
@@ -232,6 +230,5 @@ describe("parseLanguageOutput — 生の思考・壊れたJSONを絶対に漏ら
     const llm = new FakeLlmClient(['{"spee', "ch broken } {"]);
     const out = await generateDialogueSpeech(llm, makeUserCtx());
     expect(out.speech).toBe("");
-    expect(out.nextState).toBe("対話"); // fallback = ctx.state
   });
 });

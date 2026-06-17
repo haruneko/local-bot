@@ -26,6 +26,7 @@ export async function runForget(
     return actionSucceeded(
       action,
       "（該当する記憶は見つからなかった）",
+      "forget",
     );
   }
 
@@ -73,6 +74,7 @@ export async function runForget(
       return actionSucceeded(
         action,
         `意図に合う記憶が見つからなかった（候補 ${hits.length} 件）`,
+        "forget",
       );
     }
     turnId = parsed.value.turnId;
@@ -89,6 +91,7 @@ export async function runForget(
         lastParseFailure?.reason,
         lastParseFailure?.zodMessage,
       ),
+      "forget",
     );
   }
 
@@ -98,7 +101,7 @@ export async function runForget(
       code: ACTION_ERROR_CODES.PICK_FAILED,
       message: `LLMが選んだ turnId ${turnId} は候補にない`,
       detail: `候補: ${[...validIds].join(", ")}`,
-    });
+    }, "forget");
   }
 
   const deleted = await input.episodes.softDelete(turnId);
@@ -106,7 +109,7 @@ export async function runForget(
     return actionFailed(action, "記憶の削除に失敗した", {
       code: ACTION_ERROR_CODES.TOOL_FAILED,
       message: `turnId ${turnId} のソフト削除に失敗`,
-    });
+    }, "forget");
   }
   // 横断ベクトルも一緒に消す（あれば）。横断オフ/該当なしなら no-op。
   await input.xmodal?.remove(turnId);

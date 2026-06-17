@@ -28,3 +28,25 @@ export function renderPlan(state: PlanState): string {
 
   return parts.join("\n");
 }
+
+/**
+ * 言語野（発話）向けの柔らかいビュー。op 用の renderPlan と違い id・チェックボックス・
+ * 全履歴を出さない＝選ばせる機械でなく「いま何をしていて、どこにいて、残りは何か」の想起的な提示。
+ */
+export function renderPlanForLanguage(state: PlanState): string {
+  const current = state.milestones.find((m) => m.id === state.current);
+  const goalPart = state.goal.trim() ? `（${state.goal.trim()}）` : "";
+  const where = current ? `、いまは「${current.text}」のところ` : "";
+  const parts = [
+    "## いま取り組んでいること",
+    `「${state.title}」${goalPart}を進めていて${where}。`,
+  ];
+  if (state.milestones.length > 0) {
+    parts.push("進捗:");
+    for (const m of state.milestones) {
+      const mark = m.done ? "済んだ" : m.id === state.current ? "いま" : "まだ";
+      parts.push(`- ${mark}: ${m.text}`);
+    }
+  }
+  return parts.join("\n");
+}

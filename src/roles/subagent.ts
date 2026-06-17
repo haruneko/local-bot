@@ -161,7 +161,7 @@ export async function runResearchSubagent(
     return actionFailed(action, "探索ツールが設定されていない", {
       code: ACTION_ERROR_CODES.ACTION_DISCONNECTED,
       message: "research カテゴリの MCP ツールがない",
-    });
+    }, "research");
   }
 
   const priorSteps: string[] = [];
@@ -184,18 +184,19 @@ export async function runResearchSubagent(
       if (lastContent) break;
       // ツール選択自体が LLM 失敗（パース不能等）→ 成功扱いにしない
       if (pick.error) {
-        return actionFailed(action, "探索ツールを選べなかった", pick.error);
+        return actionFailed(action, "探索ツールを選べなかった", pick.error, "research");
       }
       if (lastFailure) {
         return actionFailed(action, "探索ツールの実行に失敗した", {
           code: ACTION_ERROR_CODES.TOOL_FAILED,
           message: lastFailure.summary,
           detail: lastFailure.content,
-        });
+        }, "research");
       }
       return actionSucceeded(
         action,
         pick.reason ?? "探索を完了したが結果がない",
+        "research",
       );
     }
 
@@ -208,7 +209,7 @@ export async function runResearchSubagent(
       return actionFailed(action, "探索ツールが見つからない", {
         code: ACTION_ERROR_CODES.PICK_FAILED,
         message: `未知のツール: ${pick.tool}`,
-      });
+      }, "research");
     }
 
     const result = await executeMcpStep(
@@ -227,7 +228,7 @@ export async function runResearchSubagent(
           code: ACTION_ERROR_CODES.TOOL_FAILED,
           message: result.summary,
           detail: result.content,
-        });
+        }, "research");
       }
       lastFailure = { summary: result.summary, content: result.content };
       continue;
@@ -245,7 +246,7 @@ export async function runResearchSubagent(
       code: ACTION_ERROR_CODES.TOOL_FAILED,
       message: lastFailure?.summary ?? "探索結果が得られなかった",
       detail: lastFailure?.content,
-    });
+    }, "research");
   }
 
   return actionSucceeded(action, {

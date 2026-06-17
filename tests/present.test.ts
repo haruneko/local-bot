@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   formatActionFactContent,
-  formatActionForIntrospection,
   formatActionForLanguage,
   formatActionSummary,
 } from "../src/action/present.js";
@@ -16,8 +15,7 @@ describe("formatActionForLanguage", () => {
       facts: { kind: "memo_read", filename: "状況.md", body: "眠くなった" },
       summary: "data/notes/状況.md を読んだ:\n眠くなった",
     });
-    expect(text).toContain("結果: できた");
-    expect(text).toContain("状況.md のメモを読んでみた");
+    expect(text).toContain("メモを探したところ");
     expect(text).toContain("眠くなった");
     expect(text).not.toMatch(/わたし|私は/);
   });
@@ -31,7 +29,6 @@ describe("formatActionForLanguage", () => {
       facts: { kind: "memo_write", filename: "状況.md", body: "本文です" },
       summary: "data/notes/状況.md に書き込んだ:\n本文です",
     });
-    expect(text).toContain("結果: できた");
     expect(text).toContain("状況.md のメモに書き込んだ");
     expect(text).toContain("本文です");
     expect(text).not.toMatch(/わたし|私は/);
@@ -51,51 +48,14 @@ describe("formatActionForLanguage", () => {
         detail: '--- LLM応答 1 ---\n{"bad":json}',
       },
     });
-    expect(text).toContain("結果: できなかった");
-    expect(text).toContain("成功したことにして話さない");
+    expect(text).toContain("できなかった");
     expect(text).toContain("原因: JSONとして解釈できなかった");
     // 内省同様、生の LLM ダンプは載せない
     expect(text).not.toContain("LLM応答");
   });
 });
 
-describe("formatActionForIntrospection", () => {
-  it("success memo_write includes body under 内容", () => {
-    const block = formatActionForIntrospection({
-      attempted: true,
-      kind: "memory",
-      intent: "状況",
-      status: "succeeded",
-      facts: { kind: "memo_write", filename: "状況.md", body: "眠い" },
-      summary: "data/notes/状況.md に書き込んだ:\n眠い",
-    });
-    expect(block).toContain("結果: できた");
-    expect(block).toContain("内容:");
-    expect(block).toContain("状況.md のメモに書き込んだ");
-    expect(block).toContain("眠い");
-  });
-
-  it("failure includes code and message only, not LLM detail", () => {
-    const block = formatActionForIntrospection({
-      attempted: true,
-      kind: "memory",
-      intent: "x",
-      status: "failed",
-      summary:
-        "失敗\n原因コード: llm_parse_failed\n詳細: --- LLM応答 1 ---\n{\"bad\":json}",
-      error: {
-        code: "llm_parse_failed",
-        message: "JSONとして解釈できなかった",
-        detail: '--- LLM応答 1 ---\n{"bad":json}',
-      },
-    });
-    expect(block).toContain("結果: できなかった");
-    expect(block).toContain("原因コード: llm_parse_failed");
-    expect(block).toContain("原因: JSONとして解釈できなかった");
-    expect(block).not.toContain("詳細:");
-    expect(block).not.toContain("LLM応答");
-  });
-
+describe("formatActionFactContent", () => {
   it("formatActionFactContent for memo_read", () => {
     const facts = formatActionFactContent({
       attempted: true,

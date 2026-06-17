@@ -1,8 +1,7 @@
 import {
-  formatActionForIntrospection,
+  formatActionForLanguage,
   silenceLine,
 } from "../action/present.js";
-import { actionLabelJa } from "../action/types.js";
 import { AFFECT_CONCERN_SYSTEM } from "../prompts/roles.js";
 import type { ChatMessage, LlmClient } from "../llm/types.js";
 import type { ActionOutcome } from "../types.js";
@@ -59,10 +58,7 @@ function buildSelfMessage(input: UpdateAffectAndConcernInput): string {
     (a): a is Extract<ActionOutcome, { attempted: true }> => a.attempted,
   );
   for (const action of attempted) {
-    parts.push(
-      `（行動）${actionLabelJa(action.kind)} — ${action.intent}`,
-      formatActionForIntrospection(action),
-    );
+    parts.push(formatActionForLanguage(action));
   }
 
   parts.push("（内省）", input.introspection.trim(), "（いま自分が言ったこと）", speechBlock);

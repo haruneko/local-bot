@@ -13,6 +13,9 @@ export type ActionOutcome =
       kind: AbstractAction["kind"];
       intent: string;
       status: "succeeded" | "failed";
+      /** 細かい op（recall/forget/memo_read/… ＝ facts.kind と同じ語彙）。
+       *  成功は facts.kind 由来、失敗時も明示して載せる＝失敗の文言を op 別に出せる。 */
+      op?: ActionFacts["kind"];
       /** 成功時の構造化事実（言語野・内省はこちらを参照） */
       facts?: ActionFacts;
       /** verbose/ログ用（成功時は facts から生成、失敗時は原因コード・詳細含む） */

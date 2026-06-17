@@ -113,6 +113,7 @@ export async function runPlan(
         lastParseFailure?.reason,
         lastParseFailure?.zodMessage,
       ),
+      "plan",
     );
   }
 
@@ -125,7 +126,7 @@ export async function runPlan(
     return actionFailed(action, "更新対象の計画がない", {
       code: ACTION_ERROR_CODES.INVALID_ARGS,
       message: "取り組み中の計画が無い状態で更新 op が来た",
-    });
+    }, "plan");
   }
 
   // 効果ゼロの op（存在しない id への complete 等）は outcome にしない

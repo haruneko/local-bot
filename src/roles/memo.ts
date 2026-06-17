@@ -116,13 +116,14 @@ export async function runMemo(
         lastParseFailure?.reason,
         lastParseFailure?.zodMessage,
       ),
+      "memo_write",
     );
   }
 
   // view: 参照のみ（書き込まない）
   if (op.op === "view") {
     if (!target || current === null) {
-      return actionSucceeded(action, "読むべきメモが見つからなかった");
+      return actionSucceeded(action, "読むべきメモが見つからなかった", "memo_read");
     }
     return actionSucceeded(action, {
       kind: "memo_read",
@@ -155,7 +156,7 @@ export async function runMemo(
     return actionFailed(action, "メモ操作を適用できなかった", {
       code: ACTION_ERROR_CODES.INVALID_ARGS,
       message: result.reason,
-    });
+    }, "memo_write");
   }
   if (result.nextContent === null) {
     return actionSucceeded(action, "メモは変更しなかった");
@@ -166,7 +167,7 @@ export async function runMemo(
     return actionFailed(action, "メモファイルへの書き込みに失敗した", {
       code: ACTION_ERROR_CODES.TOOL_FAILED,
       message: `writeNoteContent が失敗（filename: ${filename}）`,
-    });
+    }, "memo_write");
   }
 
   // サイズ自動分割（予算超過なら見出し境界でフォルダ化）→ MOC 目次を機械再生成 → 所在 upsert

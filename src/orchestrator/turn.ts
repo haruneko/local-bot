@@ -24,7 +24,6 @@ import type { LlmClient } from "../llm/types.js";
 import { runLanguage } from "../roles/language.js";
 import { updateAffectAndConcern } from "../roles/inner-state.js";
 import { extractEpisodeTags, runIntrospection } from "../roles/introspection.js";
-import { applyNextState } from "../state/log.js";
 import {
   buildRecallQuery,
   shouldPersistIntrospection,
@@ -32,7 +31,7 @@ import {
 import { runActivator } from "./activator.js";
 import { getActor } from "../actors/registry.js";
 import { loadPlan, savePlan } from "../plan/state.js";
-import { renderPlan } from "../plan/render.js";
+import { renderPlanForLanguage } from "../plan/render.js";
 import { planProgress, evaluateFocusGraduation } from "../plan/focus.js";
 import type { VerboseLogger, VerboseLoggerImpl } from "../util/verbose.js";
 import { noopVerbose } from "../util/verbose.js";
@@ -283,7 +282,7 @@ export class TurnOrchestrator {
   private async loadPlanChannel(state: AgentState): Promise<string> {
     if (state !== "集中" || !this.focusPlan) return "";
     const plan = await loadPlan(this.focusPlan);
-    return plan ? renderPlan(plan) : "";
+    return plan ? renderPlanForLanguage(plan) : "";
   }
 
   async run(trigger: TurnTrigger): Promise<TurnResult> {
@@ -404,12 +403,13 @@ export class TurnOrchestrator {
     if (planAchieved) this.focusPlan = "";
 
     // --- language-agent（常に起動） ---
-    ctx = await this.generateSpeech(ctx, trigger, languageLlm, startState);
+    ctx = await this.generateSpeech(ctx, trigger, languageLlm);
 
-    // 入口: 集中は「言語野が deliberate に集中を選んだ」ときだけ確定する。計画を作った/更新した
-    // だけでは入らない（事故的な集中固定を防ぐ）。取り組む対象を focusPlan に確定する。
-    if (!planAchieved && ctx.nextState === "集中") {
-      this.focusPlan = planIdThisTurn || this.focusPlan;
+    // 入口: 集中は「計画を実際に前進させた」観測から立つ（言語野の宣言でなく行動から創発）。
+    // 計画を作った/更新したターンに focusPlan を確定する。安全（暴走防止）は入口ゲートでなく
+    // 「会話で中断され対話へ戻る・疲労・見限り」が担う。意志で集中を点けるボタンは存在しない。
+    if (!planAchieved && planIdThisTurn) {
+      this.focusPlan = planIdThisTurn;
     }
 
     // 集中力の上限（強制ギプス）: 集中が MAX_FOCUS_STREAK ターン続いたら集中力が切れる。
@@ -427,18 +427,6 @@ export class TurnOrchestrator {
       this.focusBaseline = 0;
     }
 
-    // 事後ルール（sticky）: 未達の計画（focusPlan）を持っているあいだ集中を維持する。ただし
-    // **ハートビート（相手が居ない自律ターン）のときだけ**効かせる。
-    // - ハートビート: 維持する。入力が無いと言語野が集中を選ばず goal を見失う dead-end を防ぐ＝
-    //   人が居ない間は未達の目標に自律的に戻り続ける。
-    // - 対話（user_message 等・相手が居る）: 効かせない。言語野の判断に任せ、相手が感情や別の話題を
-    //   向けたら集中を抜けて相手に向き合える（タスク固執＝タコ耳の解消）。focusPlan は達成まで残るので、
-    //   会話を抜けた後のハートビートで goal に復帰する。「喋る間は相手に・独りなら自分の作業に」。
-    if (this.focusPlan && !planAchieved && trigger.type === "heartbeat") {
-      ctx = { ...ctx, nextState: "集中" };
-      this.turnContext = ctx;
-    }
-
     // --- 内省・内心更新 ---
     const { introspection, episodePersisted } = await this.persistReflection(
       ctx,
@@ -451,7 +439,15 @@ export class TurnOrchestrator {
 
     // --- State 遷移・永続化 ---
     const prevState = this.state;
-    this.state = applyNextState(this.state, ctx.nextState ?? this.state);
+    // state は制御プレーン＝観測事実から導出する（言語野は宣言しない）。
+    // 相手が喋った→対話（集中は中断されここへ戻る）／独りで取り組み中の計画がある→集中／
+    // それ以外→静穏（集中でなければ静穏という residual）。
+    this.state =
+      trigger.type === "user_message"
+        ? "対話"
+        : this.focusPlan
+          ? "集中"
+          : "静穏";
     // 集中力カウンタ: 集中が続けば加算、抜けたら 0。MAX を超えると次ターンの強制ギプスで切れる。
     this.focusStreak = this.state === "集中" ? this.focusStreak + 1 : 0;
     // 進捗ベース卒業: 集中して取り組んでいるのに進捗が出ないターンが続いたら、その goal を見限る（retired）。
@@ -763,24 +759,21 @@ export class TurnOrchestrator {
     ctx: TurnContext,
     trigger: TurnTrigger,
     languageLlm: LlmClient,
-    startState: AgentState,
   ): Promise<TurnContext> {
     const v = this.vlog;
     const langStart = Date.now();
     ctx = withPersona(ctx, await this.deps.getPersona());
     try {
-      const { speech, nextState } = await runLanguage(
+      const { speech } = await runLanguage(
         languageLlm,
         ctx,
         this.deps.languageNumPredict ?? 400,
       );
       ctx = withSpeech(ctx, speech.trim() || null);
-      ctx = { ...ctx, nextState: nextState || startState };
       this.turnContext = ctx;
       v?.languageSpeech(ctx.speech ?? "", Date.now() - langStart);
     } catch (err) {
       ctx = withSpeech(ctx, null);
-      ctx = { ...ctx, nextState: startState };
       this.turnContext = ctx;
       v?.languageSkipped(`LLM 失敗: ${err instanceof Error ? err.message : err}`);
     }

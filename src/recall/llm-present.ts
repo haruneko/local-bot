@@ -1,12 +1,7 @@
 import { tryParseJsonWithSchema } from "../action/parse-json.js";
 import type { LlmClient } from "../llm/types.js";
+import { RECALL_PRESENT_SUMMARIZE_SYSTEM } from "../prompts/roles.js";
 import {
-  RECALL_ACTION_SYSTEM,
-  RECALL_PRESENT_SUMMARIZE_SYSTEM,
-} from "../prompts/roles.js";
-import {
-  recallActionJsonSchema,
-  recallActionOutputSchema,
   recallPresentSummarizeJsonSchema,
   recallPresentSummarizeOutputSchema,
 } from "../prompts/schemas.js";
@@ -127,35 +122,4 @@ export async function presentRecallEpisodes(
   const classified = classifyRecallHits(hits, thresholds, scoreOptions, xmodalThresholds);
   const llmSummarized = await llmPresentSummarizeHits(llm, classified, situation);
   return assembleRecalledEpisodes(classified, llmSummarized);
-}
-
-export async function summarizeRecallActionHits(
-  llm: LlmClient,
-  intent: string,
-  hits: readonly EpisodeRecallHit[],
-): Promise<string[]> {
-  if (hits.length === 0) return [];
-
-  const blocks = hits
-    .map((hit, i) => `--- ${i + 1}\n${hit.body.trim()}`)
-    .join("\n\n");
-
-  const format = recallActionJsonSchema as Record<string, unknown>;
-  const raw = await llm.chat(
-    [
-      { role: "system", content: RECALL_ACTION_SYSTEM },
-      {
-        role: "user",
-        content: [`意図: ${intent}`, "", "## 検索ヒット", blocks].join("\n"),
-      },
-    ],
-    { format, temperature: 0 },
-  );
-
-  const parsed = tryParseJsonWithSchema(raw, recallActionOutputSchema);
-  if (!parsed.ok) {
-    return hits.map((hit) => resolvePresentedMechanical("summarize", hit.body) ?? hit.body.trim());
-  }
-
-  return parsed.value.bullets.map((b) => b.trim()).filter(Boolean);
 }

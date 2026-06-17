@@ -85,7 +85,7 @@ export async function runSynthesize(
     return actionFailed(action, "成果物の一片を生成できなかった", {
       code: ACTION_ERROR_CODES.TOOL_FAILED,
       message: "synthesize の生成結果が空だった",
-    });
+    }, "synthesize");
   }
 
   // 既存があれば append、無ければ create（applyMemoOp で間隔整形・盲目上書き防止を共有）
@@ -99,7 +99,7 @@ export async function runSynthesize(
     return actionFailed(action, "成果物の書き込みを適用できなかった", {
       code: ACTION_ERROR_CODES.INVALID_ARGS,
       message: result.ok ? "nextContent が空" : result.reason,
-    });
+    }, "synthesize");
   }
 
   const written = await writeNoteContent(filename, result.nextContent);
@@ -107,7 +107,7 @@ export async function runSynthesize(
     return actionFailed(action, "成果物ファイルへの書き込みに失敗した", {
       code: ACTION_ERROR_CODES.TOOL_FAILED,
       message: `writeNoteContent が失敗（filename: ${filename}）`,
-    });
+    }, "synthesize");
   }
 
   const now = new Date().toISOString();

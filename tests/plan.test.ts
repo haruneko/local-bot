@@ -208,6 +208,7 @@ describe("runPlan（op→決定的適用）", () => {
     ctx = withAction(ctx, {
       attempted: true,
       kind: "research",
+      op: "research",
       intent: "曲のコードを調べる",
       status: "failed",
       summary: "失敗",
@@ -222,8 +223,8 @@ describe("runPlan（op→決定的適用）", () => {
     });
     const prompt = llm.calls[0]!.messages[1].content;
     expect(prompt).toContain("このターンで実際に起きたこと");
-    // 失敗が明示ラベル＋理由として見える（事後グラウンディング）
-    expect(prompt).toContain("結果: できなかった");
+    // 失敗が明示＋理由として見える（事後グラウンディング）
+    expect(prompt).toContain("うまくいかなかった");
     expect(prompt).toContain("探索ツールに接続できない");
   });
 
@@ -253,14 +254,13 @@ describe("計画チャンネルの注入", () => {
       plan,
     });
 
-  it("plan が非空なら言語野コンテキストに「## 取り組み中の計画」が入る", () => {
+  it("plan が非空なら言語野コンテキストに plan 本文が入る", () => {
     const out = renderLanguageUserContent(ctxWithPlan("# 星座\n本文"));
-    expect(out).toContain("## 取り組み中の計画");
     expect(out).toContain("# 星座");
   });
 
   it("plan が空なら注入しない", () => {
-    expect(renderLanguageUserContent(ctxWithPlan(""))).not.toContain("## 取り組み中の計画");
+    expect(renderLanguageUserContent(ctxWithPlan(""))).not.toContain("# 星座");
   });
 
   it("plan チャンネルを宣言した actor のみ計画が入る", () => {

@@ -95,7 +95,7 @@ describe("TurnContext", () => {
 
     const rendered = renderLanguageUserContent(ctx);
     expect(rendered).toContain("[3日前]");
-    expect(rendered).toContain("いまの話とは限らない"); // 古い記憶を今の事実にしない注記
+    expect(rendered).toContain("なんとなく思い出したこと");
     // 前置きが本文の前に来る
     expect(rendered.indexOf("[3日前]")).toBeLessThan(
       rendered.indexOf("川口の明日は雨"),
@@ -121,8 +121,8 @@ describe("TurnContext", () => {
 
     const rendered = renderLanguageUserContent(ctx);
     expect(rendered).toContain("## いまの内心");
-    expect(rendered).toContain("さっき少し恥ずかしかった");
-    expect(rendered).toContain("温度の素");
+    expect(rendered).toContain("（さっき少し恥ずかしかった）");
+    expect(rendered).not.toContain("温度の素");
   });
 
   it("omits inner state section when empty", () => {
@@ -186,7 +186,7 @@ describe("TurnContext", () => {
     const langBody = renderLanguageUserContent(ctx);
 
     expect(snap.recalledEpisodes).toEqual(["過去の内省全文"]);
-    expect(langBody).toContain("1. 過去の内省全文");
+    expect(langBody).toContain("- 過去の内省全文");
     expect(langBody).not.toMatch(/過去の内省全文.{0,20}…/);
   });
 
@@ -296,8 +296,8 @@ describe("TurnContext", () => {
     const langBody = renderLanguageUserContent(ctx);
 
     expect(snap.semanticFacts).toEqual(["ユーザーは夏目漱石を好む"]);
-    expect(langBody).toContain("## 知っていること（意味記憶）");
-    expect(langBody).toContain("1. ユーザーは夏目漱石を好む");
+    expect(langBody).toContain("## 覚えている事実");
+    expect(langBody).toContain("- ユーザーは夏目漱石を好む");
   });
 
   it("T-IS05: inner_state channel includes concern when non-empty", () => {

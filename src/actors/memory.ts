@@ -3,7 +3,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import type { ActorRunner, ActorActivateResult } from "./types.js";
 import { buildActorContext } from "../context/turn-context.js";
 import { tryParseJsonWithSchema } from "../action/parse-json.js";
-import { runRecallLoop } from "../roles/agents/memory.js";
+import { runRecall } from "../roles/recall.js";
 import { runForget } from "../roles/forget.js";
 
 // B'（記憶/記録の分割統治・DECISIONS §記憶 faculty）:
@@ -86,6 +86,6 @@ export const memoryActor: ActorRunner = {
       intent: input.intent,
       timeRange: input.timeRange,
     };
-    return runRecallLoop(llm, { ctx: input.ctx, action, ...input.deps });
+    return runRecall({ ctx: input.ctx, action, ...input.deps });
   },
 };

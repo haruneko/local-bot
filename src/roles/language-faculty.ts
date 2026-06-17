@@ -10,18 +10,16 @@ import {
   LANGUAGE_SYSTEM_PREFIX,
 } from "../prompts/roles.js";
 import type { ChatMessage, LlmClient } from "../llm/types.js";
-import { formatActionsForLanguage } from "../action/present.js";
 import {
   extractJsonText,
   repairCommonJsonErrors,
   stripThinkBlocks,
 } from "../action/parse-json.js";
 
-export type LanguageOutput = { speech: string; nextState: string };
+export type LanguageOutput = { speech: string };
 
 const languageOutputSchema = z.object({
   speech: z.string(),
-  nextState: z.string(),
 });
 
 const languageJsonSchema = zodToJsonSchema(languageOutputSchema, {
@@ -52,7 +50,7 @@ function salvageSpeech(text: string): string | null {
  *  3. JSON の痕跡が無ければ素テキストを発話とみなす（構造化出力なのに素で返した保険）
  *  4. 壊れた JSON 断片しか無ければ沈黙（空発話）にフォールバック
  */
-function parseLanguageOutput(raw: string, fallbackState: string): LanguageOutput {
+function parseLanguageOutput(raw: string): LanguageOutput {
   const cleaned = stripThinkBlocks(raw).trim();
   const extracted = extractJsonText(raw);
   for (const candidate of [
@@ -66,10 +64,7 @@ function parseLanguageOutput(raw: string, fallbackState: string): LanguageOutput
       const obj = JSON.parse(candidate) as unknown;
       const parsed = languageOutputSchema.safeParse(obj);
       if (parsed.success) {
-        return {
-          speech: stripThinkBlocks(parsed.data.speech).trim(),
-          nextState: parsed.data.nextState,
-        };
+        return { speech: stripThinkBlocks(parsed.data.speech).trim() };
       }
     } catch {
       // fall through
@@ -77,18 +72,15 @@ function parseLanguageOutput(raw: string, fallbackState: string): LanguageOutput
   }
 
   const salvaged = salvageSpeech(cleaned);
-  if (salvaged) {
-    const sm = cleaned.match(/"nextState"\s*:\s*"([^"]*)"/);
-    return { speech: salvaged, nextState: sm?.[1] ?? fallbackState };
-  }
+  if (salvaged) return { speech: salvaged };
 
   // JSON の痕跡が無い＝素のテキストで返した → そのまま発話とみなす
-  if (!/[{}]|"speech"|"nextState"/.test(cleaned)) {
-    return { speech: cleaned, nextState: fallbackState };
+  if (!/[{}]|"speech"/.test(cleaned)) {
+    return { speech: cleaned };
   }
 
   // 壊れた JSON 断片しか残らない → 沈黙（生は出さない・記憶に残さない）
-  return { speech: "", nextState: fallbackState };
+  return { speech: "" };
 }
 
 function collectUniqueSpeakerNames(ctx: TurnContext): string[] {
@@ -113,8 +105,8 @@ function buildLanguageDialogueMessages(
   let triggerLine: string;
   let partnerBlock = "";
   if (ctx.trigger.type === "heartbeat") {
-    situationLine = `\n\n状況: ${ctx.state} / ${ctx.currentDateTime} / ハートビート`;
-    triggerLine = "（ハートビート）";
+    situationLine = `\n\n状況: ${ctx.state} / ${ctx.currentDateTime}`;
+    triggerLine = "（発話はなかった）";
   } else {
     const partnerName = ctx.dialogue.resolveUserDisplayName(ctx.trigger.speakerId);
     const speakers = collectUniqueSpeakerNames(ctx);
@@ -142,17 +134,14 @@ function buildLanguageDialogueMessages(
     ...buildConversationTurns(ctx, { includeMonologue: ctx.trigger.type === "heartbeat" }),
   ];
 
-  const actionText = formatActionsForLanguage(ctx.actions);
-  const hasAction = ctx.actions.some((a) => a.attempted);
-  let userContent = hasAction
-    ? `${triggerLine}\n\n## このターンで起きたこと\n${actionText}`
-    : triggerLine;
+  // 行動結果は system 側（buildLanguageContextSuffix の「## あなた自身がこのターンでやったこと」）に置く。
+  let userContent = triggerLine;
 
-  // 視覚チャンネル(image_feed): いま視界に入っている景色を生のまま添える（文字起こししない）。
-  // 周辺視野として枠づけ＝話題に関係するときだけ触れる（景色に引っ張られすぎを防ぐ）。
+  // 視覚チャンネル(image_feed): いま目で見ている画像を生のまま添える（文字起こししない）。
+  // 周辺視野として枠づけ＝話題に関係するときだけ触れる（画像に引っ張られすぎを防ぐ）。
   if (ctx.imageFeed.length > 0) {
     userContent +=
-      "\n\n（画像はいま視界に入っている景色＝周辺視野。話題に関係するときだけ触れればよく、" +
+      "\n\n（画像はいま目で見ているもの＝周辺視野。話題に関係するときだけ触れればよく、" +
       "毎回描写する必要はない。）";
     messages.push({ role: "user", content: userContent, images: ctx.imageFeed });
     return messages;
@@ -188,6 +177,9 @@ export async function generateDialogueSpeech(
     : LANGUAGE_SYSTEM_PREFIX;
   const numPredict = resolveNumPredict(ctx, defaultNumPredict);
   const messages = buildLanguageDialogueMessages(ctx, systemPrefix, persona);
-  const raw = await llm.chat(messages, { temperature: 0.8, numPredict, format });
-  return parseLanguageOutput(raw, ctx.state);
+  // 既定 0.6（屋久島プローブの温度sweepで決定: 0.8は記憶主張の作話を尾で引く / 0.4は平板 / 0.6が安全＋多様）。
+  // LANG_TEMP env で tuning 可。
+  const langTemp = process.env.LANG_TEMP ? Number(process.env.LANG_TEMP) : 0.6;
+  const raw = await llm.chat(messages, { temperature: langTemp, numPredict, format });
+  return parseLanguageOutput(raw);
 }

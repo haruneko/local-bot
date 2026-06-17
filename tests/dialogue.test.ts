@@ -91,7 +91,7 @@ describe("dialogue format", () => {
     expect(body).toContain("HALの発話（このターン）");
     expect(body).toContain("HAL: 今何時？");
     expect(body).toContain("このターンで起きたこと");
-    expect(body).toContain("背景の記憶");
+    expect(body).toContain("なんとなく思い出したこと");
     expect(body).not.toContain("## 誰が誰か");
   });
 

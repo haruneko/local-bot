@@ -65,10 +65,18 @@ type FactAudience = "language" | "introspection";
  * - language: 冒頭＋「全文は相手に別途そのまま届く＝ここで書き写さない」（二重生成・劣化を防ぐ）
  * - introspection: 冒頭＋分量メタ（全文は works/・memo_index が正本。手応えだけ残す）
  */
-function shrinkBody(body: string, audience: FactAudience): string {
+function shrinkBody(
+  body: string,
+  audience: FactAudience,
+  delivered = false,
+): string {
   const head = headPreview(body);
   if (audience === "language") {
-    return `${head}\n（全文は相手に別途そのまま届く。ここで書き写さず、一言添えるだけにする）`;
+    // delivered=true の kind（synthesize/memo_read/research）だけ「別途届く」＝二重生成を防ぐ。
+    // それ以外（memo_write 等）は相手に届かないので注記を付けない。
+    return delivered
+      ? `${head}\n（全文は別途そのまま相手に届く。書き写さず、一言添えるだけにする）`
+      : head;
   }
   return `${head}（${bodyMeta(body)}）`;
 }
@@ -92,12 +100,12 @@ export function formatActionFactContent(
     case "memo_read":
       return [
         `${facts.filename} のメモを読んでみた。こんなことが書いてあった:`,
-        shrinkBody(facts.body, audience),
+        shrinkBody(facts.body, audience, factExternalizesNewInfo(facts)),
       ].join("\n");
     case "memo_write":
       return [
         `${facts.filename} のメモに書き込んだ:`,
-        shrinkBody(facts.body, audience),
+        shrinkBody(facts.body, audience, factExternalizesNewInfo(facts)),
       ].join("\n");
     case "remember":
       return ["こんなことを記憶に残した:", facts.body].join("\n");
@@ -112,7 +120,7 @@ export function formatActionFactContent(
       return [
         `${facts.tool} で調べてみたら、こんな情報が見つかった:`,
         facts.title ? `件名: ${facts.title}` : "",
-        shrinkBody(facts.body, audience),
+        shrinkBody(facts.body, audience, factExternalizesNewInfo(facts)),
       ]
         .filter(Boolean)
         .join("\n");
@@ -120,14 +128,14 @@ export function formatActionFactContent(
       return [
         `${facts.tool} を使って送った:`,
         facts.title ? `件名: ${facts.title}` : "",
-        shrinkBody(facts.body, audience),
+        shrinkBody(facts.body, audience, factExternalizesNewInfo(facts)),
       ]
         .filter(Boolean)
         .join("\n");
     case "synthesize":
       return [
         `${facts.filename} に、想起と外部情報と自分の感性を統合してこれを書き起こした:`,
-        shrinkBody(facts.body, audience),
+        shrinkBody(facts.body, audience, factExternalizesNewInfo(facts)),
       ].join("\n");
     case "plan":
       return [`${facts.filename} の計画ノートを更新した:`, facts.body].join("\n");
@@ -186,51 +194,117 @@ export function collectUserArtifacts(actions: ActionOutcome[]): string[] {
     .filter((s): s is string => s !== null && s.trim() !== "");
 }
 
-type AttemptedAction = Extract<ActionOutcome, { attempted: true }>;
 
-function formatActionContentForIntrospection(
-  action: AttemptedAction,
-): string {
-  if (action.status === "failed") {
-    if (action.error) {
-      return formatActionFailureForIntrospection(action.error);
-    }
-    return action.summary;
+/** 成功（facts あり）: op 別に「やったこと」を事実として述べる。中身が空なら空振りの言い方に。 */
+function languageSuccessLine(facts: ActionFacts, intent: string): string {
+  const subject = intent || "それ";
+  switch (facts.kind) {
+    case "recall":
+      return facts.bullets.length
+        ? [
+            `${subject}について思い出そうとしたところ、次のことを思い出した:`,
+            facts.bullets.map((b) => `- ${b}`).join("\n"),
+          ].join("\n")
+        : `${subject}について思い出そうとしたが、何も思い出せなかった`;
+    case "memo_read":
+      return [
+        `${subject}についてメモを探したところ、次のことが書いてあった:`,
+        shrinkBody(facts.body, "language", true),
+      ].join("\n");
+    case "memo_write":
+      return [
+        `${facts.filename} のメモに書き込んだ:`,
+        shrinkBody(facts.body, "language", false),
+      ].join("\n");
+    case "remember":
+      return ["次のことを記憶に残した:", facts.body].join("\n");
+    case "forget":
+      return `${subject}の記憶を手放した`;
+    case "research":
+      return !facts.summary.trim() && !facts.body.trim()
+        ? `${subject}を調べたが、何も見つからなかった`
+        : [
+            `${facts.tool}で${subject}を調べたところ、次の情報を見つけた:`,
+            shrinkBody(facts.body, "language", true),
+          ].join("\n");
+    case "express":
+      return `${facts.tool}に${subject}を送った`;
+    case "synthesize":
+      return `${facts.filename}に思いついたことを書き留めた`;
+    case "plan":
+      return `${facts.filename}の計画を更新した`;
   }
-  return formatActionFactContent(action, "introspection");
 }
 
-export function formatActionForIntrospection(action: ActionOutcome): string {
-  if (!action.attempted) {
-    return "";
+/** 成功だが facts 無し（空振り）: op 別の「見つからなかった」言い方。 */
+function languageEmptyLine(op: ActionFacts["kind"], intent: string): string {
+  const subject = intent || "それ";
+  switch (op) {
+    case "recall":
+      return `${subject}について思い出そうとしたが、何も思い出せなかった`;
+    case "memo_read":
+      return `${subject}についてメモを探したが、見つけられなかった`;
+    case "forget":
+      return "手放す記憶が見つからなかった";
+    case "research":
+      return `${subject}を調べたが、何も見つからなかった`;
+    default:
+      return `${subject}はできなかった`;
   }
-  const resultLabel =
-    action.status === "succeeded" ? "できた" : "できなかった";
-  return [
-    `結果: ${resultLabel}`,
-    "内容:",
-    formatActionContentForIntrospection(action),
-  ].join("\n");
+}
+
+/** 失敗（本当のエラー）: op 別に何ができなかったかを述べ、理由を添える。 */
+function languageErrorLine(
+  op: ActionFacts["kind"] | undefined,
+  intent: string,
+  reason: string,
+): string {
+  const subject = intent || "それ";
+  const head = (() => {
+    switch (op) {
+      case "recall":
+        return `${subject}を思い出そうとしたが、うまくいかなかった`;
+      case "memo_read":
+        return `${subject}のメモを探そうとしたが、うまくいかなかった`;
+      case "memo_write":
+        return `${subject}をメモに書き込もうとしたが、できなかった`;
+      case "remember":
+        return "記憶に残せなかった";
+      case "forget":
+        return "記憶を手放せなかった";
+      case "research":
+        return `${subject}を調べようとしたが、うまくいかなかった`;
+      case "express":
+        return "送信できなかった";
+      case "synthesize":
+        return "書き留められなかった";
+      case "plan":
+        return "計画を更新できなかった";
+      default:
+        return `${subject}はうまくいかなかった`;
+    }
+  })();
+  return reason ? `${head}\n${reason}` : head;
 }
 
 /**
- * 言語野向け。一人称は載せず事実のみ（口調は character.md に任せる）。
- * 内省と同じく成否を明示する＝失敗した行動を「やった」と発話する言行不一致を防ぐ
- * （ラベルが無いと言語野が生の summary から失敗を察し損ねて「保存したよ」と言う）。
+ * 言語野向け。一人称は載せず事実のみ（口調は character.md に任せる）。op 別に
+ * 「やったこと／空振り／失敗」を事実として述べる＝失敗を「やった」と取り違えない（言行一致）。
  */
 export function formatActionForLanguage(action: ActionOutcome): string {
   if (!action.attempted) {
     return "（このターンでは行動していない）";
   }
+  const intent = action.intent.trim();
   if (action.status === "failed") {
-    const detail = action.error
+    const reason = action.error
       ? formatActionFailureForIntrospection(action.error)
       : action.summary;
-    return ["結果: できなかった（成功したことにして話さない）", detail].join(
-      "\n",
-    );
+    return languageErrorLine(action.op, intent, reason);
   }
-  return ["結果: できた", formatActionFactContent(action)].join("\n");
+  if (action.facts) return languageSuccessLine(action.facts, intent);
+  if (action.op) return languageEmptyLine(action.op, intent);
+  return action.summary;
 }
 
 export function silenceLine(): string {

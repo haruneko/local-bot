@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FakeLlmClient } from "../src/llm/fake.js";
 import { DEFAULT_RECALL_DISTANCE_THRESHOLDS } from "../src/recall/distance.js";
-import {
-  presentRecallEpisodes,
-  summarizeRecallActionHits,
-} from "../src/recall/llm-present.js";
+import { presentRecallEpisodes } from "../src/recall/llm-present.js";
 
 describe("presentRecallEpisodes", () => {
   it("uses LLM for summarize only; full as-is; 旧 vague 帯は omit", async () => {
@@ -107,24 +104,5 @@ describe("presentRecallEpisodes", () => {
     expect(recalled.find((e) => e.presentation === "full")?.presented).toBe(
       "近い記憶",
     );
-  });
-});
-
-describe("summarizeRecallActionHits", () => {
-  it("returns LLM bullets for recall action", async () => {
-    const llm = new FakeLlmClient([
-      JSON.stringify({
-        bullets: ["コーヒーが好きだった", "前に話した約束"],
-      }),
-    ]);
-
-    const bullets = await summarizeRecallActionHits(llm, "コーヒーの話", [
-      { body: "太郎はコーヒーが好きと言っていた。エスプレッソ派。", distance: 0.2 },
-      { body: "来週また会おうと約束した。", distance: 0.4 },
-    ]);
-
-    expect(bullets).toEqual(["コーヒーが好きだった", "前に話した約束"]);
-    expect(llm.calls[0].messages[0].content).toContain("記憶（LanceDB）");
-    expect(llm.calls[0].options?.format).toBeDefined();
   });
 });

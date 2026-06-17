@@ -1,7 +1,5 @@
 import { actionSucceeded } from "../action/outcome.js";
 import type { RunActionInput } from "../action/context.js";
-import type { LlmClient } from "../llm/types.js";
-import { summarizeRecallActionHits } from "../recall/llm-present.js";
 import type { ActionOutcome } from "../types.js";
 
 function daysAgoToIso(daysAgo: number, now = new Date()): string {
@@ -9,7 +7,6 @@ function daysAgoToIso(daysAgo: number, now = new Date()): string {
 }
 
 export async function runRecall(
-  llm: LlmClient,
   input: RunActionInput,
   query?: string,
 ): Promise<ActionOutcome> {
@@ -34,10 +31,12 @@ export async function runRecall(
   const hits = rawHits.filter((h) => h.distance <= maxDist);
 
   if (hits.length === 0) {
-    return actionSucceeded(action, "記憶を探してみたが、それらしい記憶は見当たらなかった");
+    return actionSucceeded(action, "記憶を探したが、思い当たるものは無かった");
   }
 
-  const bullets = await summarizeRecallActionHits(llm, query, hits);
+  // ベクトル検索でヒットした上位を機械的にそのまま提示する（LLM 要約しない＝
+  // 想起の二度手間・劣化・遅延を避ける。距離の近い順に top-2 の本文をそのまま渡す）。
+  const bullets = hits.slice(0, 2).map((h) => h.body.trim()).filter(Boolean);
 
   return actionSucceeded(action, { kind: "recall", bullets });
 }

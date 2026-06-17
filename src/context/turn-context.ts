@@ -1,9 +1,8 @@
 import {
-  formatActionForIntrospection,
+  formatActionForLanguage,
   formatActionsForLanguage,
   silenceLine,
 } from "../action/present.js";
-import { actionLabelJa } from "../action/types.js";
 import type { TurnTrigger } from "../orchestrator/turn.js";
 import type {
   ActionOutcome,
@@ -74,8 +73,6 @@ export type TurnContext = {
 
   /** memory-agent → research-agent の順で積む */
   actions: ActionOutcome[];
-  /** language-agent が出力した次 State */
-  nextState?: string;
   speech?: string | null;
 };
 
@@ -276,11 +273,11 @@ export function memorySnapshot(ctx: TurnContext) {
 
 /** このターン知覚チャンネルへ入力があったかの正直な要約。
  *  内省が「見た・聞いた」を実際の知覚に錨付けするための事実（妄想と本物の知覚を分ける）。
- *  imageFeed/audioFeed は環境（live）stance なので「見えている／聞こえている」と明示＝いまの視界・音。
+ *  imageFeed は live stance なので「目で見た画像」と明示（将来の「渡された画像」＝鑑賞 stance と value で区別）。
  *  入力が無ければ「なし」＝嘘をつかない。能動の目・音声が来れば同じ口が運ぶ。 */
 export function perceptionInputLine(ctx: TurnContext): string {
   const parts: string[] = [];
-  if (ctx.imageFeed.length > 0) parts.push(`見えている映像${ctx.imageFeed.length}枚`);
+  if (ctx.imageFeed.length > 0) parts.push(`目で見た画像${ctx.imageFeed.length}枚`);
   if (ctx.audioFeed.length > 0) parts.push("聞こえている音");
   return parts.length > 0 ? parts.join("・") : "なし";
 }
@@ -288,12 +285,8 @@ export function perceptionInputLine(ctx: TurnContext): string {
 /** 計画チャンネル（集中 State で取り組み中のゴールノート全文）を注入する */
 function appendPlan(parts: string[], ctx: TurnContext): void {
   if (!ctx.plan.trim()) return;
-  parts.push(
-    "",
-    "## 取り組み中の計画",
-    "（いま集中して進めているゴールの現状。状態と履歴の記録であって、次の手順の指示書ではない。次の一手は自分で決める）",
-    ctx.plan,
-  );
+  // ctx.plan は renderPlanForLanguage の出力（「## いま取り組んでいること」見出し込み）。
+  parts.push("", ctx.plan);
 }
 
 function appendInnerState(parts: string[], ctx: TurnContext): void {
@@ -301,18 +294,17 @@ function appendInnerState(parts: string[], ctx: TurnContext): void {
   parts.push(
     "",
     "## いまの内心",
-    "（いま抱えている気持ち。温度の素であって台本ではない）",
-    ctx.affect,
+    `（${ctx.affect}）`,
   );
 }
 
 function appendSemanticFacts(parts: string[], ctx: TurnContext): void {
   if (ctx.semanticFacts.length === 0) return;
+  // 数字は順位バイアスを生むのでハイフン箇条書き。「意味記憶」等の技術語も出さない。
   parts.push(
     "",
-    "## 知っていること（意味記憶）",
-    "（夢で蒸留した経験由来の知識。自信を持って使ってよい）",
-    ...ctx.semanticFacts.map((f, i) => `${i + 1}. ${f.body}`),
+    "## 覚えている事実",
+    ...ctx.semanticFacts.map((f) => `- ${f.body}`),
   );
 }
 
@@ -320,17 +312,16 @@ function appendRecalledEpisodes(parts: string[], ctx: TurnContext): void {
   const recalled = formatRecalledEpisodes(ctx);
   if (recalled.length === 0) return;
 
+  // 「なんとなく思い出したこと」自体がふんわり想起を表す。先頭の [N日前] で時制を示す。
   parts.push(
     "",
-    "## 背景の記憶（口に出さない・参考のみ）",
-    "（これは過去の内省。ユーザーには見せていない。口調の台本として使わない）",
-    "（各項目の先頭 [N分前/N日前] はその記憶が作られた時点。記憶の中の「明日」「今日」「さっき」はその時点が基準＝いまの話とは限らない。古い記憶を今の事実として喋らない）",
-    ...ctx.recalledEpisodes.map((ep, i) => {
+    "## なんとなく思い出したこと",
+    ...ctx.recalledEpisodes.map((ep) => {
       const tag = ep.presentation === "summarize" ? "（要約）" : "";
       const when = ep.occurredAt
         ? `[${formatRelativeTime(ep.occurredAt, ctx.now)}] `
         : "";
-      return `${i + 1}. ${when}${tag}${ep.presented}`;
+      return `- ${when}${tag}${ep.presented}`;
     }),
   );
 }
@@ -513,10 +504,7 @@ export function buildReflectionMessages(ctx: TurnContext): ChatMessage[] {
   const selfParts: string[] = [];
   for (const action of ctx.actions) {
     if (!action.attempted) continue;
-    selfParts.push(
-      `（行動）${actionLabelJa(action.kind)} — ${action.intent}`,
-      formatActionForIntrospection(action),
-    );
+    selfParts.push(formatActionForLanguage(action));
   }
   const speech = ctx.speech?.trim();
   selfParts.push(speech || silenceLine());
@@ -526,9 +514,20 @@ export function buildReflectionMessages(ctx: TurnContext): ChatMessage[] {
 }
 
 /** 言語野の system メッセージに追記するコンテキスト部分（内心・意味記憶・背景の記憶） */
+/** このターンに自分がやった行動とその結果。内心（気持ち）の前に置く＝「行動が先・気持ちは後」。 */
+function appendActions(parts: string[], ctx: TurnContext): void {
+  if (!ctx.actions.some((a) => a.attempted)) return;
+  parts.push(
+    "",
+    "## あなた自身がこのターンでやったこと",
+    formatActionsForLanguage(ctx.actions),
+  );
+}
+
 export function buildLanguageContextSuffix(ctx: TurnContext): string {
   const parts: string[] = [];
   appendPlan(parts, ctx);
+  appendActions(parts, ctx);
   appendInnerState(parts, ctx);
   appendSemanticFacts(parts, ctx);
   appendRecalledEpisodes(parts, ctx);

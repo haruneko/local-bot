@@ -68,14 +68,6 @@ export const recallPresentSummarizeJsonSchema = zodToJsonSchema(
   { name: "RecallPresentSummarizeOutput", ...jsonSchemaOptions },
 );
 
-export const recallActionOutputSchema = z.object({
-  bullets: z.array(z.string()),
-});
-export const recallActionJsonSchema = zodToJsonSchema(recallActionOutputSchema, {
-  name: "RecallActionOutput",
-  ...jsonSchemaOptions,
-});
-
 export const forgetPickOutputSchema = z.object({
   turnId: z.string().nullable(),
   summary: z.string(),
