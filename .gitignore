@@ -9,3 +9,4 @@ data/plans/
 .env
 *.log
 article/
+data/frames/

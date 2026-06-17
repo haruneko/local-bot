@@ -18,24 +18,117 @@
   "languageNumPredict": 400,
   "timeZone": "Asia/Tokyo",
   "actors": {
-    "memory":    { "enabled": true,  "channels": ["conversation", "inner_state"] },
-    "memo":      { "enabled": true,  "channels": ["conversation", "inner_state"], "model": "qwen3.6:35b-a3b" },
-    "webSearch": { "enabled": true,  "channels": ["conversation", "inner_state", "plan"], "model": "qwen3.6:35b-a3b" },
-    "urlBrowse": { "enabled": true,  "channels": ["conversation", "inner_state", "plan"] },
-    "webcam":    { "enabled": false, "channels": ["conversation", "inner_state", "image_feed"] },
-    "plan":      { "enabled": true,  "channels": ["conversation", "inner_state", "plan"], "model": "qwen3.6:35b-a3b" },
-    "synthesize": { "enabled": true, "channels": ["conversation", "inner_state", "plan"], "model": "qwen3.6:35b-a3b" }
+    "memory": {
+      "enabled": true,
+      "channels": [
+        "conversation",
+        "inner_state"
+      ]
+    },
+    "memo": {
+      "enabled": true,
+      "channels": [
+        "conversation",
+        "inner_state"
+      ],
+      "model": "qwen3.6:35b-a3b"
+    },
+    "webSearch": {
+      "enabled": true,
+      "channels": [
+        "conversation",
+        "inner_state",
+        "plan"
+      ],
+      "model": "qwen3.6:35b-a3b"
+    },
+    "urlBrowse": {
+      "enabled": true,
+      "channels": [
+        "conversation",
+        "inner_state",
+        "plan"
+      ]
+    },
+    "webcam": {
+      "enabled": false,
+      "channels": [
+        "conversation",
+        "inner_state",
+        "image_feed"
+      ]
+    },
+    "plan": {
+      "enabled": true,
+      "channels": [
+        "conversation",
+        "inner_state",
+        "plan"
+      ],
+      "model": "qwen3.6:35b-a3b"
+    },
+    "synthesize": {
+      "enabled": true,
+      "channels": [
+        "conversation",
+        "inner_state",
+        "plan"
+      ],
+      "model": "qwen3.6:35b-a3b"
+    }
   },
   "stateConfig": {
-    "対話": { "workingMemoryTurns": 8, "episodeRecallTopK": 3, "actors": ["memory", "memo", "webSearch", "urlBrowse", "plan", "synthesize"] },
-    "静穏": { "workingMemoryTurns": 5, "episodeRecallTopK": 3, "actors": ["memory", "memo", "webSearch", "urlBrowse", "plan"] },
-    "集中": { "workingMemoryTurns": 8, "episodeRecallTopK": 3, "actors": ["memory", "memo", "webSearch", "urlBrowse", "plan", "synthesize"] }
+    "対話": {
+      "workingMemoryTurns": 8,
+      "episodeRecallTopK": 3,
+      "actors": [
+        "memory",
+        "memo",
+        "webSearch",
+        "urlBrowse",
+        "plan",
+        "synthesize"
+      ]
+    },
+    "静穏": {
+      "workingMemoryTurns": 5,
+      "episodeRecallTopK": 3,
+      "actors": [
+        "memory",
+        "memo",
+        "webSearch",
+        "urlBrowse",
+        "plan"
+      ]
+    },
+    "集中": {
+      "workingMemoryTurns": 8,
+      "episodeRecallTopK": 3,
+      "actors": [
+        "memory",
+        "memo",
+        "webSearch",
+        "urlBrowse",
+        "plan",
+        "synthesize"
+      ]
+    }
   },
   "actionModel": "qwen3-vl:8b-instruct",
   "activatorModel": "qwen3.6:35b-a3b",
   "roles": {
-    "language":      { "model": "qwen3.6:35b-a3b", "think": false },
-    "introspection": { "model": "qwen3.6:35b-a3b", "think": false },
-    "affect":        { "model": "qwen3.6:35b-a3b", "think": false }
-  }
+    "language": {
+      "model": "qwen3.6:35b-a3b",
+      "think": false
+    },
+    "introspection": {
+      "model": "qwen3.6:35b-a3b",
+      "think": false
+    },
+    "affect": {
+      "model": "qwen3.6:35b-a3b",
+      "think": false
+    }
+  },
+  "imageFeedSource": "data/frames"
 }
