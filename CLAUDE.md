@@ -8,6 +8,8 @@
 
 設計思想は [docs/CONCEPT.md](docs/CONCEPT.md)、実装契約は [docs/SPEC.md](docs/SPEC.md)、実装判断は [docs/DECISIONS.md](docs/DECISIONS.md)、行動設計は [docs/ACTION-DESIGN.md](docs/ACTION-DESIGN.md)。コードを変える前に、関連する MUST 節と決定ログを確認すること。
 
+`docs/` 本体が規範＝正本。決定の裏づけ（証拠・eval・監査・調査）は **`docs/research/`**（非規範・引用されたら凍結・[docs/research/README.md](docs/research/README.md)）。記事・発信用の下書きは **`article/`**（gitignore・リポ外）に置く＝docs/research には混ぜない。
+
 ## コマンド
 
 ```bash
@@ -89,7 +91,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 - **embedModel を変更したら、必ず `npm run reindex`（memo_index 再生成）＋ `scripts/reembed-tables.mts`（episodes/semantic の vector 再計算）を回す。** 書き込み時と想起時で埋め込み（モデル＋**タスク接頭辞**）が揃っている前提でベクトルが整合するため。揃わないと recall が静かに劣化する。
 - タスク接頭辞の単一情報源は `src/llm/embed-prefix.ts`（ruri は**非対称**＝query `検索クエリ: ` / document `検索文書: `。bge-m3 等は不要）。stores は write→`embedDocument` / recall→`embedQuery`。
 - `recallDistance` 閾値（full/summarize/omit）は**モデルの距離分布に依存**する（ruri 実測で 0.30/0.40/0.48）。モデルを変えたら距離分布を測り直して調整する。
-- モデル選定は当て推量でなく **`npm run eval:retrieval`**（自前 gold で Recall@k・MRR を横並び比較。`--corpus episode` でエピソード想起も。経緯は `research/embedding-locate-eval-2026-06-17.md`）。
+- モデル選定は当て推量でなく **`npm run eval:retrieval`**（自前 gold で Recall@k・MRR を横並び比較。`--corpus episode` でエピソード想起も。経緯は `docs/research/embedding-locate-eval-2026-06-17.md`）。
 
 研究の web 検索は **Tavily API**（`scripts/mcp-research.mjs`、Docker 不要・`browse_url` は素の fetch）。旧 searxng/Docker は撤去済み（`docker-compose.yml`・`config/searxng/`・`searxng:*` スクリプトは 2026-06-15 に削除）。`mcp-research.mjs` は `.env` から `TAVILY_API_KEY` を自前読み込みする。
 

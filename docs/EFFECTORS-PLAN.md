@@ -31,7 +31,7 @@ actor／faculty は、世界への effect（作用）を **自分が持つ effec
 1. **一貫性**: 副作用は「それを持つ行為」が起こす、で全 action が揃う（発話だけ特別扱いしない）。
 2. **コンセプト整合**: 身体性＝センサー（目/耳）と効果器（口/手/首）の対。発話を効果器化すると embodiment の絵が一枚で閉じる。
 3. **async-reflect が副産物として落ちる**: 発話ステップが自分で喋る → 内省/affect は喋った後に走る、が
-   特別扱いなしの自然な帰結。体感 ~6s（反省 ~5.9s は裏）。研究: research/merge-lang-intro-refutation-2026-06-18.md。
+   特別扱いなしの自然な帰結。体感 ~6s（反省 ~5.9s は裏）。研究: docs/research/merge-lang-intro-refutation-2026-06-18.md。
 4. **拡張性**: TTS（口）・サーボ（首）・別媒体（Slack/REPL/LINE）が同じ effector 抽象に乗る。
 
 ## 3. 設計（contract のスケッチ・実装時に詰める）

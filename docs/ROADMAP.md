@@ -237,7 +237,7 @@ express MCP サーバに追加し、express サブエージェントがカタロ
 
 ## プロバイダ移行（Ollama → 外部 API / Vertex AI）
 
-**状態:** 未着手・調査済み。詳細スコープは [research/vertex-migration-scoping-2026-06-18.md](../research/vertex-migration-scoping-2026-06-18.md)。
+**状態:** 未着手・調査済み。詳細スコープは [docs/research/vertex-migration-scoping-2026-06-18.md](research/vertex-migration-scoping-2026-06-18.md)。
 
 LLM は `LlmClient` アダプタ越しなので**チャットは `VertexLlmClient` を1クラス足せば呼び出し側無改修**。ただし要対応：
 - **アダプタの漏れ**: `think`/`numCtx` が client config を貫通／**埋め込みに抽象が無い**（stores が具象 `OllamaEmbedClient` 直依存・8箇所）。
