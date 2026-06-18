@@ -71,6 +71,12 @@ export type TurnResult = {
   nextState: AgentState;
 };
 
+/** 口の効果器（OutputChannel）。発話＋成果物をユーザーへ届ける作用器（受容器の双対・docs/CONCEPT §効果器）。
+ *  言語野の発話生成直後に呼ばれ、内省/affect の前に出力する（async-reflect）。speech が null なら成果物のみ。 */
+export type OutputChannel = {
+  say(speech: string | null, artifacts: string[]): void | Promise<void>;
+};
+
 export type TurnDeps = {
   llm: LlmClient;
   /** 全実行 actors 用モデル。未設定は llm にフォールバック */
@@ -135,6 +141,8 @@ export type TurnDeps = {
     focusBaseline: number;
   }) => Promise<void>;
   verbose?: VerboseLogger;
+  /** 口の効果器。未注入なら出力は TurnResult 経由（pull・移行中の互換）。 */
+  outputChannel?: OutputChannel;
 };
 
 /** 抑制バッファの有効ターン数 */
@@ -405,6 +413,13 @@ export class TurnOrchestrator {
     // --- language-agent（常に起動） ---
     ctx = await this.generateSpeech(ctx, trigger, languageLlm);
 
+    // 口の効果器: 発話＋成果物を即出力（push）。内省/affect はこの後＝async-reflect。
+    // 行動(effect)は発話の上流＝ここで artifacts も確定済み。
+    const artifacts = collectUserArtifacts(ctx.actions);
+    if (this.deps.outputChannel && (ctx.speech || artifacts.length > 0)) {
+      await this.deps.outputChannel.say(ctx.speech ?? null, artifacts);
+    }
+
     // 入口: 集中は「計画を実際に前進させた」観測から立つ（言語野の宣言でなく行動から創発）。
     // 計画を作った/更新したターンに focusPlan を確定する。安全（暴走防止）は入口ゲートでなく
     // 「会話で中断され対話へ戻る・疲労・見限り」が担う。意志で集中を点けるボタンは存在しない。
@@ -489,7 +504,7 @@ export class TurnOrchestrator {
     const result: TurnResult = {
       turnId,
       speech: ctx.speech ?? null,
-      artifacts: collectUserArtifacts(ctx.actions),
+      artifacts,
       introspection,
       episodeSaved: episodePersisted,
       nextState: this.state,

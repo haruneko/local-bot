@@ -28,7 +28,7 @@ import {
   createUserResolver,
   loadUsers,
 } from "../config/users.js";
-import { TurnOrchestrator } from "../orchestrator/turn.js";
+import { TurnOrchestrator, type OutputChannel } from "../orchestrator/turn.js";
 import { readFrames } from "../sensor/frame.js";
 import { runDream } from "../roles/dream.js";
 import { WorkingMemory } from "../memory/working.js";
@@ -83,6 +83,8 @@ export type BootstrapOptions = {
   /** 省略時 data/state.json。false で永続化しない */
   statePath?: string | false;
   mcp?: McpToolProvider;
+  /** 口の効果器（発話＋成果物の即出力先）。未指定は出力を TurnResult 経由（pull・互換）。 */
+  outputChannel?: OutputChannel;
 };
 
 function resolveOllamaHost(settings: AppSettings): string {
@@ -298,6 +300,7 @@ export async function createApp(
     languageNumPredict: settings.languageNumPredict ?? 400,
     timeZone: settings.timeZone ?? "Asia/Tokyo",
     readFrames: () => readFrames(settings.imageFeedSource, settings.imageMaxLongSide),
+    outputChannel: options.outputChannel,
     // 自発 distill: 静穏 idle で蒸留（タネは適用しない＝外界 grounded のエピソード蒸留のみ）。
     // 新素材が足りなければ runDream が内部でスキップする。
     runDistill: () =>

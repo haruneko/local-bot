@@ -17,10 +17,23 @@ type SlackFile = {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   console.log("接続中… (Ollama / LanceDB)");
+
+  // 口の効果器: orchestrator は常駐だが出力先（channel/reply）は毎ターン可変なので、
+  // ターン直前にセットする可変 sink を closure で持たせる（発話直後に push される）。
+  let activeSink:
+    | ((speech: string | null, artifacts: string[]) => Promise<void>)
+    | null = null;
+  const outputChannel = {
+    say: async (speech: string | null, artifacts: string[]) => {
+      if (activeSink) await activeSink(speech, artifacts);
+    },
+  };
+
   const app = await createApp({
     speakerId: args.speakerId,
     memory: args.memory,
     logLevel: args.logLevel ?? "info",
+    outputChannel,
   });
   const { orchestrator, verbose, settings } = app;
 
@@ -83,18 +96,22 @@ async function main(): Promise<void> {
     const content = text.replace(/<@[A-Z0-9]+>/g, "").trim();
     if (!content && images.length === 0) return;
 
-    const result = await orchestrator.run({
-      type: "user_message",
-      content,
-      speakerId: userId,
-      images: images.length > 0 ? images : undefined,
-    });
-
-    printTurnSummary(result, verbose);
-
-    if (result.speech) await reply(result.speech);
-    // 成果物（生成物・調査結果・読み上げ）は speech とは別経路。長尺は snippet で流さない。
-    for (const artifact of result.artifacts) await postArtifact(channel, artifact);
+    // 発話直後に push（async-reflect）: 発話＝reply、成果物＝別経路（長尺は snippet で流さない）。
+    activeSink = async (speech, artifacts) => {
+      if (speech) await reply(speech);
+      for (const artifact of artifacts) await postArtifact(channel, artifact);
+    };
+    try {
+      const result = await orchestrator.run({
+        type: "user_message",
+        content,
+        speakerId: userId,
+        images: images.length > 0 ? images : undefined,
+      });
+      printTurnSummary(result, verbose);
+    } finally {
+      activeSink = null;
+    }
   }
 
   // DM のみ（チャンネルは app_mention で処理するため channel_type で絞る）
@@ -134,23 +151,22 @@ async function main(): Promise<void> {
       DEFAULT_HEARTBEAT_MS;
 
     setInterval(async () => {
+      activeSink = async (speech, artifacts) => {
+        if (speech) {
+          await bolt.client.chat.postMessage({ channel: heartbeatChannel, text: speech });
+        }
+        for (const artifact of artifacts) await postArtifact(heartbeatChannel, artifact);
+      };
       try {
         const result = await orchestrator.run({ type: "heartbeat" });
         printTurnSummary(result, verbose);
-        if (result.speech) {
-          await bolt.client.chat.postMessage({
-            channel: heartbeatChannel,
-            text: result.speech,
-          });
-        }
-        for (const artifact of result.artifacts) {
-          await postArtifact(heartbeatChannel, artifact);
-        }
       } catch (err) {
         console.error(
           "[heartbeat] エラー:",
           err instanceof Error ? err.message : err,
         );
+      } finally {
+        activeSink = null;
       }
     }, intervalMs);
 

@@ -498,6 +498,51 @@ describe("TurnOrchestrator", () => {
     expect(result.nextState).toBe("静穏"); // focusPlan が無くなったので静穏へ
   });
 
+  // --- 口の効果器（OutputChannel）= 発話を即 push・反省より前 ---
+
+  it("T-OC01: outputChannel に発話を即 push し、内省/affect より前に呼ばれる", async () => {
+    const llm = new FakeLlmClient([lang("返答です"), "内省", '{"tags":[]}', "新しい気分"]);
+    let sayArgs: { speech: string | null; artifacts: string[] } | null = null;
+    let affectAtSay = "?";
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        initialAffect: "古い気分",
+        outputChannel: {
+          say: async (speech, artifacts) => {
+            sayArgs = { speech, artifacts };
+            affectAtSay = orch.getAffect(); // say 時点の affect
+          },
+        },
+      }),
+    );
+
+    await orch.run({ type: "user_message", content: "やあ", speakerId: "u1" });
+
+    expect(sayArgs).toEqual({ speech: "返答です", artifacts: [] });
+    expect(affectAtSay).toBe("古い気分"); // say 時点で affect 未更新＝反省より前に push された
+    expect(orch.getAffect()).toBe("新しい気分"); // 反省は say の後に走り affect を更新
+  });
+
+  it("T-OC02: idle heartbeat（発話も成果物も無い）では say を呼ばない", async () => {
+    const llm = new FakeLlmClient([lang("", "静穏")]);
+    let called = false;
+    const orch = new TurnOrchestrator(
+      "静穏",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        outputChannel: { say: async () => { called = true; } },
+      }),
+    );
+
+    await orch.run({ type: "heartbeat" });
+
+    expect(called).toBe(false);
+  });
+
   it("符号化ロンダリング対策: 裏打ち事実(groundedFacts)に相手発話を機械記録し、本文は内省のまま", async () => {
     const llm = new FakeLlmClient([lang("返答"), "内省テキスト", '{"tags":[]}', "気分"]);
     const episodes = new InMemoryEpisodeStore();
