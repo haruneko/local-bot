@@ -93,4 +93,28 @@ describe("episode persist gate", () => {
       ),
     ).toBe("穏やかな気持ち。");
   });
+
+  it("T-IS06: user_message は発話に concern を合成して想起クエリを研ぐ", () => {
+    expect(
+      buildRecallQuery(
+        { type: "user_message", content: "x", speakerId: "u1" },
+        "今の目標なんだっけ",
+        "",
+        "",
+        "ギターの練習",
+      ),
+    ).toBe("今の目標なんだっけ ギターの練習");
+  });
+
+  it("T-IS06: user_message で concern が空なら発話のみ", () => {
+    expect(
+      buildRecallQuery(
+        { type: "user_message", content: "x", speakerId: "u1" },
+        "やあ",
+        "",
+        "",
+        "",
+      ),
+    ).toBe("やあ");
+  });
 });
