@@ -24,8 +24,14 @@ export type ActorActivateResult = {
 
 export type ActorRunner = {
   readonly name: ActorName;
-  /** このターンで起動すべきか判断する。不要なら null を返す */
-  activate(
+  /**
+   * 起動判定。判断系 actor は `criteria`（multi-label が1発で判定）、
+   * 客観/機械ゲート actor（urlBrowse など）は `activate` を実装する（どちらか一方）。
+   */
+  /** multi-label 起動判定の「起動条件」テキスト（判断系 actor）。 */
+  criteria?: string;
+  /** 自前の起動判定（客観/機械ゲート）。不要なら null を返す */
+  activate?(
     llm: LlmClient,
     ctx: TurnContext,
     channels: ContextChannel[],

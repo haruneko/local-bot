@@ -28,7 +28,7 @@ import {
   buildRecallQuery,
   shouldPersistIntrospection,
 } from "./episode-persist.js";
-import { runActivator } from "./activator.js";
+import { runActivator, runMultiLabelActivator } from "./activator.js";
 import { getActor } from "../actors/registry.js";
 import { loadPlan, savePlan } from "../plan/state.js";
 import { renderPlanForLanguage } from "../plan/render.js";
@@ -707,18 +707,29 @@ export class TurnOrchestrator {
   ): Promise<TurnContext> {
     const v = this.vlog;
     const actorStart = Date.now();
-    const actorSpecs = enabledActors.flatMap((name) => {
-      const actor = getActor(name);
-      if (!actor) return [];
-      return [{
-        actor,
-        // 起動判定は専用の軽量モデルで（RUN 用の actorLlm とは分離）
-        llm: activatorLlm,
-        channels: this.deps.actorChannels?.[name] ?? DEFAULT_ACTOR_CHANNELS[name],
-      }];
-    });
-    const activeSpecs = await runActivator(ctx, actorSpecs);
-    v?.actorsActivated(activeSpecs, actorSpecs.length, Date.now() - actorStart);
+    const runners = enabledActors.flatMap((name) => getActor(name) ?? []);
+    // 判断系（criteria）は multi-label が1発でまとめて判定。客観/機械ゲート（activate）は別途。
+    const criteriaActors = runners.filter((a) => a.criteria);
+    const gateActors = runners.filter((a) => a.activate && !a.criteria);
+    // multi-label の文脈は criteria 系チャンネルの和（plan を含む superset）。
+    const multiChannels = [
+      ...new Set(
+        criteriaActors.flatMap(
+          (a) => this.deps.actorChannels?.[a.name] ?? DEFAULT_ACTOR_CHANNELS[a.name],
+        ),
+      ),
+    ];
+    const gateSpecs = gateActors.map((actor) => ({
+      actor,
+      llm: activatorLlm,
+      channels: this.deps.actorChannels?.[actor.name] ?? DEFAULT_ACTOR_CHANNELS[actor.name],
+    }));
+    const [multiActive, gateActive] = await Promise.all([
+      runMultiLabelActivator(activatorLlm, ctx, multiChannels, criteriaActors),
+      runActivator(ctx, gateSpecs),
+    ]);
+    const activeSpecs = [...multiActive, ...gateActive];
+    v?.actorsActivated(activeSpecs, runners.length, Date.now() - actorStart);
 
     const runOne = (spec: (typeof activeSpecs)[number]) => {
       const actor = getActor(spec.name);

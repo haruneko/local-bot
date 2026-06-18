@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { runActivator } from "../src/orchestrator/activator.js";
+import { runActivator, runMultiLabelActivator } from "../src/orchestrator/activator.js";
 import { createTurnContext } from "../src/context/turn-context.js";
+import { FakeLlmClient } from "../src/llm/fake.js";
 import type { ActorRunner } from "../src/actors/types.js";
 import type { ActorActivateResult } from "../src/actors/types.js";
 import type { ActorName } from "../src/config/settings.js";
@@ -76,5 +77,51 @@ describe("runActivator", () => {
     const result = await runActivator(makeCtx(), specs);
     expect(result).toHaveLength(1);
     expect(result[0].timeRange).toEqual({ sinceDaysAgo: 3, untilDaysAgo: 1 });
+  });
+});
+
+function judge(name: ActorName, criteria: string): ActorRunner {
+  return { name, criteria, run: async () => ({ attempted: false, name }) };
+}
+
+describe("runMultiLabelActivator", () => {
+  const ALL = [
+    judge("memo", "メモ"),
+    judge("webSearch", "検索"),
+    judge("plan", "計画"),
+    judge("synthesize", "生成"),
+  ];
+
+  it("T-ML01: criteria 系を1発で判定し active なものだけ返す（LLM は1回）", async () => {
+    const llm = new FakeLlmClient([
+      JSON.stringify({
+        memo: { active: true, intent: "ノートに残す" },
+        webSearch: { active: false },
+        plan: { active: false },
+        synthesize: { active: false },
+      }),
+    ]);
+    const result = await runMultiLabelActivator(llm, makeCtx(), ["conversation"], ALL);
+    expect(result.map((r) => r.name)).toEqual(["memo"]);
+    expect(result[0].intent).toBe("ノートに残す");
+    expect(llm.calls).toHaveLength(1);
+  });
+
+  it("T-ML02: criteria を持たない actor だけなら LLM を呼ばず []", async () => {
+    const llm = new FakeLlmClient([]);
+    const gateOnly: ActorRunner = {
+      name: "urlBrowse",
+      activate: async () => null,
+      run: async () => ({ attempted: false, name: "urlBrowse" }),
+    };
+    const result = await runMultiLabelActivator(llm, makeCtx(), ["conversation"], [gateOnly]);
+    expect(result).toEqual([]);
+    expect(llm.calls).toHaveLength(0);
+  });
+
+  it("T-ML03: active でも intent 空なら除外", async () => {
+    const llm = new FakeLlmClient([JSON.stringify({ memo: { active: true } })]);
+    const result = await runMultiLabelActivator(llm, makeCtx(), ["conversation"], [judge("memo", "メモ")]);
+    expect(result).toEqual([]);
   });
 });
