@@ -85,7 +85,7 @@ idle heartbeat 判定:
 | `memory` | **受動の記憶 faculty**（recall+forget 統合・B'）。activate が op∈{想起=recall / 忘却=forget} を1判断で選び run が振る。想起＝LanceDB ベクトル検索／忘却＝softDelete（`deleted` フラグ・**`id` 列で引く**）。ActionFacts kind は `recall`/`forget` |
 | `memo` | **能動の記録 faculty**（notes の full CRUD）。`data/notes/` 読み書き統合。locate（主=recall認識・フォールバック=連想ディセント）で対象を辿り（read-before-edit・**行番号付きで提示**）、op を1つ（view/create/append/replace/section_replace/**replace_line**/**delete_line**）を純関数 applier で適用。MOC ツリー再生成・サイズ自動分割を含む（[MEMO-TREE.md](MEMO-TREE.md)） |
 | `webSearch` | MCP 経由 Web 検索 |
-| `urlBrowse` | MCP 経由 URL 閲覧 |
+| `urlBrowse` | MCP 経由 URL 閲覧。**起動は客観ゲート**＝会話/計画に実 URL（`http(s)://`）が在るときだけ起動（LLM 判定でなく正規表現・推測 URL を作らないので過剰発火しない・§5.2） |
 | `webcam` | カメラ映像取得（未実装） |
 | `plan` | 構造化plan（`data/plans/<id>.json`）を op で更新（コードが構造を保証・LLM は op を1つ出すだけ）。markdown は派生ビュー |
 | `synthesize` | 想起＋外部＋感性（内心/関心事）を統合して成果物（歌詞・読書メモ・まとめ・文章）を**生成**し `data/notes/works/<planId\|slug>.md` へ append 外化（生成が役割の唯一のレーン・memo は転記） |
@@ -101,7 +101,8 @@ idle heartbeat 判定:
 
 - MUST: Ollama chat + `format` = 上記 JSON Schema
 - パース失敗・リトライ失敗 → `null`（起動しない）にフォールバック
-- 全 actor が `createActivate(name, description)` ファクトリで生成した共通実装を使う
+- 判断系 actor は `createActivate(name, description)` ファクトリで生成した共通実装を使う
+- **例外（客観ゲート）**: 起動が客観条件で決まる actor は LLM を使わず機械判定する（DECISIONS「判定系は必ず LLM／ただし客観条件で決まる起動は機械ゲート可」）。`urlBrowse` は会話/計画の URL 有無で起動。recall は常時（背景想起）
 
 ### 5.3 ActionOutcome（共通型）
 
@@ -247,6 +248,8 @@ npm run dev
 | T-FS02 | State 導出: heartbeat + focusPlan あり → `集中`、focusStreak 加算 |
 | T-FS03 | State 導出: heartbeat + focusPlan なし → `静穏`、focusStreak リセット |
 | T-FS04 | 強制ギプス: focusStreak が MAX_FOCUS_STREAK(=10) で focusPlan を手放し `静穏` |
+| T-UB01 | urlBrowse 客観ゲート: 会話に実 URL があれば起動し intent に URL を載せる（LLM を呼ばない） |
+| T-UB02 | urlBrowse 客観ゲート: URL が無ければ起動しない（null・LLM を呼ばない） |
 
 ## 12. 将来（本 SPEC の範囲外）
 

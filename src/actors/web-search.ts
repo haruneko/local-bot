@@ -1,5 +1,6 @@
 import type { ActorRunner } from "./types.js";
 import { createActivate } from "./activate.js";
+import { buildActorContext } from "../context/turn-context.js";
 import { runResearchSubagent } from "../roles/subagent.js";
 
 // DECISIONS.md §webSearch 自発起動（内心ドリブン）／集中モードの計画ドリブン
@@ -21,17 +22,21 @@ export const webSearchActor: ActorRunner = {
   },
 };
 
-const URL_BROWSE_ACTIVATE_PROMPT = [
-  "会話を読み、実際の URL（http:// か https://）を開く必要があるかを判断してください。",
-  "",
-  '- 会話に実 URL があり、それを開く必要がある → { "active": true, "intent": "..." }',
-  '- 取り組み中の計画が特定ページの閲覧を求めている → { "active": true, "intent": "..." }',
-  '- URL が無い／「調べて」「〜は？」の検索依頼（それは webSearch） → { "active": false }',
-].join("\n");
+// 客観ゲート（DECISIONS.md「起動が客観条件で決まる actor は機械ゲート可」）:
+// urlBrowse は行動に「実際の URL」という具体物が要る＝起動条件は判断でなく事実。
+// 会話/計画に http(s):// が在るときだけ起動する（LLM 判定は不要・推測 URL を作らないので過剰発火しない）。
+const URL_RE = /https?:\/\/[^\s)>\]"'）」]+/g;
+const URL_BROWSE_CONTEXT_TURNS = 3;
 
 export const urlBrowseActor: ActorRunner = {
   name: "urlBrowse",
-  activate: createActivate("urlBrowse", "", { systemPrompt: URL_BROWSE_ACTIVATE_PROMPT }),
+  activate: async (_llm, ctx, channels) => {
+    const text = buildActorContext(ctx, channels, { maxTurns: URL_BROWSE_CONTEXT_TURNS });
+    const urls = text.match(URL_RE);
+    if (!urls?.length) return null;
+    const unique = [...new Set(urls)];
+    return { intent: `会話に出た次の URL を開いて中身を読む: ${unique.join(" ")}` };
+  },
   run: (llm, input) => {
     const action = { kind: "research" as const, intent: input.intent };
     // URL 閲覧は browse_url のみ（会話に実 URL があるとき起動）
