@@ -53,8 +53,9 @@ actor／faculty は、世界への effect（作用）を **自分が持つ effec
 - **A. 設計確定（doc）**: 本計画 → CONCEPT（効果器の原則）→ ARCH-NEXT（全部 actor への一歩として位置づけ）
   → DECISIONS（決定記録）→ SPEC（contract: OutputChannel・発話 say・順序・互換）。
 - **B. 実装（分割するが完遂する）**:
-  - B1: 口の効果器。`OutputChannel` を deps に注入／言語野が say／slack・say アダプタを effector 提供側へ／
-    async-reflect 成立。`TurnResult.speech` は push/pull 併存で一時残す。
+  - B1（✅ 完了・commit d4c1a9a）: 口の効果器。`OutputChannel`(`say`) を deps 注入／言語野が発話直後に say／
+    slack を effector 提供側へ（可変 sink・二重投稿撤去）／async-reflect 成立（say は反省より前）。
+    say.ts は当面 pull のまま（単発 CLI・併存）。tests T-OC01/02。
   - B2: **残る全 effect を効果器へ揃える（必須・順次）**。手＝notes（記録）、首＝webcam（実装時）、
     外界探索＝MCP（webSearch/urlBrowse/express）を効果器抽象に乗せ、module-fn 直叩き・orchestrator 特別経路を消す。
   - B3: **互換の撤去**。全 effect が効果器経由になったら `TurnResult.speech` の pull 経路を削除（push のみ）。
