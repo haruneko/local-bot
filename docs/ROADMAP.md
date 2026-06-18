@@ -67,6 +67,8 @@
 - **sticky 集中**（`turn.ts`）: 未達の `focusPlan` を持つ間は集中を維持。とくに**ハートビートでも維持**するので「A を調べた→次の heartbeat で続きを前進」が繋がる（B が「繋がらない」と言っていた当のケース）。
 - 計画チャンネルが集中ターン中に plan を常駐注入（`renderPlan`）。`MAX_FOCUS_STREAK`（強制ギプス）で暴走を止める。
 - 残る非集中（対話・静穏）での連続性は workingMemory 独り言＋concern 頼みの弱い経路だが、「駆動して前進」は集中の役割なので許容。
+- **計画"実行"の前進（2026-06-19・plan processor 実装済み）**: 実機計測で「集中で連打しても milestone が進まない」を発見し、前判定の機械フェーズで解決（DECISIONS §集中モード「plan processor（前判定）」）。
+- **計画実行の3層構造（構想・DECISIONS §集中モード「計画実行の3層構造」）**: Tier 0 plan processor（実装済）／Tier 1 plan オーケストレーター（全体レビュー＋手戻り・コード集約）／**Tier 2 plans-to-do 管理**（複数 plan のポートフォリオ＋観測駆動の選択＝自発性／ドライブの土台・本丸・次に設計）。
 
 ### 問題C: language-agent の format:JSON が口調を抑制する可能性 ❌ 取り下げ
 
