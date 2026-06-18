@@ -14,10 +14,21 @@
 
 - **入力フェーズ（プリプロセス）**: センサー・永続記憶・作業記憶から揮発コンテキスト（`TurnContext`）を組み上げる。全エージェントが参照する事実の起点。フィルタは TurnContext に載せる量を絞るだけで、元データは変更しない。
 - **自律エージェントフェーズ**: 各 actor が並列に自分で起動を判断し、起動した actor が自律実行する。actor 間の within-turn 依存はない。
-  - **activate（各 actor 個別・並列）**: 単一の選定者はいない。各 actor が mini-context（直近会話 + 内心 + actor リスト）を読み、自分が起動すべきかを 1 コールで判断する（`{active, intent}`）。小型・高速モデル（`activatorModel`）使用。actor が増えても「どこに挿すか」を考えなくてよい構造
+  - **起動判定（multi-label）**: 判断系 actor（memo / webSearch / plan / synthesize）の起動を **1 コールでまとめて判定**する（各 actor の起動条件＝criteria を同時に見る）。単一の選定者ではなく、同一事実から各 actor の条件を並行評価する形。客観条件で一意に決まる起動（urlBrowse=URL の有無・recall=常時の背景想起）は機械ゲート（LLM を挟まない）
   - **actor pool**: 起動した各 actor が宣言した知覚チャンネルで TurnContext を参照し、自律実行して `ctx.actions` に積む
-  - **language-agent**: 全チャンネル + `ctx.actions` を受け取り発話を生成し NEXT_STATE を決める
+  - **language-agent**: 全チャンネル + `ctx.actions` を受け取り発話を生成する（State は言語野が宣言せず、観測事実から機械導出する）
   - **内省・内心更新**: 発話結果から内省を生成し LanceDB へ書き込む
+
+### 知覚と作用 ― 受容器と効果器
+
+入力（知覚）に**双対して、出力（作用＝世界への effect）も対称に置く**。**actor／faculty は世界への作用を、自分が持つ効果器（effector）で自分で起こす**。orchestrator が特定の作用を外から代行しない。
+
+- **受容器（sensor）**＝感じる器官：時刻・会話・image_feed・audio_feed を知覚チャンネルへ（preprocess）。
+- **効果器（effector）**＝作用する器官：**発話＝口**／記録(notes)＝手／カメラ運動＝首／外界探索＝MCP。各 action が run の中で自分の効果器を起こす。
+
+発話も「口」という効果器の一つで、**特別な出力経路を持たない**（記録やカメラ運動と同じレイヤ）。＝**input=受容器 / output=効果器 の対称**。生物の受容器⟷効果器に倣う設計で、身体性（embodied）と「全部 actor」の土台になる。
+
+帰結：発話は効果器が起こすので、**喋った後に内省・内心更新が走る**（発話＝ユーザー応答の単位／内省・affect は post-hoc・非ユーザー向け）。応答の体感は発話までで縮む（[EFFECTORS-PLAN.md](EFFECTORS-PLAN.md)・[ARCH-NEXT.md](ARCH-NEXT.md) §2.2）。
 
 各 actor の起動の段はアクターごとに宣言する（none / systematic / llm・[ARCH-NEXT.md](ARCH-NEXT.md) §1.6）。段は「起動が**状況の判断**か**客観条件**か」で決まる。起動が状況の判断を要するアクター（webSearch「外の事実が要るか」・memory「想起か忘却か」等）は必ず LLM で判断し、キーワードやヒューリスティックでショートカット・スキップしない。起動が客観条件で一意に決まるアクター（recall=常時・視覚=画像の有無・distill=静穏idle）は機械ゲートでよい（LLM を挟む意味がない）。
 
