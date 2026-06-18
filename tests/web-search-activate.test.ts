@@ -38,12 +38,13 @@ describe("webSearchActor.activate", () => {
     expect(result).toBeNull();
   });
 
-  it("T-WS04: システムプロンプトに指示ベース・内心ベース両方の記述がある", async () => {
+  it("T-WS04: システムプロンプトが単一軸（外界の事実が要るか）で判定を述べる", async () => {
+    // DECISIONS §webSearch 原則化（2026-06-14）: 旧2段階（指示ベース/内心ベース）を
+    // 「外界の事実が要るか」の単一テストに畳んだ。プロンプトはその軸を述べる。
     const llm = new FakeLlmClient(['{"active":false}']);
     await webSearchActor.activate(llm, makeCtx(), [...CHANNELS]);
     const systemMsg = llm.calls[0].messages.find((m) => m.role === "system");
-    expect(systemMsg?.content).toContain("ユーザー");
-    expect(systemMsg?.content).toContain("内心");
+    expect(systemMsg?.content).toContain("外界の事実");
   });
 
   it("T-WS05: コンテキストに inner_state の内容が含まれる", async () => {

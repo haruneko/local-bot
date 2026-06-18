@@ -2,17 +2,17 @@ import type { ActorRunner } from "./types.js";
 import { createActivate } from "./activate.js";
 import { runPlan } from "../roles/plan.js";
 
+const PLAN_ACTIVATE_PROMPT = [
+  "会話を読み、遂行に計画（目標・タスク一覧）を作る／更新する必要があるかを判断してください。学習・制作・調査など、複数ステップを要するときに計画します。",
+  "",
+  '- 計画の要る複雑なタスクを依頼された → { "active": true, "intent": "..." }',
+  '- 集中作業中で進捗・状態が変わった → { "active": true, "intent": "..." }',
+  '- どれも不要 → { "active": false }',
+].join("\n");
+
 export const planActor: ActorRunner = {
   name: "plan",
-  activate: createActivate(
-    "plan",
-    "取り組み中のゴールの計画ノート（目標・状態・履歴）を作成/更新する。" +
-      "plan は**段階を踏んで達成する目標**（学習・制作・調査など、複数ステップで進める物）のときだけ。" +
-      "**在庫・買い物・リスト・記録の*管理*（足す/消す/確認するだけ）は memo の領分なので plan を作らない**。" +
-      "起動するのは、相手が新しい目標・計画を立てたいと言ったとき、" +
-      "または集中して作業を進めているターンで進捗・状態が変わったとき。" +
-      "雑談・単発の質問・感情・単なる記録/管理のときは起動しない。",
-  ),
+  activate: createActivate("plan", "", { systemPrompt: PLAN_ACTIVATE_PROMPT }),
   run: (llm, input) => {
     const action = { kind: "memory" as const, intent: input.intent };
     return runPlan(llm, { ctx: input.ctx, action, ...input.deps });

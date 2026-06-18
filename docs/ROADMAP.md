@@ -174,7 +174,7 @@
 
 - **タスクキュー**: `data/tasks/` 等に永続化された未完了タスクリスト
 - **バックグラウンドワーカー**: heartbeat がキューを確認し、未完了タスクを1ステップずつ進める
-- **現在の多段想起**（`runRecallLoop`）は「同一ターン内の多段」。これはその手前のステップ
+- **現在の想起**（`runRecall`）は機械 top-2 提示（旧多段ループは 2026-06-18 廃止）。クロスターンのタスク前進はこの手前のステップ
 
 **制約**: タスクの「次に何をすべきか」を実行前に予測してディスパッチしない（予測ゲートの罠）。  
 heartbeat がタスク状態（実行済みの結果）を読んで次ステップを決める、事後判断の設計にすること。  
@@ -234,6 +234,17 @@ express MCP サーバに追加し、express サブエージェントがカタロ
 - ※当初案の「in-process transformers.js で CLIP」は ImageBind（PyTorch・Docker HTTP）に置換。identity 同定（顔/声）は別 faculty（recognition・未実装）。
 
 ---
+
+## プロバイダ移行（Ollama → 外部 API / Vertex AI）
+
+**状態:** 未着手・調査済み。詳細スコープは [research/vertex-migration-scoping-2026-06-18.md](../research/vertex-migration-scoping-2026-06-18.md)。
+
+LLM は `LlmClient` アダプタ越しなので**チャットは `VertexLlmClient` を1クラス足せば呼び出し側無改修**。ただし要対応：
+- **アダプタの漏れ**: `think`/`numCtx` が client config を貫通／**埋め込みに抽象が無い**（stores が具象 `OllamaEmbedClient` 直依存・8箇所）。
+- **地雷＝埋め込み移行**: 既定 ruri-v3（日本語ローカル・768次元・非対称タスク接頭辞）→ Vertex は別モデル・別次元（例 gemini-embedding 3072）。**全テーブル再生成必須**＋接頭辞→`task_type` への思想転換（`embedPrefixFor` は Vertex に不適）＋`recallDistance` 閾値の測り直し。横断 ImageBind は独立で無改修。
+- **構造化出力**: 全 actor/role が `format`(JSON Schema) 依存。Gemini=`responseSchema`へ変換層／Claude on Vertex=tool-use。`tryParseJsonWithSchema` のフォールバックが強く裸 JSON でも実用上通る公算。
+- **横断**: 認証 ADC 追加・settings に `llmProvider` キー・リトライに `RESOURCE_EXHAUSTED` 追加・`num_predict:-1` の読み替え。
+- 使い分け: Gemini=構造化ネイティブ・安い／Claude on Vertex=日本語品質・think不要だが高コスト。role/actor 単位のモデル分離機構が既にあるので併用可。
 
 ## 廃止・不採用
 
