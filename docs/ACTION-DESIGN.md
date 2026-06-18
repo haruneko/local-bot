@@ -43,7 +43,7 @@ flowchart TD
 
 | actor | kind | 説明 |
 |-------|------|------|
-| `memory` | memory | **受動の記憶 faculty**（recall+forget 統合・B'＝[DECISIONS §記憶系アクターの分割統治](DECISIONS.md)）。activate が 1 判断で op∈{想起=recall / 忘却=forget}＋intent を選び run が振る。想起＝LanceDB ベクトル検索／忘却＝softDelete（`deleted` フラグ・`id` 列で引く）。エピソードへの能動 Create/Update は無い（符号化は内心更新の importance 採点）。ActionFacts kind は `recall`/`forget` |
+| ~~`memory`~~ | — | **撤去（2026-06-18）**。想起は actor でなく**プリプロセスの背景 recall**（常時・機械・concern-aware＝`buildRecallQuery` が発話＋concern 合成）＋減衰に一本化（能動 recall は背景に上乗せゼロと5パターン実測）。忘却は減衰、本気の削除は out-of-band（`runForget`/softDelete 温存）。詳細 [DECISIONS §記憶 faculty](DECISIONS.md) |
 | ~~`remember`~~ | — | **廃止・完全削除**（actor＋`runRemember`/`REMEMBER_SYSTEM`/schema を除去）。意図的な内部記憶は「書き込み」でなく、内心更新の importance 採点（気にかけた発話ほど高く＝残りやすく）で扱う。`EpisodeSource "remember"` と present 表示は履歴エピソード用に温存 |
 | `memo` | memory | **能動の記録 faculty**（notes の full CRUD）。`data/notes/` を読み書きする統合 actor。フェーズ1=対象を pick して全文ロード（read-before-edit）→フェーズ2=op を1つ（view/create/append/replace/section_replace/replace_line/delete_line/noop）を純関数 applier で適用（行番号付きで提示）。locate は主=recall 認識・フォールバック=連想ディセント。詳細 [MEMO-TREE.md](MEMO-TREE.md) |
 | `webSearch` | research | MCP 経由 Web 検索。起動判定は単一軸（会話に無い「外界の事実」が要るか・DECISIONS §webSearch 原則化） |

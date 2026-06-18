@@ -18,13 +18,6 @@
   "languageNumPredict": 400,
   "timeZone": "Asia/Tokyo",
   "actors": {
-    "memory": {
-      "enabled": true,
-      "channels": [
-        "conversation",
-        "inner_state"
-      ]
-    },
     "memo": {
       "enabled": true,
       "channels": [
@@ -82,7 +75,6 @@
       "workingMemoryTurns": 8,
       "episodeRecallTopK": 3,
       "actors": [
-        "memory",
         "memo",
         "webSearch",
         "urlBrowse",
@@ -94,7 +86,6 @@
       "workingMemoryTurns": 5,
       "episodeRecallTopK": 3,
       "actors": [
-        "memory",
         "memo",
         "webSearch",
         "urlBrowse",
@@ -105,7 +96,6 @@
       "workingMemoryTurns": 8,
       "episodeRecallTopK": 3,
       "actors": [
-        "memory",
         "memo",
         "webSearch",
         "urlBrowse",

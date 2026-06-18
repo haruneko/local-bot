@@ -249,7 +249,7 @@ export async function createApp(
 
   // actor ごとの知覚チャンネルと LLM
   const ALL_ACTOR_NAMES: ActorName[] = [
-    "memory", "memo",
+    "memo",
     "webSearch", "urlBrowse", "webcam", "plan", "synthesize",
   ];
   const actorChannels = Object.fromEntries(
