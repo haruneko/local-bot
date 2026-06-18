@@ -4,6 +4,14 @@
 発端: async-reflect（発話を先に返す）の検討で、「発話の出力だけ orchestrator が特別扱いして外から出す」
 非対称が露見した。memo はファイルを・webcam はカメラを「自分の run で」叩くのに、発話だけ pull で外。
 
+## 0. 語彙（確定）
+
+- **効果器（effector）**＝世界へ作用する出力器官。口＝発話、手＝記録(notes)、首＝カメラ運動、外界探索＝MCP。
+  生物学の教科書ペア **受容器(receptor)⟷効果器(effector)** の効果器。`-or`＝する側（doer）。
+  ※ `effectee`（される側＝世界・対象）は不採用（主客が逆）。`actuator` でなく、知覚＝sensor の双対として
+  生物メタファの effector を採る（「人間に倣う」思想）。
+- **完遂前提**: 分割実装はするが**半移行で放置しない**。下の「完遂の定義」に到達して初めて完了。
+
 ## 1. 原則（コンセプトの芯）
 
 **知覚（sensor / 知覚チャンネル）に双対な「作用（effector / 作用器）」を立てる。**
@@ -44,18 +52,31 @@ actor／faculty は、世界への effect（作用）を **自分が持つ effec
 
 - **A. 設計確定（doc）**: 本計画 → CONCEPT（効果器の原則）→ ARCH-NEXT（全部 actor への一歩として位置づけ）
   → DECISIONS（決定記録）→ SPEC（contract: OutputChannel・発話 say・順序・互換）。
-- **B. 実装（最小・対称）**:
-  - B1: `OutputChannel` 型を deps に注入／言語野が say／slack・say アダプタを effector 提供側へ／async-reflect 成立。
-  - B2（後）: 他の effect も effector に揃える（notes＝fs effector 化 等・任意・漸進）。
-- **C. テスト/検証**: say が反省の前に呼ばれる・反省は後・クロスターン整合・体感レイテンシ実測。
-- **D. 先（ARCH-NEXT 本体）**: 発話を完全に actor 化（pool 入り）・TTS/サーボを effector として追加・板/フレーム。
+- **B. 実装（分割するが完遂する）**:
+  - B1: 口の効果器。`OutputChannel` を deps に注入／言語野が say／slack・say アダプタを effector 提供側へ／
+    async-reflect 成立。`TurnResult.speech` は push/pull 併存で一時残す。
+  - B2: **残る全 effect を効果器へ揃える（必須・順次）**。手＝notes（記録）、首＝webcam（実装時）、
+    外界探索＝MCP（webSearch/urlBrowse/express）を効果器抽象に乗せ、module-fn 直叩き・orchestrator 特別経路を消す。
+  - B3: **互換の撤去**。全 effect が効果器経由になったら `TurnResult.speech` の pull 経路を削除（push のみ）。
+- **C. テスト/検証**: say が反省の前に呼ばれる・反省は後・クロスターン整合・体感レイテンシ実測。各 effector に最小テスト。
+- **D. 先（ARCH-NEXT 本体）**: 発話を完全に actor 化（pool 入り）・TTS/サーボを効果器として追加・板/フレーム。
+
+## 4.5 完遂の定義（Definition of Done）
+
+本計画は次に**全部**到達して初めて完了（半移行で止めない）:
+- [ ] 全ての副作用（発話・notes 記録・plan・カメラ・MCP）が**効果器経由**で起こる。
+- [ ] orchestrator が特定 effect を外から代行する**特別経路がゼロ**（発話の pull 含む）。
+- [ ] `TurnResult.speech` の pull 経路は撤去（または "ログ専用" と明記して push が唯一の出力路）。
+- [ ] CONCEPT/SPEC/DECISIONS/ARCH-NEXT が効果器モデルで整合。
+- [ ] 各効果器に最小テスト＋体感レイテンシの実測記録。
+- 進捗はこのチェックリストで追う（B1→B2→B3 の順で潰す）。
 
 ## 5. 影響ファイル（B1 の見込み）
 `src/orchestrator/turn.ts`（発話後 say・deps）／`src/roles/language*.ts`（または turn 側で say）／
 `src/app/bootstrap.ts`（OutputChannel 配線）／`src/cli/slack.ts`・`src/cli/say.ts`（effector 提供）／
 型（TurnDeps）／tests。`TurnResult.speech` は互換で残す。
 
-## 6. 非目標
-- 全 effect の一括 effector 化（B2 は漸進で可）。
+## 6. 非目標（ただし完遂は別）
+- **一括**の effector 化＝避ける（事故るので分割）。但し**漸進で完遂する**（B2/B3＝必須・§4.5 Done）。「後で任意」ではない。
 - 発話の完全 actor 化（D・先）。
-- async action（別腰）。
+- async action（遅い行動を待たず結果を後から届ける＝ROADMAP §非同期複雑タスク・別腰）。
