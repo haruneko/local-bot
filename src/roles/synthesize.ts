@@ -41,7 +41,7 @@ export async function runSynthesize(
 ): Promise<ActionOutcome> {
   const action = input.action;
   const intent = action.intent;
-  const { currentDateTime, planId } = input.ctx;
+  const { currentDateTime, planId, currentTask } = input.ctx;
   const lastUserMessage = lastUserMessageFromContext(input.ctx);
   const snap = memorySnapshot(input.ctx);
 
@@ -49,13 +49,19 @@ export async function runSynthesize(
   const filename = resolveArtifactFilename(planId, intent);
   const existing = await readNoteContent(filename);
 
+  // 集中の doer は current タスクだけを進める＝計画全体（先のステップ・全体ゴール）は見せない。
+  // これで「下準備を飛ばして先のステップを書く」先走りを防ぐ。タスクが無いとき（単発の作成依頼等）は
+  // 従来どおり意図＋計画ビューで作る。
+  const focusedTask = currentTask.trim();
   const materials = [
     `基準日時: ${currentDateTime}`,
-    `意図（何を作る/まとめるか）: ${intent}`,
+    focusedTask
+      ? `いま取り組むこと（このタスクだけを進める。先のステップには進まない）: ${focusedTask}`
+      : `意図（何を作る/まとめるか）: ${intent}`,
     lastUserMessage ? `相手があなたに言ったこと: ${lastUserMessage}` : "",
     snap.concern ? `\nいまの関心事: ${snap.concern}` : "",
     snap.affect ? `いまの内心: ${snap.affect}` : "",
-    snap.plan ? `\n取り組み中の計画:\n${snap.plan}` : "",
+    focusedTask ? "" : snap.plan ? `\n取り組み中の計画:\n${snap.plan}` : "",
     snap.recalledEpisodes.length
       ? `\n想起した記憶:\n${snap.recalledEpisodes.map((e) => `- ${e}`).join("\n")}`
       : "",

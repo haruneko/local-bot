@@ -55,6 +55,9 @@ export type TurnContext = {
   plan: string;
   /** 取り組み中の計画 id（focusPlan）。plan actor がその計画を更新するため。空 = なし */
   planId: string;
+  /** いま取り組む単一タスク（current マイルストーンの本文）。集中の doer はこれだけを進める＝
+   *  計画全体（先のステップ・全体ゴール）を見せず先走りを防ぐ。空 = 集中でない/タスク無し */
+  currentTask: string;
   /** memo_index から想起した関連メモの所在 */
   recalledNotes: MemoIndexHit[];
 
@@ -91,6 +94,7 @@ export type CreateTurnContextInput = {
   concern?: string;
   plan?: string;
   planId?: string;
+  currentTask?: string;
   now?: Date;
   timeZone?: string;
 };
@@ -143,6 +147,7 @@ export function createTurnContext(input: CreateTurnContextInput): TurnContext {
     concern: input.concern ?? "",
     plan: input.plan ?? "",
     planId: input.planId ?? "",
+    currentTask: input.currentTask ?? "",
     actions: [],
   };
 }
@@ -268,6 +273,7 @@ export function memorySnapshot(ctx: TurnContext) {
     affect: ctx.affect,
     concern: ctx.concern,
     plan: ctx.plan,
+    currentTask: ctx.currentTask,
   };
 }
 

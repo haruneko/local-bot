@@ -291,6 +291,11 @@ export class VerboseLoggerImpl implements VerboseLogger {
     else if (from !== to) this.line(`state ${from}→${to}`);
   }
 
+  planProcessor(completedIds: string[], allDone: boolean): void {
+    if (this.isDebug) this.json("plan.processor", { completedIds, allDone });
+    else this.line(`plan ✓ ${completedIds.join(",")}${allDone ? " (達成)" : ""}`);
+  }
+
   contextDestroyed(): void {
     if (this.isDebug) this.write("context", "turn context destroyed");
   }

@@ -50,6 +50,14 @@ export const planOpJsonSchema = zodToJsonSchema(planOpSchema, {
   name: "PlanOp",
   ...jsonSchemaOptions,
 });
+/** plan processor の完了判定（1マイルストーンが成果物の中で満たされたか）。狭い二値。 */
+export const planMilestoneJudgeSchema = z.object({
+  satisfied: z.boolean(),
+});
+export const planMilestoneJudgeJsonSchema = zodToJsonSchema(planMilestoneJudgeSchema, {
+  name: "PlanMilestoneJudge",
+  ...jsonSchemaOptions,
+});
 export const memoReadPickJsonSchema = zodToJsonSchema(memoReadPickOutputSchema, {
   name: "MemoReadPickOutput",
   ...jsonSchemaOptions,

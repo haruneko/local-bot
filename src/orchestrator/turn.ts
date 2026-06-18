@@ -33,6 +33,8 @@ import { getActor } from "../actors/registry.js";
 import { loadPlan, savePlan } from "../plan/state.js";
 import { renderPlanForLanguage } from "../plan/render.js";
 import { planProgress, evaluateFocusGraduation } from "../plan/focus.js";
+import { runPlanProcessor } from "../roles/plan-processor.js";
+import { readNoteContent } from "../tools/notes.js";
 import type { VerboseLogger, VerboseLoggerImpl } from "../util/verbose.js";
 import { noopVerbose } from "../util/verbose.js";
 import { formatActionMeta } from "../action/types.js";
@@ -352,7 +354,35 @@ export class TurnOrchestrator {
       imageFeed,
     );
 
+    // plan processor（前判定・集中の背骨）: 集中中、作った成果物(works)と計画を突き合わせ、
+    // 実際に満たされたマイルストーンを機械が✓して current を前へ進める（stuck ポインタの矯正を毎ターン頭で）。
+    // これで計画チャンネルが実態を指し、書く人(synthesize)が常に正しい所を書ける。全✓なら締める。
+    // 進行は「plan actor が発火するか」の博打でなく、集中中まわるこの機械フェーズが担う。
+    let planCompletedThisTurn = false;
+    // 集中の doer に渡す「いま取り組む単一タスク」（current マイルストーン本文）。計画全体は渡さない。
+    let currentTask = "";
+    if (startState === "集中" && this.focusPlan) {
+      const focusPlanState = await loadPlan(this.focusPlan);
+      if (focusPlanState && focusPlanState.milestones.length > 0 && !focusPlanState.retired) {
+        const worksBody = (await readNoteContent(`works/${this.focusPlan}.md`)) ?? "";
+        const processed = await runPlanProcessor(this.deps.llm, {
+          plan: focusPlanState,
+          worksBody,
+        });
+        if (processed.completedIds.length > 0) {
+          await savePlan(processed.plan);
+          v?.planProcessor(processed.completedIds, processed.allDone);
+        }
+        planCompletedThisTurn = processed.allDone;
+        if (!processed.allDone) {
+          const cur = processed.plan.milestones.find((m) => m.id === processed.plan.current);
+          currentTask = cur?.text ?? "";
+        }
+      }
+    }
+
     // 計画チャンネル: 集中 State のときだけ取り組み中のゴールノート全文を常駐させる
+    // （processor で✓・current を更新済みの計画を読む）
     const plan = await this.loadPlanChannel(startState);
 
     let ctx = createTurnContext({
@@ -370,6 +400,7 @@ export class TurnOrchestrator {
       concern: this.concern,
       plan,
       planId: this.focusPlan,
+      currentTask,
       now: turnNow,
       timeZone: this.deps.timeZone,
     });
@@ -407,8 +438,9 @@ export class TurnOrchestrator {
       }
     }
     // ゴール達成 → 集中対象から外す（言語野が次の State を選ぶ）
+    // 達成は plan actor（planAchieved）／plan processor の前判定（planCompletedThisTurn）どちらでも成立する。
     const prevFocusPlan = this.focusPlan;
-    if (planAchieved) this.focusPlan = "";
+    if (planAchieved || planCompletedThisTurn) this.focusPlan = "";
 
     // --- language-agent（常に起動） ---
     ctx = await this.generateSpeech(ctx, trigger, languageLlm);
@@ -423,7 +455,7 @@ export class TurnOrchestrator {
     // 入口: 集中は「計画を実際に前進させた」観測から立つ（言語野の宣言でなく行動から創発）。
     // 計画を作った/更新したターンに focusPlan を確定する。安全（暴走防止）は入口ゲートでなく
     // 「会話で中断され対話へ戻る・疲労・見限り」が担う。意志で集中を点けるボタンは存在しない。
-    if (!planAchieved && planIdThisTurn) {
+    if (!planAchieved && !planCompletedThisTurn && planIdThisTurn) {
       this.focusPlan = planIdThisTurn;
     }
 

@@ -23,7 +23,12 @@ afterEach(async () => {
 
 function makeInput(
   intent: string,
-  opts?: { planId?: string; plan?: string; memoIndex?: InMemoryMemoIndexStore },
+  opts?: {
+    planId?: string;
+    plan?: string;
+    currentTask?: string;
+    memoIndex?: InMemoryMemoIndexStore;
+  },
 ) {
   const ctx = createTurnContext({
     turnId: "turn-synth",
@@ -34,6 +39,7 @@ function makeInput(
     recalledEpisodes: [],
     planId: opts?.planId,
     plan: opts?.plan,
+    currentTask: opts?.currentTask,
   });
   return {
     ctx,
@@ -89,6 +95,23 @@ describe("runSynthesize（生成して成果物に外化する）", () => {
     const outcome = await runSynthesize(llm, makeInput("何か作って", { planId: "x" }));
     expect(outcome.attempted && outcome.status).toBe("failed");
     expect(await readNoteContent("works/x.md")).toBeNull();
+  });
+
+  // 集中の doer steering: currentTask があれば、それだけを渡し計画全体（先のステップ）は見せない
+  it("currentTask があれば current タスクだけを渡し、計画全体は渡さない（先走り防止）", async () => {
+    const llm = new FakeLlmClient(["モチーフ：夜明けの光／霧／静かな水面"]);
+    await runSynthesize(
+      llm,
+      makeInput("成果物を進める", {
+        planId: "歌",
+        plan: "## いま取り組んでいること\n進捗:\n- いま: モチーフを3つ書き出す\n- まだ: Aメロの2行を書く\n- まだ: サビの2行を書く",
+        currentTask: "モチーフを3つ書き出す",
+      }),
+    );
+    const prompt = llm.calls[0].messages[1].content;
+    expect(prompt).toContain("モチーフを3つ書き出す"); // current タスクは渡る
+    expect(prompt).not.toContain("Aメロの2行を書く"); // 先のステップは渡さない
+    expect(prompt).not.toContain("サビの2行を書く");
   });
 
   it("facts.body はそのターンで作った一片（全文ではない）", async () => {
