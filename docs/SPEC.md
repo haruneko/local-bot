@@ -82,7 +82,7 @@ idle heartbeat 判定:
 
 | actor | 機械処理 |
 |-------|----------|
-| `memory` | **受動の記憶 faculty**（recall+forget 統合・B'）。activate が op∈{想起=recall / 忘却=forget} を1判断で選び run が振る。想起＝LanceDB ベクトル検索／忘却＝softDelete（`deleted` フラグ・**`id` 列で引く**）。ActionFacts kind は `recall`/`forget` |
+| `memory` | **受動の記憶 faculty（能動想起＝recall 専用）**。activate が「自分から思い出しにいくか」を判断し run が `runRecall`（LanceDB ベクトル検索→機械 top-2 提示）。**忘却は op でなく減衰**（`recencyDecay`×importance＝「意識して忘れる」は人間にないため forget op は廃止 2026-06-18）。本気の削除はプライバシー用 out-of-band（`runForget`/softDelete は温存）。ActionFacts kind は `recall` |
 | `memo` | **能動の記録 faculty**（notes の full CRUD）。`data/notes/` 読み書き統合。locate（主=recall認識・フォールバック=連想ディセント）で対象を辿り（read-before-edit・**行番号付きで提示**）、op を1つ（view/create/append/replace/section_replace/**replace_line**/**delete_line**）を純関数 applier で適用。MOC ツリー再生成・サイズ自動分割を含む（[MEMO-TREE.md](MEMO-TREE.md)） |
 | `webSearch` | MCP 経由 Web 検索 |
 | `urlBrowse` | MCP 経由 URL 閲覧。**起動は客観ゲート**＝会話/計画に実 URL（`http(s)://`）が在るときだけ起動（LLM 判定でなく正規表現・推測 URL を作らないので過剰発火しない・§5.2） |
