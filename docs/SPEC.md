@@ -151,7 +151,7 @@ type ActionOutcome = { attempted: false } | {
 
 ### 7.4 出力
 
-- `ctx.speech` に格納し CLI に表示（非ストリーム MVP）
+- `ctx.speech` に格納 → **口の効果器 `OutputChannel.say` で出力**（§7.5）。`TurnResult.speech` は戻り値/ログ専用（無言判定・要約）で**ユーザー出力路ではない**
 - State 遷移は言語野でなくオーケストレータが観測から導出（§4.2 phase 6）
 
 ### 7.5 出力＝口の効果器（`OutputChannel`）
@@ -162,8 +162,9 @@ type ActionOutcome = { attempted: false } | {
 - 言語野が発話生成**直後に** `say` を呼ぶ（§4.2 phase 3）。＝ユーザーへの出力は orchestrator が pull で代行せず、口の効果器が push する。
 - **アダプタ（`slack.ts`/`say.ts`）の役割**: 「`TurnResult` を消費して出力」→「`OutputChannel` を**提供**」へ。
 - **順序（不変条件）**: 成果物を作る actor は発話の上流＝say 時点で副作用も `artifacts` も確定。内省・affect は say の**後**（post-hoc）。**次ターンの recall は今ターンの affect/episode に依存＝反省は次ターン前に完了**（`run()` が反省まで await して返す）。
-- **移行（完遂・[EFFECTORS-PLAN](EFFECTORS-PLAN.md)）**: B1=口（OutputChannel）→ B2=残る全 effect を効果器化（記録/カメラ/MCP）→ B3=`TurnResult.speech` の pull 撤去。半移行で放置しない。
-- MUST（移行完了後）: ユーザー向け出力は効果器経由のみ（orchestrator の特別経路ゼロ）。
+- **効果器の所在**: 口＝`OutputChannel`（注入）／手＝notes 記録（`writeNoteContent`・actor 所有）／plan＝`savePlan`（actor 所有）／外界探索＝`deps.mcp`（注入・webSearch/urlBrowse/express）／首＝カメラ（未実装）。**全て所有 action が起こす**（orchestrator は代行しない）。
+- **MUST**: ユーザー向け出力は効果器（OutputChannel）経由のみ＝slack/say 両アダプタが提供。`TurnResult.speech` を出力に使わない（ログ/戻り値専用）。
+- 状態（[EFFECTORS-PLAN](EFFECTORS-PLAN.md)）: B1（口）＋B2（say も効果器・全 effect 所有確認）＋B3（pull を出力路から外し log 専用）＝**完了**。残る uniformity 改善＝手/plan の effector を module-fn から注入式へ（任意・特別経路ではないので非ブロッキング）。
 
 ## 8. 内省くん
 

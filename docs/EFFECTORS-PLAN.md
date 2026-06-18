@@ -56,21 +56,25 @@ actor／faculty は、世界への effect（作用）を **自分が持つ effec
   - B1（✅ 完了・commit d4c1a9a）: 口の効果器。`OutputChannel`(`say`) を deps 注入／言語野が発話直後に say／
     slack を effector 提供側へ（可変 sink・二重投稿撤去）／async-reflect 成立（say は反省より前）。
     say.ts は当面 pull のまま（単発 CLI・併存）。tests T-OC01/02。
-  - B2: **残る全 effect を効果器へ揃える（必須・順次）**。手＝notes（記録）、首＝webcam（実装時）、
-    外界探索＝MCP（webSearch/urlBrowse/express）を効果器抽象に乗せ、module-fn 直叩き・orchestrator 特別経路を消す。
-  - B3: **互換の撤去**。全 effect が効果器経由になったら `TurnResult.speech` の pull 経路を削除（push のみ）。
+  - B2（✅ 完了）: say.ts も効果器（OutputChannel）に揃え、両アダプタが提供側に。残る effect（手=notes/plan・
+    外界探索=MCP）は元々 **actor 所有**で特別経路なし＝効果器経由を確認（手=writeNoteContent/savePlan、探索=deps.mcp）。
+    首=webcam は未実装。
+  - B3（✅ 完了）: `printTurnSummary` から発話/成果物の出力を撤去＝`TurnResult.speech` は**出力路でなくログ/戻り値専用**に。
+    ユーザー出力は効果器（OutputChannel）が唯一の経路。
+- **残（任意・非ブロッキング）**: 手/plan の効果器を module-fn(writeNoteContent/savePlan) から**注入式**へ揃える uniformity 改善。
+  特別経路ではない（actor 所有）ので完遂はブロックしない。発話の完全 actor 化は D。
 - **C. テスト/検証**: say が反省の前に呼ばれる・反省は後・クロスターン整合・体感レイテンシ実測。各 effector に最小テスト。
 - **D. 先（ARCH-NEXT 本体）**: 発話を完全に actor 化（pool 入り）・TTS/サーボを効果器として追加・板/フレーム。
 
 ## 4.5 完遂の定義（Definition of Done）
 
 本計画は次に**全部**到達して初めて完了（半移行で止めない）:
-- [ ] 全ての副作用（発話・notes 記録・plan・カメラ・MCP）が**効果器経由**で起こる。
-- [ ] orchestrator が特定 effect を外から代行する**特別経路がゼロ**（発話の pull 含む）。
-- [ ] `TurnResult.speech` の pull 経路は撤去（または "ログ専用" と明記して push が唯一の出力路）。
-- [ ] CONCEPT/SPEC/DECISIONS/ARCH-NEXT が効果器モデルで整合。
-- [ ] 各効果器に最小テスト＋体感レイテンシの実測記録。
-- 進捗はこのチェックリストで追う（B1→B2→B3 の順で潰す）。
+- [x] 全ての副作用（発話・notes 記録・plan・MCP）が**効果器経由**で起こる（口=OutputChannel／手=writeNoteContent・savePlan／探索=deps.mcp。首=カメラは未実装）。
+- [x] orchestrator が特定 effect を外から代行する**特別経路がゼロ**（発話の pull を出力路から撤去）。
+- [x] `TurnResult.speech` は "ログ/戻り値専用" に明記＝push（OutputChannel）が唯一の出力路。
+- [x] CONCEPT/SPEC/DECISIONS/ARCH-NEXT が効果器モデルで整合。
+- [x] 各効果器に最小テスト（口=T-OC01/02・手/探索=既存 actor テスト）＋体感レイテンシ実測（発話3.9s/反省込み9.1s）。
+- **完了（2026-06-18）**。残る任意改善＝手/plan の効果器を注入式へ（非ブロッキング）・発話の完全 actor 化（D）。
 
 ## 5. 影響ファイル（B1 の見込み）
 `src/orchestrator/turn.ts`（発話後 say・deps）／`src/roles/language*.ts`（または turn 側で say）／

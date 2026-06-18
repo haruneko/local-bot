@@ -7,10 +7,18 @@ import { printTurnSummary } from "./output.js";
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   console.log("接続中… (Ollama / LanceDB)");
+  // 口の効果器: 発話＋成果物を即出力（REPL・出力路を効果器に揃える）。
+  const outputChannel = {
+    say: (speech: string | null, artifacts: string[]) => {
+      if (speech) console.log(speech);
+      for (const artifact of artifacts) console.log(`\n${artifact}`);
+    },
+  };
   const app = await createApp({
     speakerId: args.speakerId,
     memory: args.memory,
     logLevel: args.logLevel ?? "quiet",
+    outputChannel,
   });
   const { orchestrator, speakerId, settings, verbose } = app;
 

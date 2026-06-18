@@ -42,12 +42,20 @@ async function main(): Promise<void> {
   const speakerId = args.speakerId ?? DEFAULT_SPEAKER;
   console.error(`say: 接続中… (話者: ${speakerId})`);
 
+  // 口の効果器: 発話＋成果物を即出力（push）。単発 CLI でも出力路を効果器に揃える（特別経路を作らない）。
+  const outputChannel = {
+    say: (speech: string | null, artifacts: string[]) => {
+      if (speech) console.log(speech);
+      for (const artifact of artifacts) console.log(`\n${artifact}`);
+    },
+  };
   const app = await createApp({
     speakerId,
     memory: args.memory,
     logLevel: args.logLevel ?? "info",
     // --memory-only は完全な使い捨て: state.json（作業記憶・内心）も持続しない
     statePath: args.memory === "memory" ? false : undefined,
+    outputChannel,
   });
   const { orchestrator, verbose } = app;
 

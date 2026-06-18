@@ -5,12 +5,8 @@ export function printTurnSummary(
   result: TurnResult,
   verbose: VerboseLogger,
 ): void {
-  if (result.speech) console.log(result.speech);
-  // 成果物（生成物・調査結果・読み上げ）は speech とは別経路で全文出す。
-  // チャット（テキスト）チャンネルなので常に提示する。音声チャンネルでは出さない設計。
-  for (const artifact of result.artifacts) {
-    console.log(`\n${artifact}`);
-  }
+  // 発話・成果物のユーザー出力は口の効果器（OutputChannel）経由（§効果器）。ここは要約/ログのみ。
+  // `result.speech` は出力でなく無言判定の参照に使う（log 専用）。
   const parts = [`[state → ${result.nextState}]`];
   if (verbose.enabled) {
     parts.push(`turn=${result.turnId.slice(0, 8)}`);
