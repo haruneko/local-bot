@@ -139,5 +139,5 @@ steps を「常時の背景 recall」に混ぜると**引っ張られすぎる**
 - 手（steps actor）: **実装済み**。`listSteps()`／op に `stepsId` target＋`view`/`activate`/`shelve`/`retire`＋`new_goal` の `activate` フラグ＋重複防止／自己起点 criteria。facts.action で orchestrator が focusSteps 制御。集中の actor からは外す（管理は対話・静穏）。
 - 完了畳み: **実装済み**（達成で閉じる・再判定/再 activate しない）。
 - 目覚まし（schedule/cron）: 暫定設計・未実装。
-- idle backlog surface: 実装済みだが kill-switch `STEPS_IDLE_SURFACE=off` で**現在 OFF**（重複生成/研究系の確認が固まるまで）。
+- idle backlog surface: **ON（既定）**。間引き＝静穏 idle で backlog がある回数が `IDLE_SURFACE_EVERY`(=3) に達するたび1回だけ「思い出す」。kill-switch `STEPS_IDLE_SURFACE=off` で停止可。
 - recall に steps を入れる（steps_index）: 当面やらない（過剰引力）。

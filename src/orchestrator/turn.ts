@@ -159,6 +159,10 @@ const MAX_FOCUS_STREAK = 10;
  *  疲労（MAX_FOCUS_STREAK＝休む）より小さくして、進捗の出ない goal は休む前に見限られるようにする。 */
 const MAX_FOCUS_STALL = 6;
 
+/** idle backlog surface の間引き: 静穏 idle で backlog がある回数がこの数に達するたびに1回だけ「思い出す」。
+ *  毎 idle で拾うと作業マシン化＝非人間的なので間引く。 */
+const IDLE_SURFACE_EVERY = 3;
+
 export class TurnOrchestrator {
   private turnContext: TurnContext | null = null;
   private affect: string;
@@ -171,6 +175,8 @@ export class TurnOrchestrator {
   /** 直近ターンで想起済みのベクトル群。INHIBITION_WINDOW_TURNS ターン後に期限切れ */
   private readonly inhibitionBuffer: { vector: number[]; expiresAtTurn: number }[] = [];
   private turnCount = 0;
+  /** idle backlog surface の間引き用カウンタ（静穏 idle で backlog がある回数。in-memory・再起動でリセット）。 */
+  private idleSurfaceCounter = 0;
 
   constructor(
     private state: AgentState,
@@ -900,6 +906,10 @@ export class TurnOrchestrator {
       // ＝Tier 2 の自発の点火。常時 recall に steps を混ぜる過剰引力を避け、idle に限定する。
       const backlog = (await listSteps()).filter((p) => !p.done && !p.retired);
       if (backlog.length > 0) {
+        // 間引き: 毎 idle で拾うと作業マシン化＝非人間的。数回に1回だけ「思い出す」。
+        this.idleSurfaceCounter++;
+        if (this.idleSurfaceCounter < IDLE_SURFACE_EVERY) return ctx;
+        this.idleSurfaceCounter = 0;
         append(
           await runOne({
             name: "steps",
