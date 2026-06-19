@@ -250,7 +250,11 @@ function languageSuccessLine(facts: ActionFacts, intent: string): string {
     case "synthesize":
       return `${facts.filename}に思いついたことを書き留めた`;
     case "plan":
-      return `${facts.filename}の計画を${planVerb(facts.action)}`;
+      // view（報告・確認）は本文（やり残し一覧 or 計画の状況）を相手に伝えるための内容なので body を載せる。
+      // それ以外（立てた/始めた/棚上げ等）は短い事実だけでよい。
+      return facts.action === "view"
+        ? [`いまの状況を確認した:`, facts.body].join("\n")
+        : `${facts.filename}の計画を${planVerb(facts.action)}`;
   }
 }
 
