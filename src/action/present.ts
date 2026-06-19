@@ -55,7 +55,7 @@ export function formatActionSummary(facts: ActionFacts): string {
     case "synthesize":
       return `${noteDisplayPath(facts.filename)} に書き起こした:\n${truncateBody(facts.body)}`;
     case "plan":
-      return `${noteDisplayPath(facts.filename)} の計画を${planVerb(facts.action)}:\n${truncateBody(facts.body)}`;
+      return `${noteDisplayPath(facts.filename)} の段取りを${planVerb(facts.action)}:\n${truncateBody(facts.body)}`;
   }
 }
 
@@ -156,7 +156,7 @@ export function formatActionFactContent(
         shrinkBody(facts.body, audience, factExternalizesNewInfo(facts)),
       ].join("\n");
     case "plan":
-      return [`${facts.filename} の計画ノートを${planVerb(facts.action)}:`, facts.body].join("\n");
+      return [`${facts.filename} の段取りノートを${planVerb(facts.action)}:`, facts.body].join("\n");
   }
 }
 
@@ -253,8 +253,8 @@ function languageSuccessLine(facts: ActionFacts, intent: string): string {
       // view（報告・確認）は本文（やり残し一覧 or 計画の状況）を相手に伝えるための内容なので body を載せる。
       // それ以外（立てた/始めた/棚上げ等）は短い事実だけでよい。
       return facts.action === "view"
-        ? [`いまの状況を確認した:`, facts.body].join("\n")
-        : `${facts.filename}の計画を${planVerb(facts.action)}`;
+        ? [`いまの段取りを確認した:`, facts.body].join("\n")
+        : `${facts.filename}の段取りを${planVerb(facts.action)}`;
   }
 }
 

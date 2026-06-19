@@ -817,7 +817,12 @@ export class TurnOrchestrator {
     for (const o of await Promise.all(others.map(runOne))) append(o);
     if (planSpec) {
       append(await runOne(planSpec));
-    } else if (enabledActors.includes("plan") && ctx.state === "静穏" && !ctx.planId) {
+    } else if (
+      enabledActors.includes("plan") &&
+      ctx.state === "静穏" &&
+      !ctx.planId &&
+      process.env.PLAN_IDLE_SURFACE !== "off" // kill-switch（暫定: 進めない plan を拾って空回りする間 OFF 可）
+    ) {
       // idle backlog surface（静穏 idle の機械ゲート＝distill と同類の客観条件）:
       // 手が空いて取り組み中の計画が無いとき、未完の backlog があれば plan actor に
       // 「思い出して掴むか」を判断させる（activate するかは LLM・無ければ noop）。

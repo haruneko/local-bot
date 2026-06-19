@@ -163,7 +163,7 @@ export async function runPlan(
       kind: "plan",
       planId: "",
       filename: "",
-      body: `やり残し（取り組み中の計画）:\n${renderBacklog(backlog, focusId)}`,
+      body: `やり残し（いま進めてる段取り）:\n${renderBacklog(backlog, focusId)}`,
       achieved: false,
       action: "view",
     });
