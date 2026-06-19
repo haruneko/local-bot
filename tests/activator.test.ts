@@ -88,7 +88,7 @@ describe("runMultiLabelActivator", () => {
   const ALL = [
     judge("memo", "メモ"),
     judge("webSearch", "検索"),
-    judge("plan", "計画"),
+    judge("steps", "計画"),
     judge("synthesize", "生成"),
   ];
 
@@ -97,7 +97,7 @@ describe("runMultiLabelActivator", () => {
       JSON.stringify({
         memo: { active: true, intent: "ノートに残す" },
         webSearch: { active: false },
-        plan: { active: false },
+        steps: { active: false },
         synthesize: { active: false },
       }),
     ]);

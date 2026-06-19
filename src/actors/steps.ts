@@ -1,8 +1,8 @@
 import type { ActorRunner } from "./types.js";
-import { runPlan } from "../roles/plan.js";
+import { runSteps } from "../roles/steps.js";
 
-export const planActor: ActorRunner = {
-  name: "plan",
+export const stepsActor: ActorRunner = {
+  name: "steps",
   // 起動判定は multi-label（1発）が criteria を見て決める。
   criteria:
     "複数ステップで取り組む目標・段取り（学習・制作・調査・実装・改善など）について、" +
@@ -13,6 +13,6 @@ export const planActor: ActorRunner = {
     "日々のマイルストーン✓は自動なので不要。多段の目標と無関係な雑談・感情では起動しない。",
   run: (llm, input) => {
     const action = { kind: "memory" as const, intent: input.intent };
-    return runPlan(llm, { ctx: input.ctx, action, ...input.deps });
+    return runSteps(llm, { ctx: input.ctx, action, ...input.deps });
   },
 };

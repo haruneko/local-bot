@@ -215,7 +215,7 @@ export async function createApp(
         workingMemory: [] as const,
         affect: "",
         concern: "",
-        focusPlan: "",
+        focusSteps: "",
         focusStreak: 0,
         focusStall: 0,
         focusBaseline: 0,
@@ -230,7 +230,7 @@ export async function createApp(
         workingMemory: readonly ConversationTurn[];
         affect: string;
         concern: string;
-        focusPlan: string;
+        focusSteps: string;
         focusStreak: number;
         focusStall: number;
         focusBaseline: number;
@@ -252,7 +252,7 @@ export async function createApp(
   // actor ごとの知覚チャンネルと LLM
   const ALL_ACTOR_NAMES: ActorName[] = [
     "memo",
-    "webSearch", "urlBrowse", "webcam", "plan", "synthesize",
+    "webSearch", "urlBrowse", "webcam", "steps", "synthesize",
   ];
   const actorChannels = Object.fromEntries(
     ALL_ACTOR_NAMES.map((name) => [name, resolveActorChannels(settings, name)]),
@@ -292,7 +292,7 @@ export async function createApp(
     xmodalRecallDistanceThresholds: resolveXmodalRecallDistanceThresholds(settings),
     initialAffect: session.affect,
     initialConcern: session.concern,
-    initialFocusPlan: session.focusPlan,
+    initialFocusSteps: session.focusSteps,
     initialFocusStreak: session.focusStreak,
     initialFocusStall: session.focusStall,
     initialFocusBaseline: session.focusBaseline,

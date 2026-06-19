@@ -31,7 +31,7 @@
       "channels": [
         "conversation",
         "inner_state",
-        "plan"
+        "steps"
       ],
       "model": "qwen3.6:35b-a3b"
     },
@@ -40,7 +40,7 @@
       "channels": [
         "conversation",
         "inner_state",
-        "plan"
+        "steps"
       ]
     },
     "webcam": {
@@ -51,12 +51,12 @@
         "image_feed"
       ]
     },
-    "plan": {
+    "steps": {
       "enabled": true,
       "channels": [
         "conversation",
         "inner_state",
-        "plan"
+        "steps"
       ],
       "model": "qwen3.6:35b-a3b"
     },
@@ -65,7 +65,7 @@
       "channels": [
         "conversation",
         "inner_state",
-        "plan"
+        "steps"
       ],
       "model": "qwen3.6:35b-a3b"
     }
@@ -78,7 +78,7 @@
         "memo",
         "webSearch",
         "urlBrowse",
-        "plan",
+        "steps",
         "synthesize"
       ]
     },
@@ -89,7 +89,7 @@
         "memo",
         "webSearch",
         "urlBrowse",
-        "plan"
+        "steps"
       ]
     },
     "集中": {
@@ -99,7 +99,7 @@
         "memo",
         "webSearch",
         "urlBrowse",
-        "plan",
+        "steps",
         "synthesize"
       ]
     }

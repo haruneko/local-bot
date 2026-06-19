@@ -14,7 +14,7 @@
 
 - **入力フェーズ（プリプロセス）**: センサー・永続記憶・作業記憶から揮発コンテキスト（`TurnContext`）を組み上げる。全エージェントが参照する事実の起点。フィルタは TurnContext に載せる量を絞るだけで、元データは変更しない。
 - **自律エージェントフェーズ**: 各 actor が並列に自分で起動を判断し、起動した actor が自律実行する。actor 間の within-turn 依存はない。
-  - **起動判定（multi-label）**: 判断系 actor（memo / webSearch / plan / synthesize）の起動を **1 コールでまとめて判定**する（各 actor の起動条件＝criteria を同時に見る）。単一の選定者ではなく、同一事実から各 actor の条件を並行評価する形。客観条件で一意に決まる起動（urlBrowse=URL の有無・recall=常時の背景想起）は機械ゲート（LLM を挟まない）
+  - **起動判定（multi-label）**: 判断系 actor（memo / webSearch / steps / synthesize）の起動を **1 コールでまとめて判定**する（各 actor の起動条件＝criteria を同時に見る）。単一の選定者ではなく、同一事実から各 actor の条件を並行評価する形。客観条件で一意に決まる起動（urlBrowse=URL の有無・recall=常時の背景想起）は機械ゲート（LLM を挟まない）
   - **actor pool**: 起動した各 actor が宣言した知覚チャンネルで TurnContext を参照し、自律実行して `ctx.actions` に積む
   - **language-agent**: 全チャンネル + `ctx.actions` を受け取り発話を生成する（State は言語野が宣言せず、観測事実から機械導出する）
   - **内省・内心更新**: 発話結果から内省を生成し LanceDB へ書き込む
@@ -28,7 +28,7 @@
 
 発話も「口」という効果器の一つで、**特別な出力経路を持たない**（記録やカメラ運動と同じレイヤ）。＝**input=受容器 / output=効果器 の対称**。生物の受容器⟷効果器に倣う設計で、身体性（embodied）と「全部 actor」の土台になる。
 
-帰結：発話は効果器が起こすので、**喋った後に内省・内心更新が走る**（発話＝ユーザー応答の単位／内省・affect は post-hoc・非ユーザー向け）。応答の体感は発話までで縮む（[EFFECTORS-PLAN.md](EFFECTORS-PLAN.md)・[ARCH-NEXT.md](ARCH-NEXT.md) §2.2）。
+帰結：発話は効果器が起こすので、**喋った後に内省・内心更新が走る**（発話＝ユーザー応答の単位／内省・affect は post-hoc・非ユーザー向け）。応答の体感は発話までで縮む（[EFFECTORS-STEPS.md](EFFECTORS-STEPS.md)・[ARCH-NEXT.md](ARCH-NEXT.md) §2.2）。
 
 各 actor の起動の段はアクターごとに宣言する（none / systematic / llm・[ARCH-NEXT.md](ARCH-NEXT.md) §1.6）。段は「起動が**状況の判断**か**客観条件**か」で決まる。起動が状況の判断を要するアクター（webSearch「外の事実が要るか」・memory「想起か忘却か」等）は必ず LLM で判断し、キーワードやヒューリスティックでショートカット・スキップしない。起動が客観条件で一意に決まるアクター（recall=常時・視覚=画像の有無・distill=静穏idle）は機械ゲートでよい（LLM を挟む意味がない）。
 
@@ -62,7 +62,7 @@
 [actor pool（並列実行）]
   起動した actor が各自の知覚チャンネルで TurnContext を参照
   memory（想起+忘却の受動記憶）/ memo（記録・読み書き統合）
-  web-search / url-browse / webcam / plan / synthesize / ...
+  web-search / url-browse / webcam / steps / synthesize / ...
   結果を ctx.actions に積む
        ↓
 [language-agent（言語野）]
@@ -85,7 +85,7 @@
 ### State
 - `対話`：ユーザーが発話した、または自分が喋っている状態
 - `静穏`：ハートビートによる潜伏状態
-- `集中`：取り組み中の計画（ゴールノート）を進めるモード。Preprocess に計画チャンネルが常駐し、`plan` actor が進捗を記録する（詳細は DECISIONS.md §集中モード）
+- `集中`：取り組み中の計画（ゴールノート）を進めるモード。Preprocess に計画チャンネルが常駐し、`steps` actor が進捗を記録する（詳細は DECISIONS.md §集中モード）
 
 バリデーションはしない。逸脱値はログ出力して観察する。ログを参照して State 設計を拡張する。
 
@@ -101,7 +101,7 @@
 
 **記憶とメモの違い**: エピソード記憶（LanceDB）はふんわり思い出す（LLM 要約・グラデーション可）。共有メモ（`data/notes/`）は意図して残した全文をそのまま保持し、読み出し時に LLM で改変しない。
 
-**曖昧層と記録層の二層**: 感情・記憶（連想的・再構成的）は LLM の生成が担う＝小さいモデルでも良い反応をする。一方、エバ自身が保守する**構造化記録（plan 等）は精密さが要る**ので、構造・更新はコードが決定的に握り、LLM は「小さな操作（op）と中身の一文」だけ出す（強制ギプス）。精密さは曖昧層の外＝決定的な足場に置く——recall 側が「距離分類=機械＋LLM は意味だけ」なのと対称。人間も精密さは脳外の硬いツール（リスト・表）＋単純操作に逃がしている。詳細は DECISIONS.md §集中モード。
+**曖昧層と記録層の二層**: 感情・記憶（連想的・再構成的）は LLM の生成が担う＝小さいモデルでも良い反応をする。一方、エバ自身が保守する**構造化記録（steps 等）は精密さが要る**ので、構造・更新はコードが決定的に握り、LLM は「小さな操作（op）と中身の一文」だけ出す（強制ギプス）。精密さは曖昧層の外＝決定的な足場に置く——recall 側が「距離分類=機械＋LLM は意味だけ」なのと対称。人間も精密さは脳外の硬いツール（リスト・表）＋単純操作に逃がしている。詳細は DECISIONS.md §集中モード。
 
 ### プリプロセス
 知的判断をしない濾過マシナリー。現在の State に応じて各チャンネルから必要な情報だけを引き出し、フィルタしてコンテキストを組み上げる。**フィルタは TurnContext に載せる量を絞るだけで、元データ（LanceDB・state.json）は変更しない**。フィルタ量は `stateConfig` で State 別に設定する。
@@ -110,7 +110,7 @@
 単一の選定者は置かない。各 actor が自分で起動可否を判断する軽量スクリーナーを持つ（`src/actors/activate.ts` の `createActivate` ファクトリ）。mini-context（直近 2〜3 ターン・最新発話・内心ステート・利用可能 actor リスト）のみを受け取り、1 コールで自分について `{active, intent}` を返す。想起済みエピソードは渡さない（それを取りに行くかを決めるのが activate のため）。config / stateConfig のフィルタで pool から除外済みの actor は判断自体が呼ばれない。false negative のコストが高いため迷ったら ON に倒す。actor（＝身体・能力）が増えても判断が分散しているので拡張しやすい。
 
 ### actor pool
-activator が選んだ actor が並列に実行する。各 actor は宣言した**知覚チャンネル**の TurnContext フィールドのみを参照し、自律判断・実行して `ctx.actions` に `ActionOutcome` を積む。記憶系は**性質で2 faculty に分ける**（B'）: `memory`＝受動の記憶（recall+忘却を1 actorに統合・op で選ぶ・Read+Delete のみ）／`memo`＝能動の記録（notes の full CRUD・op＋連想する記憶の木）。他に `web-search` `url-browse` `webcam` `plan` `synthesize`（想起+外部+感性を統合して成果物を生成）。`remember` は廃止（意図的記憶は内心更新の importance 採点で扱う）。
+activator が選んだ actor が並列に実行する。各 actor は宣言した**知覚チャンネル**の TurnContext フィールドのみを参照し、自律判断・実行して `ctx.actions` に `ActionOutcome` を積む。記憶系は**性質で2 faculty に分ける**（B'）: `memory`＝受動の記憶（recall+忘却を1 actorに統合・op で選ぶ・Read+Delete のみ）／`memo`＝能動の記録（notes の full CRUD・op＋連想する記憶の木）。他に `web-search` `url-browse` `webcam` `steps` `synthesize`（想起+外部+感性を統合して成果物を生成）。`remember` は廃止（意図的記憶は内心更新の importance 採点で扱う）。
 
 ### language-agent（言語野）
 全 facts を受け取りキャラクタールールに従ってセリフを生成する。行動後に結果を説明する分離脳の左脳モデル。毎ターン必ず起動し、発話するかどうかを自分で決める。発話に加えて `NEXT_STATE` を出力し、State 遷移の責任を担う。

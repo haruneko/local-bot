@@ -384,8 +384,8 @@ describe("TurnOrchestrator", () => {
     expect(distillCalls).toBe(0);
   });
 
-  it("自発 distill: 集中ハートビート（focusPlan あり）では呼ばない", async () => {
-    // 新設計では state は観測導出: heartbeat で focusPlan があれば集中（＝静穏でない）。
+  it("自発 distill: 集中ハートビート（focusSteps あり）では呼ばない", async () => {
+    // 新設計では state は観測導出: heartbeat で focusSteps があれば集中（＝静穏でない）。
     const llm = new FakeLlmClient([lang("")]);
     let distillCalls = 0;
     const orch = new TurnOrchestrator(
@@ -393,7 +393,7 @@ describe("TurnOrchestrator", () => {
       baseTurnDeps({
         llm,
         workingMemory: new WorkingMemory(20),
-        initialFocusPlan: "dummy-plan",
+        initialFocusSteps: "dummy-steps",
         runDistill: async () => {
           distillCalls++;
           return { ran: false, factsUpserted: 0 };
@@ -409,18 +409,18 @@ describe("TurnOrchestrator", () => {
   // --- 集中 State の機械導出・focusStreak・強制ギプス（MAX_FOCUS_STREAK） ---
   // State は言語野の宣言でなく観測事実から導出（turn.ts §State 遷移）。
 
-  it("T-FS01: user_message は focusPlan があっても 対話 に割り込む（集中の中断）", async () => {
+  it("T-FS01: user_message は focusSteps があっても 対話 に割り込む（集中の中断）", async () => {
     const llm = new FakeLlmClient([lang("はーい"), "内省", '{"tags":[]}', "気分"]);
-    let persisted: { state: string; focusPlan: string } | null = null;
+    let persisted: { state: string; focusSteps: string } | null = null;
     const orch = new TurnOrchestrator(
       "集中",
       baseTurnDeps({
         llm,
         workingMemory: new WorkingMemory(20),
-        initialFocusPlan: "dummy-plan",
+        initialFocusSteps: "dummy-steps",
         initialFocusStreak: 3,
         onSessionPersist: async (s) => {
-          persisted = { state: s.state, focusPlan: s.focusPlan };
+          persisted = { state: s.state, focusSteps: s.focusSteps };
         },
       }),
     );
@@ -428,11 +428,11 @@ describe("TurnOrchestrator", () => {
     const result = await orch.run({ type: "user_message", content: "やあ", speakerId: "u1" });
 
     expect(result.nextState).toBe("対話");
-    // 中断であって放棄ではない＝focusPlan は保持（次の heartbeat で集中へ戻れる sticky）
-    expect(persisted!.focusPlan).toBe("dummy-plan");
+    // 中断であって放棄ではない＝focusSteps は保持（次の heartbeat で集中へ戻れる sticky）
+    expect(persisted!.focusSteps).toBe("dummy-steps");
   });
 
-  it("T-FS02: heartbeat + focusPlan あり → 集中、focusStreak が加算される", async () => {
+  it("T-FS02: heartbeat + focusSteps あり → 集中、focusStreak が加算される", async () => {
     const llm = new FakeLlmClient([lang("")]); // idle heartbeat = 1 call
     let persistedStreak = -1;
     const orch = new TurnOrchestrator(
@@ -440,7 +440,7 @@ describe("TurnOrchestrator", () => {
       baseTurnDeps({
         llm,
         workingMemory: new WorkingMemory(20),
-        initialFocusPlan: "dummy-plan",
+        initialFocusSteps: "dummy-steps",
         initialFocusStreak: 0,
         onSessionPersist: async (s) => {
           persistedStreak = s.focusStreak;
@@ -454,7 +454,7 @@ describe("TurnOrchestrator", () => {
     expect(persistedStreak).toBe(1);
   });
 
-  it("T-FS03: heartbeat + focusPlan なし → 静穏、focusStreak は 0 に戻る", async () => {
+  it("T-FS03: heartbeat + focusSteps なし → 静穏、focusStreak は 0 に戻る", async () => {
     const llm = new FakeLlmClient([lang("")]);
     let persistedStreak = -1;
     const orch = new TurnOrchestrator(
@@ -462,7 +462,7 @@ describe("TurnOrchestrator", () => {
       baseTurnDeps({
         llm,
         workingMemory: new WorkingMemory(20),
-        initialFocusPlan: "",
+        initialFocusSteps: "",
         initialFocusStreak: 5,
         onSessionPersist: async (s) => {
           persistedStreak = s.focusStreak;
@@ -476,26 +476,26 @@ describe("TurnOrchestrator", () => {
     expect(persistedStreak).toBe(0);
   });
 
-  it("T-FS04: focusStreak が MAX_FOCUS_STREAK(=10) に達したら強制ギプスで focusPlan を手放し 静穏へ", async () => {
+  it("T-FS04: focusStreak が MAX_FOCUS_STREAK(=10) に達したら強制ギプスで focusSteps を手放し 静穏へ", async () => {
     const llm = new FakeLlmClient([lang("")]);
-    let persisted: { state: string; focusPlan: string } | null = null;
+    let persisted: { state: string; focusSteps: string } | null = null;
     const orch = new TurnOrchestrator(
       "集中",
       baseTurnDeps({
         llm,
         workingMemory: new WorkingMemory(20),
-        initialFocusPlan: "dummy-plan",
+        initialFocusSteps: "dummy-steps",
         initialFocusStreak: 10, // MAX 到達
         onSessionPersist: async (s) => {
-          persisted = { state: s.state, focusPlan: s.focusPlan };
+          persisted = { state: s.state, focusSteps: s.focusSteps };
         },
       }),
     );
 
     const result = await orch.run({ type: "heartbeat" });
 
-    expect(persisted!.focusPlan).toBe(""); // ギプスで手放す
-    expect(result.nextState).toBe("静穏"); // focusPlan が無くなったので静穏へ
+    expect(persisted!.focusSteps).toBe(""); // ギプスで手放す
+    expect(result.nextState).toBe("静穏"); // focusSteps が無くなったので静穏へ
   });
 
   // --- 口の効果器（OutputChannel）= 発話を即 push・反省より前 ---

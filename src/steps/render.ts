@@ -1,10 +1,10 @@
-import type { PlanState } from "./state.js";
+import type { StepsState } from "./state.js";
 
 /**
- * 構造化plan を markdown にレンダリングする（決定的）。
+ * 構造化steps を markdown にレンダリングする（決定的）。
  * LLM もこのビュー（id 付き）を読んで op を出す。Obsidian 互換ミラーにも使う。
  */
-export function renderPlan(state: PlanState): string {
+export function renderSteps(state: StepsState): string {
   const parts: string[] = [`# ${state.title}`];
   if (state.goal.trim()) parts.push("## 目標", state.goal);
 
@@ -30,10 +30,10 @@ export function renderPlan(state: PlanState): string {
 }
 
 /**
- * 言語野（発話）向けの柔らかいビュー。op 用の renderPlan と違い id・チェックボックス・
+ * 言語野（発話）向けの柔らかいビュー。op 用の renderSteps と違い id・チェックボックス・
  * 全履歴を出さない＝選ばせる機械でなく「いま何をしていて、どこにいて、残りは何か」の想起的な提示。
  */
-export function renderPlanForLanguage(state: PlanState): string {
+export function renderStepsForLanguage(state: StepsState): string {
   const current = state.milestones.find((m) => m.id === state.current);
   const goalPart = state.goal.trim() ? `（${state.goal.trim()}）` : "";
   const where = current ? `、いまは「${current.text}」のところ` : "";

@@ -8,8 +8,8 @@ export function noteDisplayPath(filename: string): string {
   return `data/notes/${filename}`;
 }
 
-/** plan facts.action → 表示用の動詞。 */
-function planVerb(action: "view" | "create" | "activate" | "shelve" | "retire" | "update"): string {
+/** steps facts.action → 表示用の動詞。 */
+function stepsVerb(action: "view" | "create" | "activate" | "shelve" | "retire" | "update"): string {
   switch (action) {
     case "view":
       return "確認した";
@@ -54,8 +54,8 @@ export function formatActionSummary(facts: ActionFacts): string {
       return `${facts.tool} に送った: ${truncateBody(facts.body, 500)}`;
     case "synthesize":
       return `${noteDisplayPath(facts.filename)} に書き起こした:\n${truncateBody(facts.body)}`;
-    case "plan":
-      return `${noteDisplayPath(facts.filename)} の段取りを${planVerb(facts.action)}:\n${truncateBody(facts.body)}`;
+    case "steps":
+      return `${noteDisplayPath(facts.filename)} の段取りを${stepsVerb(facts.action)}:\n${truncateBody(facts.body)}`;
   }
 }
 
@@ -155,8 +155,8 @@ export function formatActionFactContent(
         `${facts.filename} に、想起と外部情報と自分の感性を統合してこれを書き起こした:`,
         shrinkBody(facts.body, audience, factExternalizesNewInfo(facts)),
       ].join("\n");
-    case "plan":
-      return [`${facts.filename} の段取りノートを${planVerb(facts.action)}:`, facts.body].join("\n");
+    case "steps":
+      return [`${facts.filename} の段取りノートを${stepsVerb(facts.action)}:`, facts.body].join("\n");
   }
 }
 
@@ -165,7 +165,7 @@ export function formatActionFactContent(
  * 原則: そのターンのプリプロセスまでの情報を読んでも出てこない情報は出す。ただし量は kind 次第：
  * - synthesize / memo_read: 成果物・読み上げ＝**全文**（既存ファイルあり）
  * - research: **要約だけ**（多ソースの生 dump=全文 body はチャットを流すので出さない・要点は届ける）
- * - memo_write(既出の転記)・recall(想起要約)・plan・forget は対象外
+ * - memo_write(既出の転記)・recall(想起要約)・steps・forget は対象外
  */
 export function factExternalizesNewInfo(facts: ActionFacts): boolean {
   switch (facts.kind) {
@@ -249,12 +249,12 @@ function languageSuccessLine(facts: ActionFacts, intent: string): string {
       return `${facts.tool}に${subject}を送った`;
     case "synthesize":
       return `${facts.filename}に思いついたことを書き留めた`;
-    case "plan":
+    case "steps":
       // view（報告・確認）は本文（やり残し一覧 or 計画の状況）を相手に伝えるための内容なので body を載せる。
       // それ以外（立てた/始めた/棚上げ等）は短い事実だけでよい。
       return facts.action === "view"
         ? [`いまの段取りを確認した:`, facts.body].join("\n")
-        : `${facts.filename}の段取りを${planVerb(facts.action)}`;
+        : `${facts.filename}の段取りを${stepsVerb(facts.action)}`;
   }
 }
 
@@ -300,7 +300,7 @@ function languageErrorLine(
         return "送信できなかった";
       case "synthesize":
         return "書き留められなかった";
-      case "plan":
+      case "steps":
         return "計画を更新できなかった";
       default:
         return `${subject}はうまくいかなかった`;

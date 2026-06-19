@@ -24,8 +24,8 @@ afterEach(async () => {
 function makeInput(
   intent: string,
   opts?: {
-    planId?: string;
-    plan?: string;
+    stepsId?: string;
+    steps?: string;
     currentTask?: string;
     memoIndex?: InMemoryMemoIndexStore;
   },
@@ -37,8 +37,8 @@ function makeInput(
     dialogue,
     recentTurns: [],
     recalledEpisodes: [],
-    planId: opts?.planId,
-    plan: opts?.plan,
+    stepsId: opts?.stepsId,
+    steps: opts?.steps,
     currentTask: opts?.currentTask,
   });
   return {
@@ -51,12 +51,12 @@ function makeInput(
 }
 
 describe("runSynthesize（生成して成果物に外化する）", () => {
-  it("計画があれば works/<planId>.md に新規生成し、_index と memoIndex を更新", async () => {
+  it("計画があれば works/<stepsId>.md に新規生成し、_index と memoIndex を更新", async () => {
     const memoIndex = new InMemoryMemoIndexStore();
     const llm = new FakeLlmClient(["夜が明ける前の静けさを\n君の名で呼んでみる"]);
     const outcome = await runSynthesize(
       llm,
-      makeInput("新曲のサビを書く", { planId: "新曲", plan: "ゴール: 新曲を作る", memoIndex }),
+      makeInput("新曲のサビを書く", { stepsId: "新曲", steps: "ゴール: 新曲を作る", memoIndex }),
     );
     expect(outcome.attempted && outcome.status).toBe("succeeded");
     if (outcome.attempted && outcome.status === "succeeded") {
@@ -72,7 +72,7 @@ describe("runSynthesize（生成して成果物に外化する）", () => {
     const llm = new FakeLlmClient(["サビ：それでも歩いていく"]);
     const outcome = await runSynthesize(
       llm,
-      makeInput("サビを足す", { planId: "新曲" }),
+      makeInput("サビを足す", { stepsId: "新曲" }),
     );
     expect(outcome.attempted && outcome.status).toBe("succeeded");
     const content = await readNoteContent("works/新曲.md");
@@ -92,7 +92,7 @@ describe("runSynthesize（生成して成果物に外化する）", () => {
 
   it("生成が空なら失敗で返す（成果物を作らない）", async () => {
     const llm = new FakeLlmClient(["   "]);
-    const outcome = await runSynthesize(llm, makeInput("何か作って", { planId: "x" }));
+    const outcome = await runSynthesize(llm, makeInput("何か作って", { stepsId: "x" }));
     expect(outcome.attempted && outcome.status).toBe("failed");
     expect(await readNoteContent("works/x.md")).toBeNull();
   });
@@ -103,8 +103,8 @@ describe("runSynthesize（生成して成果物に外化する）", () => {
     await runSynthesize(
       llm,
       makeInput("成果物を進める", {
-        planId: "歌",
-        plan: "## いま取り組んでいること\n進捗:\n- いま: モチーフを3つ書き出す\n- まだ: Aメロの2行を書く\n- まだ: サビの2行を書く",
+        stepsId: "歌",
+        steps: "## いま取り組んでいること\n進捗:\n- いま: モチーフを3つ書き出す\n- まだ: Aメロの2行を書く\n- まだ: サビの2行を書く",
         currentTask: "モチーフを3つ書き出す",
       }),
     );
@@ -117,7 +117,7 @@ describe("runSynthesize（生成して成果物に外化する）", () => {
   it("facts.body はそのターンで作った一片（全文ではない）", async () => {
     await writeNoteContent("works/新曲.md", "既にある一連目");
     const llm = new FakeLlmClient(["新しい二連目だけ"]);
-    const outcome = await runSynthesize(llm, makeInput("続き", { planId: "新曲" }));
+    const outcome = await runSynthesize(llm, makeInput("続き", { stepsId: "新曲" }));
     if (outcome.attempted && outcome.status === "succeeded") {
       expect((outcome.facts as { body: string }).body).toBe("新しい二連目だけ");
     } else {

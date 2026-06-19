@@ -1,5 +1,5 @@
 /**
- * メモ本文に対する「小さな操作」。plan の op と同じく構造はコードが握り、LLM は op を1つ出すだけ。
+ * メモ本文に対する「小さな操作」。steps の op と同じく構造はコードが握り、LLM は op を1つ出すだけ。
  * Ollama structured output 向けに discriminated union でなく平坦にする（意味は applier が解釈）。
  *
  * 不変条件（DECISIONS / docs/MEMO-TREE.md）:

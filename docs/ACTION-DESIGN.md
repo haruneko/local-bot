@@ -49,7 +49,7 @@ flowchart TD
 | `webSearch` | research | MCP 経由 Web 検索。起動判定は単一軸（会話に無い「外界の事実」が要るか・DECISIONS §webSearch 原則化） |
 | `urlBrowse` | research | MCP 経由 URL 閲覧 |
 | `webcam` | research | カメラ映像取得（未実装） |
-| `plan` | memory | ゴールノート（`goals/*.md`）の作成/更新。集中モードの計画進行管理（追記保全・状態と履歴のみ） |
+| `steps` | memory | ゴールノート（`goals/*.md`）の作成/更新。集中モードの計画進行管理（追記保全・状態と履歴のみ） |
 | `synthesize` | memory | 想起＋外部情報＋感性（内心/関心事）を統合して成果物（歌詞・読書メモ・まとめ・文章）を**生成**し `works/<id|slug>.md` へ外化する。memo（強制ギプス・転記）と違い**生成が役割**の唯一のレーン。append で継ぎ足し（既存破壊なし）。「行動としての思考」 |
 
 ### memo と synthesize の違い（転記 vs 生成）
@@ -61,7 +61,7 @@ flowchart TD
 | 役割 | 決まったことを**正確に転記**する（台帳・リスト・決定） | 素材を統合して**新しく作る/まとめる** |
 | LLM の生成 | 禁止（強制ギプス・op を1つ出すだけ） | **生成こそが役割**（歌詞・読書メモ・要約・文書） |
 | 入力 | 対象メモの全文（read-before-edit） | 想起・外部情報・内心/関心事・計画を統合 |
-| 出力先 | 主題のメモ（recall認識 or descent で特定） | `works/<planId or slug>.md`（成果物として決定的） |
+| 出力先 | 主題のメモ（recall認識 or descent で特定） | `works/<stepsId or slug>.md`（成果物として決定的） |
 
 判断は両方 LLM の activate に委ねる（キーワード分岐しない）。「メモして」「あれ見て」は memo、「書いて」「作って」「まとめて」や集中作業の成果物前進は synthesize。
 
@@ -95,7 +95,7 @@ type ActionFacts =
   | { kind: "research";   tool: string; title: string; body: string }
   | { kind: "express";    tool: string; title: string; body: string }
   | { kind: "synthesize"; filename: string; body: string }
-  | { kind: "plan";       planId: string; filename: string; body: string; achieved: boolean };
+  | { kind: "steps";       stepsId: string; filename: string; body: string; achieved: boolean };
 ```
 
 `recall` 行動成功時は `recallDelivery: omit`（背景想起と重複するため）。
@@ -110,7 +110,7 @@ type ActionFacts =
 | **言語野の入力** | 冒頭120字＋「全文は別途届く・書き写すな」注記 | 全文を渡すと言語野が書き直し**二重生成＆劣化**する |
 | **内省の入力** | 冒頭120字＋分量メタ（全◯字・◯行） | エピソードは要約層。全文は works/・memo_index が正本。手応えだけ残す |
 
-- ユーザー出力の線引きは **「そのターンのプリプロセスまでの情報を読んでも出てこない情報＝新規情報 kind だけ出す」**（`factExternalizesNewInfo`）: `synthesize`（生成）/ `research`（外部取得）/ `memo_read`（全文を初ロード＝読み上げ意図）。`memo_write`（既出の転記）・`recall`・`plan`・`forget` は出さない。
+- ユーザー出力の線引きは **「そのターンのプリプロセスまでの情報を読んでも出てこない情報＝新規情報 kind だけ出す」**（`factExternalizesNewInfo`）: `synthesize`（生成）/ `research`（外部取得）/ `memo_read`（全文を初ロード＝読み上げ意図）。`memo_write`（既出の転記）・`recall`・`steps`・`forget` は出さない。
 - **量は kind で非対称**（`src/action/present.ts`）: `synthesize` / `memo_read` は**全文**、**`research` は要約だけ**（多ソースの生 dump＝全文 body はチャットを流すので出さず、要点だけ届ける）。
 - 音声など本文を読み上げない宛先では、出力側が `artifacts` を出さない選択をする（チャンネル能力での出し分け）。CLI/Slack は常に提示。
 - `synthesize` の `body` は**そのターンで作った一片**（成果物の全文ではない）。
@@ -124,4 +124,4 @@ type ActionFacts =
 v0.6 以前は memory-agent / research-agent の束ねエージェントが直列に動いていた。
 v0.7 でフラットな actor pool に統一（DECISIONS.md §エージェント設計 v0.7 参照）。
 2026-06 に残っていた dead-in-prod の旧経路（`action.ts`/`runCategorySubagent`/`runMemorySubagent`/`runExpressSubagent`、旧 `memo-write.ts`/`memo-read.ts` role）を削除。
-廃止設計の詳細記録は `docs/archive/deliberation-plan-deprecated.md`。
+廃止設計の詳細記録は `docs/archive/deliberation-steps-deprecated.md`。

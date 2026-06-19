@@ -8,8 +8,8 @@ export type ActionFacts =
   | { kind: "express"; tool: string; title: string; body: string }
   | { kind: "synthesize"; filename: string; body: string }
   | {
-      kind: "plan";
-      planId: string;
+      kind: "steps";
+      stepsId: string;
       filename: string;
       body: string;
       achieved: boolean;

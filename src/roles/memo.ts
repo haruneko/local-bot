@@ -151,12 +151,12 @@ export async function runMemo(
     baseContent = target ? current : null;
   }
 
-  // 境界: goals/ は plan の派生ビュー（plan 所有・renderPlan で機械再生成される）。
-  // memo で書くと次の plan 更新で上書き消失し取り合いになる。書かずに plan の領分へ譲る。
+  // 境界: goals/ は steps の派生ビュー（steps 所有・renderSteps で機械再生成される）。
+  // memo で書くと次の steps 更新で上書き消失し取り合いになる。書かずに steps の領分へ譲る。
   if (filename.startsWith("goals/")) {
     return actionSucceeded(
       action,
-      "計画ノート（goals/）は plan の領分なので memo では書かなかった",
+      "計画ノート（goals/）は steps の領分なので memo では書かなかった",
     );
   }
 

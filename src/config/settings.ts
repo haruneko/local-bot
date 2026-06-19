@@ -15,7 +15,7 @@ export type ContextChannel =
   | "inner_state"
   | "actor_list"
   | "image_feed"
-  | "plan";
+  | "steps";
 
 /** フラット actor pool のアクター名 */
 export type ActorName =
@@ -23,7 +23,7 @@ export type ActorName =
   | "webSearch"
   | "urlBrowse"
   | "webcam"
-  | "plan"
+  | "steps"
   | "synthesize";
 
 /** 各 actor の設定 */
@@ -38,11 +38,11 @@ export type ActorConfig = {
 /** actor ごとのデフォルト知覚チャンネル（activator と同一にすること） */
 export const DEFAULT_ACTOR_CHANNELS: Record<ActorName, ContextChannel[]> = {
   memo:      ["conversation", "inner_state"],
-  webSearch: ["conversation", "inner_state", "plan"],
-  urlBrowse: ["conversation", "inner_state", "plan"],
+  webSearch: ["conversation", "inner_state", "steps"],
+  urlBrowse: ["conversation", "inner_state", "steps"],
   webcam:    ["conversation", "inner_state", "image_feed"],
-  plan:      ["conversation", "inner_state", "plan"],
-  synthesize: ["conversation", "inner_state", "plan"],
+  steps:      ["conversation", "inner_state", "steps"],
+  synthesize: ["conversation", "inner_state", "steps"],
 };
 
 /** State 別のコンテキスト設定（元データは変更しない・TurnContext に載せる量のみ絞る） */
@@ -256,7 +256,7 @@ export function resolveEnabledActors(
 ): ActorName[] {
   const ALL_ACTORS: ActorName[] = [
     "memo",
-    "webSearch", "urlBrowse", "webcam", "plan", "synthesize",
+    "webSearch", "urlBrowse", "webcam", "steps", "synthesize",
   ];
   const stateActors = settings.stateConfig?.[state]?.actors;
   const candidates = stateActors ?? ALL_ACTORS;

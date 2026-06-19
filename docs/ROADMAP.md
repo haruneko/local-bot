@@ -58,17 +58,17 @@
 
 詳細は DECISIONS.md §affect/concern 分離設計 参照。
 
-### 問題B: 行動の結果が次ターンに残らない ✅ 解決済み（集中 State＋構造化 plan）
+### 問題B: 行動の結果が次ターンに残らない ✅ 解決済み（集中 State＋構造化 steps）
 
 ~~1ターン内の多段（`MAX_SUBAGENT_STEPS=3` / `MAX_RECALL_STEPS=3`）は実装済みだが、**クロスターンの連続行動**の設計がない。例: webSearch でAを調べた → 次のハートビートで「Aの結果を踏まえてBを深掘りしよう」が成立しない。当初の解決方向は `agenda` フィールド案だった。~~
 
-**解決（`agenda` フィールドは作らず、集中 State＋構造化 plan に寄せた）**:
-- 構造化 plan（`data/plans/<id>.json`）が `current`（次のマイルストーン）＋`log`（やったこと）を持つ＝駆動型タスクの agenda 本体。
-- **sticky 集中**（`turn.ts`）: 未達の `focusPlan` を持つ間は集中を維持。とくに**ハートビートでも維持**するので「A を調べた→次の heartbeat で続きを前進」が繋がる（B が「繋がらない」と言っていた当のケース）。
-- 計画チャンネルが集中ターン中に plan を常駐注入（`renderPlan`）。`MAX_FOCUS_STREAK`（強制ギプス）で暴走を止める。
+**解決（`agenda` フィールドは作らず、集中 State＋構造化 steps に寄せた）**:
+- 構造化 steps（`data/steps/<id>.json`）が `current`（次のマイルストーン）＋`log`（やったこと）を持つ＝駆動型タスクの agenda 本体。
+- **sticky 集中**（`turn.ts`）: 未達の `focusSteps` を持つ間は集中を維持。とくに**ハートビートでも維持**するので「A を調べた→次の heartbeat で続きを前進」が繋がる（B が「繋がらない」と言っていた当のケース）。
+- 計画チャンネルが集中ターン中に steps を常駐注入（`renderSteps`）。`MAX_FOCUS_STREAK`（強制ギプス）で暴走を止める。
 - 残る非集中（対話・静穏）での連続性は workingMemory 独り言＋concern 頼みの弱い経路だが、「駆動して前進」は集中の役割なので許容。
-- **計画"実行"の前進（2026-06-19・plan processor 実装済み）**: 実機計測で「集中で連打しても milestone が進まない」を発見し、前判定の機械フェーズで解決（DECISIONS §集中モード「plan processor（前判定）」）。
-- **計画実行の3層構造（構想・DECISIONS §集中モード「計画実行の3層構造」）**: Tier 0 plan processor（実装済）／Tier 1 plan オーケストレーター（全体レビュー＋手戻り・コード集約）／**Tier 2 plans-to-do 管理**（複数 plan のポートフォリオ＋観測駆動の選択＝自発性／ドライブの土台・本丸・次に設計）。
+- **計画"実行"の前進（2026-06-19・steps processor 実装済み）**: 実機計測で「集中で連打しても milestone が進まない」を発見し、前判定の機械フェーズで解決（DECISIONS §集中モード「steps processor（前判定）」）。
+- **計画実行の3層構造（構想・DECISIONS §集中モード「計画実行の3層構造」）**: Tier 0 steps processor（実装済）／Tier 1 steps オーケストレーター（全体レビュー＋手戻り・コード集約）／**Tier 2 steps-to-do 管理**（複数 steps のポートフォリオ＋観測駆動の選択＝自発性／ドライブの土台・本丸・次に設計）。
 
 ### 問題C: language-agent の format:JSON が口調を抑制する可能性 ❌ 取り下げ
 
@@ -180,7 +180,7 @@
 
 **制約**: タスクの「次に何をすべきか」を実行前に予測してディスパッチしない（予測ゲートの罠）。  
 heartbeat がタスク状態（実行済みの結果）を読んで次ステップを決める、事後判断の設計にすること。  
-詳細は `docs/archive/deliberation-plan-deprecated.md` §8「得られた知見」参照。
+詳細は `docs/archive/deliberation-steps-deprecated.md` §8「得られた知見」参照。
 
 ### 5. Google Home 連携（フェーズ 2）
 
@@ -217,7 +217,7 @@ express MCP サーバに追加し、express サブエージェントがカタロ
   - `affect` / `concern` = ターン単位で書き換わる内心
   - 長期ゴール = 複数ターン・複数日にわたる関心・やりかけのこと
 - **heartbeat の自発行動**: heartbeat が「応答待ち」ではなく「自分の議題を進める」判断をする
-- **State 拡張の可能性**: 現状 `対話` / `静穏` / `集中` の3値（`集中`＝focusPlan に取り組むモード・追加済み）。さらに表現しきれなくなる可能性はログを観察してから設計（CONCEPT.md §State 参照）
+- **State 拡張の可能性**: 現状 `対話` / `静穏` / `集中` の3値（`集中`＝focusSteps に取り組むモード・追加済み）。さらに表現しきれなくなる可能性はログを観察してから設計（CONCEPT.md §State 参照）
 
 **設計上の最重要制約**: 自律性を持たせる部分こそ「予測ゲートの罠」に最もはまりやすい。  
 「次に何をしたいか」ではなく「前のターンで何が起きたか（結果の観測）」を起点に行動を決める設計を守ること。
@@ -252,4 +252,4 @@ LLM は `LlmClient` アダプタ越しなので**チャットは `VertexLlmClien
 
 | 項目 | 理由 |
 |------|------|
-| `selfStatus` / `runUntilSettled`（クロスターンループ） | サブエージェント内部ループ（`done=false` 多段ステップ）で原理的に解決可能。暴走リスクの方が高かった。詳細: `docs/archive/deliberation-plan-deprecated.md` |
+| `selfStatus` / `runUntilSettled`（クロスターンループ） | サブエージェント内部ループ（`done=false` 多段ステップ）で原理的に解決可能。暴走リスクの方が高かった。詳細: `docs/archive/deliberation-steps-deprecated.md` |

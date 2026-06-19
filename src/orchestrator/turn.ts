@@ -30,10 +30,10 @@ import {
 } from "./episode-persist.js";
 import { runActivator, runMultiLabelActivator } from "./activator.js";
 import { getActor } from "../actors/registry.js";
-import { listPlans, loadPlan, savePlan } from "../plan/state.js";
-import { renderPlanForLanguage } from "../plan/render.js";
-import { planProgress, evaluateFocusGraduation } from "../plan/focus.js";
-import { runPlanProcessor } from "../roles/plan-processor.js";
+import { listSteps, loadSteps, saveSteps } from "../steps/state.js";
+import { renderStepsForLanguage } from "../steps/render.js";
+import { stepsProgress, evaluateFocusGraduation } from "../steps/focus.js";
+import { runStepsProcessor } from "../roles/steps-processor.js";
 import { readNoteContent } from "../tools/notes.js";
 import type { VerboseLogger, VerboseLoggerImpl } from "../util/verbose.js";
 import { noopVerbose } from "../util/verbose.js";
@@ -102,7 +102,7 @@ export type TurnDeps = {
   xmodalRecallDistanceThresholds?: RecallDistanceThresholds;
   initialAffect?: string;
   initialConcern?: string;
-  initialFocusPlan?: string;
+  initialFocusSteps?: string;
   initialFocusStreak?: number;
   initialFocusStall?: number;
   initialFocusBaseline?: number;
@@ -137,7 +137,7 @@ export type TurnDeps = {
     workingMemory: readonly ConversationTurn[];
     affect: string;
     concern: string;
-    focusPlan: string;
+    focusSteps: string;
     focusStreak: number;
     focusStall: number;
     focusBaseline: number;
@@ -162,7 +162,7 @@ export class TurnOrchestrator {
   private turnContext: TurnContext | null = null;
   private affect: string;
   private concern: string;
-  private focusPlan: string;
+  private focusSteps: string;
   private focusStreak: number;
   private focusStall: number;
   private focusBaseline: number;
@@ -177,7 +177,7 @@ export class TurnOrchestrator {
   ) {
     this.affect = deps.initialAffect ?? "";
     this.concern = deps.initialConcern ?? "";
-    this.focusPlan = deps.initialFocusPlan ?? "";
+    this.focusSteps = deps.initialFocusSteps ?? "";
     this.focusStreak = deps.initialFocusStreak ?? 0;
     this.focusStall = deps.initialFocusStall ?? 0;
     this.focusBaseline = deps.initialFocusBaseline ?? 0;
@@ -192,16 +192,16 @@ export class TurnOrchestrator {
   }
 
   /**
-   * 進捗ベース卒業（達成不能 goal の見限り）。集中して focusPlan に取り組んでいるターンで、
-   * 進捗（planProgress）が伸びないまま MAX_FOCUS_STALL 続いたら、その計画を retired にして手放す。
+   * 進捗ベース卒業（達成不能 goal の見限り）。集中して focusSteps に取り組んでいるターンで、
+   * 進捗（stepsProgress）が伸びないまま MAX_FOCUS_STALL 続いたら、その計画を retired にして手放す。
    * 疲労（focusStreak＝休む・goal は残す）と違い、こちらは「見限り」＝自動復帰しない。
    */
   private async applyFocusGraduation(): Promise<void> {
-    if (this.state !== "集中" || !this.focusPlan) return;
-    const plan = await loadPlan(this.focusPlan);
-    if (!plan) return;
+    if (this.state !== "集中" || !this.focusSteps) return;
+    const steps = await loadSteps(this.focusSteps);
+    if (!steps) return;
     const result = evaluateFocusGraduation({
-      progress: planProgress(plan),
+      progress: stepsProgress(steps),
       stall: this.focusStall,
       baseline: this.focusBaseline,
       maxStall: MAX_FOCUS_STALL,
@@ -210,19 +210,19 @@ export class TurnOrchestrator {
     this.focusBaseline = result.baseline;
     if (result.graduated) {
       const now = new Date().toISOString();
-      await savePlan({
-        ...plan,
+      await saveSteps({
+        ...steps,
         retired: true,
         updatedAt: now,
         log: [
-          ...plan.log,
+          ...steps.log,
           {
             date: now.slice(0, 10),
-            text: `進捗が出ないので目標「${plan.title}」から一旦離れた`,
+            text: `進捗が出ないので目標「${steps.title}」から一旦離れた`,
           },
         ],
       });
-      this.focusPlan = "";
+      this.focusSteps = "";
     }
   }
 
@@ -270,7 +270,7 @@ export class TurnOrchestrator {
       workingMemory: this.deps.workingMemory.getRecent(),
       affect: this.affect,
       concern: this.concern,
-      focusPlan: this.focusPlan,
+      focusSteps: this.focusSteps,
       focusStreak: this.focusStreak,
       focusStall: this.focusStall,
       focusBaseline: this.focusBaseline,
@@ -288,11 +288,11 @@ export class TurnOrchestrator {
     return log.enabled ? (log as VerboseLoggerImpl) : null;
   }
 
-  /** 計画チャンネル: 集中 State かつ取り組み中の計画があれば、その plan を render して返す */
-  private async loadPlanChannel(state: AgentState): Promise<string> {
-    if (state !== "集中" || !this.focusPlan) return "";
-    const plan = await loadPlan(this.focusPlan);
-    return plan ? renderPlanForLanguage(plan) : "";
+  /** 計画チャンネル: 集中 State かつ取り組み中の計画があれば、その steps を render して返す */
+  private async loadStepsChannel(state: AgentState): Promise<string> {
+    if (state !== "集中" || !this.focusSteps) return "";
+    const steps = await loadSteps(this.focusSteps);
+    return steps ? renderStepsForLanguage(steps) : "";
   }
 
   async run(trigger: TurnTrigger): Promise<TurnResult> {
@@ -354,28 +354,28 @@ export class TurnOrchestrator {
       imageFeed,
     );
 
-    // plan processor（前判定・集中の背骨）: 集中中、作った成果物(works)と計画を突き合わせ、
+    // steps processor（前判定・集中の背骨）: 集中中、作った成果物(works)と計画を突き合わせ、
     // 実際に満たされたマイルストーンを機械が✓して current を前へ進める（stuck ポインタの矯正を毎ターン頭で）。
     // これで計画チャンネルが実態を指し、書く人(synthesize)が常に正しい所を書ける。全✓なら締める。
-    // 進行は「plan actor が発火するか」の博打でなく、集中中まわるこの機械フェーズが担う。
-    let planCompletedThisTurn = false;
+    // 進行は「steps actor が発火するか」の博打でなく、集中中まわるこの機械フェーズが担う。
+    let stepsCompletedThisTurn = false;
     // 集中の doer に渡す「いま取り組む単一タスク」（current マイルストーン本文）。計画全体は渡さない。
     let currentTask = "";
-    if (startState === "集中" && this.focusPlan) {
-      const focusPlanState = await loadPlan(this.focusPlan);
-      if (focusPlanState && focusPlanState.milestones.length > 0 && !focusPlanState.retired) {
-        const worksBody = (await readNoteContent(`works/${this.focusPlan}.md`)) ?? "";
-        const processed = await runPlanProcessor(this.deps.llm, {
-          plan: focusPlanState,
+    if (startState === "集中" && this.focusSteps) {
+      const focusStepsState = await loadSteps(this.focusSteps);
+      if (focusStepsState && focusStepsState.milestones.length > 0 && !focusStepsState.retired) {
+        const worksBody = (await readNoteContent(`works/${this.focusSteps}.md`)) ?? "";
+        const processed = await runStepsProcessor(this.deps.llm, {
+          steps: focusStepsState,
           worksBody,
         });
         if (processed.completedIds.length > 0) {
-          await savePlan(processed.plan);
-          v?.planProcessor(processed.completedIds, processed.allDone);
+          await saveSteps(processed.steps);
+          v?.stepsProcessor(processed.completedIds, processed.allDone);
         }
-        planCompletedThisTurn = processed.allDone;
+        stepsCompletedThisTurn = processed.allDone;
         if (!processed.allDone) {
-          const cur = processed.plan.milestones.find((m) => m.id === processed.plan.current);
+          const cur = processed.steps.milestones.find((m) => m.id === processed.steps.current);
           currentTask = cur?.text ?? "";
         }
       }
@@ -383,7 +383,7 @@ export class TurnOrchestrator {
 
     // 計画チャンネル: 集中 State のときだけ取り組み中のゴールノート全文を常駐させる
     // （processor で✓・current を更新済みの計画を読む）
-    const plan = await this.loadPlanChannel(startState);
+    const steps = await this.loadStepsChannel(startState);
 
     let ctx = createTurnContext({
       turnId,
@@ -398,8 +398,8 @@ export class TurnOrchestrator {
       audioFeed,
       affect: this.affect,
       concern: this.concern,
-      plan,
-      planId: this.focusPlan,
+      steps,
+      stepsId: this.focusSteps,
       currentTask,
       now: turnNow,
       timeZone: this.deps.timeZone,
@@ -427,25 +427,25 @@ export class TurnOrchestrator {
     // --- activate → actor pool ---
     ctx = await this.runActorPool(ctx, enabledActors, actionLlm, activatorLlm, actionDeps);
 
-    // plan actor の結果を収集する。focusPlan の付け替えは plan facts.action（手の意図）で決める：
+    // steps actor の結果を収集する。focusSteps の付け替えは steps facts.action（手の意図）で決める：
     // activate=その計画を開始/再開（集中へ）／shelve・retire=いまの集中を手放す／create・update=変えない。
     // ＝「計画を作った/触った＝集中」でなく「明示 activate で開始」。うっかり集中を防ぐ。
-    let planAchieved = false;
-    let activatePlanId = "";
-    let setAsidePlanId = "";
+    let stepsAchieved = false;
+    let activateStepsId = "";
+    let setAsideStepsId = "";
     for (const a of ctx.actions) {
-      if (a.attempted && a.status === "succeeded" && a.facts?.kind === "plan") {
-        if (a.facts.achieved) planAchieved = true;
-        if (a.facts.action === "activate") activatePlanId = a.facts.planId;
+      if (a.attempted && a.status === "succeeded" && a.facts?.kind === "steps") {
+        if (a.facts.achieved) stepsAchieved = true;
+        if (a.facts.action === "activate") activateStepsId = a.facts.stepsId;
         else if (a.facts.action === "shelve" || a.facts.action === "retire") {
-          setAsidePlanId = a.facts.planId;
+          setAsideStepsId = a.facts.stepsId;
         }
       }
     }
-    // ゴール達成 → 集中対象から外す。達成は plan actor（planAchieved）／plan processor の
-    // 前判定（planCompletedThisTurn）どちらでも成立する。
-    const prevFocusPlan = this.focusPlan;
-    if (planAchieved || planCompletedThisTurn) this.focusPlan = "";
+    // ゴール達成 → 集中対象から外す。達成は steps actor（stepsAchieved）／steps processor の
+    // 前判定（stepsCompletedThisTurn）どちらでも成立する。
+    const prevFocusSteps = this.focusSteps;
+    if (stepsAchieved || stepsCompletedThisTurn) this.focusSteps = "";
 
     // --- language-agent（常に起動） ---
     ctx = await this.generateSpeech(ctx, trigger, languageLlm);
@@ -457,27 +457,27 @@ export class TurnOrchestrator {
       await this.deps.outputChannel.say(ctx.speech ?? null, artifacts);
     }
 
-    // 入口/出口: 手（plan actor）の明示的な意図で focusPlan を動かす。
+    // 入口/出口: 手（steps actor）の明示的な意図で focusSteps を動かす。
     // activate → その計画を開始/再開（集中へ）。shelve/retire → いまの集中を手放す。
-    if (!planAchieved && !planCompletedThisTurn) {
-      if (activatePlanId) {
-        this.focusPlan = activatePlanId;
-      } else if (setAsidePlanId && this.focusPlan === setAsidePlanId) {
-        this.focusPlan = "";
+    if (!stepsAchieved && !stepsCompletedThisTurn) {
+      if (activateStepsId) {
+        this.focusSteps = activateStepsId;
+      } else if (setAsideStepsId && this.focusSteps === setAsideStepsId) {
+        this.focusSteps = "";
       }
     }
 
     // 集中力の上限（強制ギプス）: 集中が MAX_FOCUS_STREAK ターン続いたら集中力が切れる。
-    // focusPlan を一旦手放す（goal ノートは data/plans に残るので、後で表に出れば再開できる）。
+    // focusSteps を一旦手放す（goal ノートは data/steps に残るので、後で表に出れば再開できる）。
     // これでハートビートの「ずっと同じことを考え続ける」無限ループを断つ。
     if (this.focusStreak >= MAX_FOCUS_STREAK) {
-      this.focusPlan = "";
+      this.focusSteps = "";
       this.focusStreak = 0;
     }
 
-    // focusPlan が乗り換わった／手放された → 進捗ベース卒業の停滞カウントは新規にする
+    // focusSteps が乗り換わった／手放された → 進捗ベース卒業の停滞カウントは新規にする
     // （別の目標の停滞を引き継がない・空になったらリセット）。
-    if (this.focusPlan !== prevFocusPlan) {
+    if (this.focusSteps !== prevFocusSteps) {
       this.focusStall = 0;
       this.focusBaseline = 0;
     }
@@ -500,7 +500,7 @@ export class TurnOrchestrator {
     this.state =
       trigger.type === "user_message"
         ? "対話"
-        : this.focusPlan
+        : this.focusSteps
           ? "集中"
           : "静穏";
     // 集中力カウンタ: 集中が続けば加算、抜けたら 0。MAX を超えると次ターンの強制ギプスで切れる。
@@ -512,7 +512,7 @@ export class TurnOrchestrator {
       workingMemory: this.deps.workingMemory.getRecent(),
       affect: this.affect,
       concern: this.concern,
-      focusPlan: this.focusPlan,
+      focusSteps: this.focusSteps,
       focusStreak: this.focusStreak,
       focusStall: this.focusStall,
       focusBaseline: this.focusBaseline,
@@ -766,7 +766,7 @@ export class TurnOrchestrator {
     // 判断系（criteria）は multi-label が1発でまとめて判定。客観/機械ゲート（activate）は別途。
     const criteriaActors = runners.filter((a) => a.criteria);
     const gateActors = runners.filter((a) => a.activate && !a.criteria);
-    // multi-label の文脈は criteria 系チャンネルの和（plan を含む superset）。
+    // multi-label の文脈は criteria 系チャンネルの和（steps を含む superset）。
     const multiChannels = [
       ...new Set(
         criteriaActors.flatMap(
@@ -809,29 +809,29 @@ export class TurnOrchestrator {
       }
     };
 
-    // plan は「実際に何が起きたか」を見て事後に記録する（意図でなく結果でグラウンディング）ため、
+    // steps は「実際に何が起きたか」を見て事後に記録する（意図でなく結果でグラウンディング）ため、
     // 他の actor を先に並列実行して ctx.actions に積んでから最後に走らせる。
-    const others = activeSpecs.filter((s) => s.name !== "plan");
-    const planSpec = activeSpecs.find((s) => s.name === "plan");
+    const others = activeSpecs.filter((s) => s.name !== "steps");
+    const stepsSpec = activeSpecs.find((s) => s.name === "steps");
 
     for (const o of await Promise.all(others.map(runOne))) append(o);
-    if (planSpec) {
-      append(await runOne(planSpec));
+    if (stepsSpec) {
+      append(await runOne(stepsSpec));
     } else if (
-      enabledActors.includes("plan") &&
+      enabledActors.includes("steps") &&
       ctx.state === "静穏" &&
-      !ctx.planId &&
-      process.env.PLAN_IDLE_SURFACE !== "off" // kill-switch（暫定: 進めない plan を拾って空回りする間 OFF 可）
+      !ctx.stepsId &&
+      process.env.STEPS_IDLE_SURFACE !== "off" // kill-switch（暫定: 進めない steps を拾って空回りする間 OFF 可）
     ) {
       // idle backlog surface（静穏 idle の機械ゲート＝distill と同類の客観条件）:
-      // 手が空いて取り組み中の計画が無いとき、未完の backlog があれば plan actor に
+      // 手が空いて取り組み中の計画が無いとき、未完の backlog があれば steps actor に
       // 「思い出して掴むか」を判断させる（activate するかは LLM・無ければ noop）。
-      // ＝Tier 2 の自発の点火。常時 recall に plan を混ぜる過剰引力を避け、idle に限定する。
-      const backlog = (await listPlans()).filter((p) => !p.done && !p.retired);
+      // ＝Tier 2 の自発の点火。常時 recall に steps を混ぜる過剰引力を避け、idle に限定する。
+      const backlog = (await listSteps()).filter((p) => !p.done && !p.retired);
       if (backlog.length > 0) {
         append(
           await runOne({
-            name: "plan",
+            name: "steps",
             intent:
               "手が空いた。やりかけの計画があれば思い出して、いま再開する価値があるものだけ activate する。無理に始めなくてよい（無ければ noop）。",
           }),

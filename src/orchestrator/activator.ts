@@ -48,7 +48,7 @@ export async function runActivator(
 
 /**
  * 判断系 actor（criteria を持つ）の起動を **1発の LLM 呼び出し**でまとめて判定する（multi-label）。
- * 4つの criteria を同時に見るので、memo/plan/synthesize の三つ巴の過剰発火を joint 判断で抑えられる
+ * 4つの criteria を同時に見るので、memo/steps/synthesize の三つ巴の過剰発火を joint 判断で抑えられる
  * （別々に判定すると各 gate が他を知らず各自 active と言いがち）。実測で別々より正確かつ速い。
  */
 export async function runMultiLabelActivator(

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { planProgress, evaluateFocusGraduation } from "../src/plan/focus.js";
-import type { PlanState } from "../src/plan/state.js";
+import { stepsProgress, evaluateFocusGraduation } from "../src/steps/focus.js";
+import type { StepsState } from "../src/steps/state.js";
 
-function plan(over: Partial<PlanState> = {}): PlanState {
+function steps(over: Partial<StepsState> = {}): StepsState {
   return {
     id: "p",
     title: "t",
@@ -16,12 +16,12 @@ function plan(over: Partial<PlanState> = {}): PlanState {
   };
 }
 
-describe("planProgress", () => {
+describe("stepsProgress", () => {
   it("完了マイルストーン数＋ログ数を数える", () => {
-    expect(planProgress(plan())).toBe(0);
+    expect(stepsProgress(steps())).toBe(0);
     expect(
-      planProgress(
-        plan({
+      stepsProgress(
+        steps({
           milestones: [
             { id: "1", text: "a", done: true },
             { id: "2", text: "b", done: false },

@@ -65,7 +65,7 @@ function linkTarget(rel: string): string {
 
 /**
  * dirRel の `_index.md`（MOC）を子の列挙から機械再生成する。LLM を呼ばない・要約しない。
- * plan の json→markdown と同じ「真実 vs 派生ビュー」。Obsidian で目次として開ける。
+ * steps の json→markdown と同じ「真実 vs 派生ビュー」。Obsidian で目次として開ける。
  */
 export async function regenerateIndex(dirRel: string): Promise<void> {
   const { dirs, leaves } = await listChildren(dirRel);

@@ -22,8 +22,8 @@ const SYNTHESIZE_NUM_PREDICT = 800;
 
 /** 成果物ノートのパスを決める。取り組み中の計画があればその id に紐づけ、
  *  なければ意図からスラグを作る（いずれも works/ 配下に決定的に置く＝断片化を防ぐ） */
-function resolveArtifactFilename(planId: string, intent: string): string {
-  if (planId.trim()) return `works/${planId}.md`;
+function resolveArtifactFilename(stepsId: string, intent: string): string {
+  if (stepsId.trim()) return `works/${stepsId}.md`;
   return `works/${slugifyFilename(intent)}`;
 }
 
@@ -41,12 +41,12 @@ export async function runSynthesize(
 ): Promise<ActionOutcome> {
   const action = input.action;
   const intent = action.intent;
-  const { currentDateTime, planId, currentTask } = input.ctx;
+  const { currentDateTime, stepsId, currentTask } = input.ctx;
   const lastUserMessage = lastUserMessageFromContext(input.ctx);
   const snap = memorySnapshot(input.ctx);
 
   // 継ぎ足し先の現在の成果物（あれば末尾につながるよう生成させる）
-  const filename = resolveArtifactFilename(planId, intent);
+  const filename = resolveArtifactFilename(stepsId, intent);
   const existing = await readNoteContent(filename);
 
   // 集中の doer は current タスクだけを進める＝計画全体（先のステップ・全体ゴール）は見せない。
@@ -61,7 +61,7 @@ export async function runSynthesize(
     lastUserMessage ? `相手があなたに言ったこと: ${lastUserMessage}` : "",
     snap.concern ? `\nいまの関心事: ${snap.concern}` : "",
     snap.affect ? `いまの内心: ${snap.affect}` : "",
-    focusedTask ? "" : snap.plan ? `\n取り組み中の計画:\n${snap.plan}` : "",
+    focusedTask ? "" : snap.steps ? `\n取り組み中の計画:\n${snap.steps}` : "",
     snap.recalledEpisodes.length
       ? `\n想起した記憶:\n${snap.recalledEpisodes.map((e) => `- ${e}`).join("\n")}`
       : "",

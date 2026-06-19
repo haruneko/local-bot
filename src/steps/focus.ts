@@ -1,11 +1,11 @@
-import type { PlanState } from "./state.js";
+import type { StepsState } from "./state.js";
 
 /**
  * 計画の「進捗値」。完了したマイルストーン数＋ログ数。
  * 進捗ベース卒業（達成不能goalの見限り）の停滞判定に使う。
  * マイルストーン完了＝前進、過去形ログの追記＝何かやった痕跡、の両方を前進とみなす。
  */
-export function planProgress(p: PlanState): number {
+export function stepsProgress(p: StepsState): number {
   return p.milestones.filter((m) => m.done).length + p.log.length;
 }
 
@@ -21,7 +21,7 @@ export type FocusGraduation = {
 /**
  * 進捗ベース卒業の判定（純関数）。集中して取り組んでいるターンで呼ぶ。
  * 進捗が baseline を超えていれば前進＝停滞リセット。超えなければ停滞を積み、
- * maxStall に達したら卒業（graduated=true・呼び出し側が plan を retired にして手放す）。
+ * maxStall に達したら卒業（graduated=true・呼び出し側が steps を retired にして手放す）。
  *
  * focusStreak（連続集中の疲労＝休む）とは別物：こちらは「進捗が無い目標を見限る」。
  */

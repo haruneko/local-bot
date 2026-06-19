@@ -2,14 +2,14 @@ import type { ActorName } from "../config/settings.js";
 import type { ActorRunner } from "./types.js";
 import { memoActor } from "./memo.js";
 import { webSearchActor, urlBrowseActor } from "./web-search.js";
-import { planActor } from "./plan.js";
+import { stepsActor } from "./steps.js";
 import { synthesizeActor } from "./synthesize.js";
 
 const ACTOR_REGISTRY = new Map<ActorName, ActorRunner>([
   ["memo",       memoActor],
   ["webSearch",  webSearchActor],
   ["urlBrowse",  urlBrowseActor],
-  ["plan",       planActor],
+  ["steps",       stepsActor],
   ["synthesize", synthesizeActor],
 ]);
 

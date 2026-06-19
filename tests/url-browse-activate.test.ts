@@ -4,7 +4,7 @@ import { createTurnContext } from "../src/context/turn-context.js";
 import { FakeLlmClient } from "../src/llm/fake.js";
 
 const dialogue = { resolveUserDisplayName: () => "太郎" };
-const CHANNELS = ["conversation", "inner_state", "plan"] as const;
+const CHANNELS = ["conversation", "inner_state", "steps"] as const;
 
 function ctxWith(content: string) {
   return createTurnContext({

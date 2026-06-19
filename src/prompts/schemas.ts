@@ -7,7 +7,7 @@ export const memoReadPickOutputSchema = z.object({
   filename: z.string().nullable(),
 });
 
-/** メモ本文への op（plan の op と同型・構造はコードが保証）。詳細は docs/MEMO-TREE.md */
+/** メモ本文への op（steps の op と同型・構造はコードが保証）。詳細は docs/MEMO-TREE.md */
 export const memoOpSchema = z.object({
   op: z.enum([
     "view",
@@ -30,7 +30,7 @@ export const memoOpJsonSchema = zodToJsonSchema(memoOpSchema, {
   ...jsonSchemaOptions,
 });
 
-export const planOpSchema = z.object({
+export const stepsOpSchema = z.object({
   op: z.enum([
     "new_goal",
     "view",
@@ -45,7 +45,7 @@ export const planOpSchema = z.object({
     "noop",
   ]),
   /** 対象の計画 id（省略時 = いま集中している計画）。new_goal では生成される */
-  planId: z.string().optional(),
+  stepsId: z.string().optional(),
   /** new_goal のみ: true で作って即開始（集中へ）／false（既定）は積むだけ */
   activate: z.boolean().optional(),
   id: z.string().optional(),
@@ -54,16 +54,16 @@ export const planOpSchema = z.object({
   goal: z.string().optional(),
   milestones: z.array(z.string()).optional(),
 });
-export const planOpJsonSchema = zodToJsonSchema(planOpSchema, {
-  name: "PlanOp",
+export const stepsOpJsonSchema = zodToJsonSchema(stepsOpSchema, {
+  name: "StepsOp",
   ...jsonSchemaOptions,
 });
-/** plan processor の完了判定（1マイルストーンが成果物の中で満たされたか）。狭い二値。 */
-export const planMilestoneJudgeSchema = z.object({
+/** steps processor の完了判定（1マイルストーンが成果物の中で満たされたか）。狭い二値。 */
+export const stepsMilestoneJudgeSchema = z.object({
   satisfied: z.boolean(),
 });
-export const planMilestoneJudgeJsonSchema = zodToJsonSchema(planMilestoneJudgeSchema, {
-  name: "PlanMilestoneJudge",
+export const stepsMilestoneJudgeJsonSchema = zodToJsonSchema(stepsMilestoneJudgeSchema, {
+  name: "StepsMilestoneJudge",
   ...jsonSchemaOptions,
 });
 export const memoReadPickJsonSchema = zodToJsonSchema(memoReadPickOutputSchema, {

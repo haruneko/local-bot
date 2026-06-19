@@ -52,9 +52,9 @@ export type TurnContext = {
   /** 認知的焦点（何に注目しているか）。空 = 特になし */
   concern: string;
   /** 計画チャンネル: 集中 State で取り組み中の計画のレンダリング済みビュー。空 = 取り組み中の計画なし */
-  plan: string;
-  /** 取り組み中の計画 id（focusPlan）。plan actor がその計画を更新するため。空 = なし */
-  planId: string;
+  steps: string;
+  /** 取り組み中の計画 id（focusSteps）。steps actor がその計画を更新するため。空 = なし */
+  stepsId: string;
   /** いま取り組む単一タスク（current マイルストーンの本文）。集中の doer はこれだけを進める＝
    *  計画全体（先のステップ・全体ゴール）を見せず先走りを防ぐ。空 = 集中でない/タスク無し */
   currentTask: string;
@@ -92,8 +92,8 @@ export type CreateTurnContextInput = {
   audioFeed?: string[];
   affect?: string;
   concern?: string;
-  plan?: string;
-  planId?: string;
+  steps?: string;
+  stepsId?: string;
   currentTask?: string;
   now?: Date;
   timeZone?: string;
@@ -145,8 +145,8 @@ export function createTurnContext(input: CreateTurnContextInput): TurnContext {
     audioFeed: [...(input.audioFeed ?? [])],
     affect: input.affect ?? "",
     concern: input.concern ?? "",
-    plan: input.plan ?? "",
-    planId: input.planId ?? "",
+    steps: input.steps ?? "",
+    stepsId: input.stepsId ?? "",
     currentTask: input.currentTask ?? "",
     actions: [],
   };
@@ -272,7 +272,7 @@ export function memorySnapshot(ctx: TurnContext) {
     recalledNotes: formatRecalledNotes(ctx),
     affect: ctx.affect,
     concern: ctx.concern,
-    plan: ctx.plan,
+    steps: ctx.steps,
     currentTask: ctx.currentTask,
   };
 }
@@ -289,10 +289,10 @@ export function perceptionInputLine(ctx: TurnContext): string {
 }
 
 /** 計画チャンネル（集中 State で取り組み中のゴールノート全文）を注入する */
-function appendPlan(parts: string[], ctx: TurnContext): void {
-  if (!ctx.plan.trim()) return;
-  // ctx.plan は renderPlanForLanguage の出力（「## いま取り組んでいること」見出し込み）。
-  parts.push("", ctx.plan);
+function appendSteps(parts: string[], ctx: TurnContext): void {
+  if (!ctx.steps.trim()) return;
+  // ctx.steps は renderStepsForLanguage の出力（「## いま取り組んでいること」見出し込み）。
+  parts.push("", ctx.steps);
 }
 
 function appendInnerState(parts: string[], ctx: TurnContext): void {
@@ -363,7 +363,7 @@ export function renderLanguageUserContent(ctx: TurnContext): string {
       snap.priorDialogue,
     ];
 
-    appendPlan(parts, ctx);
+    appendSteps(parts, ctx);
     appendInnerState(parts, ctx);
     appendSemanticFacts(parts, ctx);
     appendRecalledEpisodes(parts, ctx);
@@ -387,7 +387,7 @@ export function renderLanguageUserContent(ctx: TurnContext): string {
     snap.priorDialogue,
   ];
 
-  appendPlan(parts, ctx);
+  appendSteps(parts, ctx);
   appendInnerState(parts, ctx);
   appendSemanticFacts(parts, ctx);
   appendRecalledEpisodes(parts, ctx);
@@ -427,8 +427,8 @@ export function buildActorContext(
     parts.push("", "## 利用可能なアクター", opts.actorList.join(", "));
   }
 
-  if (channels.includes("plan") && ctx.plan.trim()) {
-    parts.push("", "## 取り組み中の計画", ctx.plan);
+  if (channels.includes("steps") && ctx.steps.trim()) {
+    parts.push("", "## 取り組み中の計画", ctx.steps);
   }
 
   return parts.join("\n");
@@ -532,7 +532,7 @@ function appendActions(parts: string[], ctx: TurnContext): void {
 
 export function buildLanguageContextSuffix(ctx: TurnContext): string {
   const parts: string[] = [];
-  appendPlan(parts, ctx);
+  appendSteps(parts, ctx);
   appendActions(parts, ctx);
   appendInnerState(parts, ctx);
   appendSemanticFacts(parts, ctx);

@@ -11,13 +11,13 @@ export type PersistedSession = {
   affect: string;
   /** 認知的焦点。空 = 特になし */
   concern: string;
-  /** 集中モードで取り組み中の計画 id（data/plans/<id>.json）。空 = 取り組み中の計画なし */
-  focusPlan: string;
+  /** 集中モードで取り組み中の計画 id（data/steps/<id>.json）。空 = 取り組み中の計画なし */
+  focusSteps: string;
   /** 集中が連続したターン数（集中力の上限＝強制ギプス用。ハートビート跨ぎで永続）。 */
   focusStreak: number;
-  /** focusPlan に進捗が無いまま集中したターン数（進捗ベース卒業＝見限り用）。 */
+  /** focusSteps に進捗が無いまま集中したターン数（進捗ベース卒業＝見限り用）。 */
   focusStall: number;
-  /** focusPlan で観測した最高進捗（停滞判定の基準。planProgress 値）。 */
+  /** focusSteps で観測した最高進捗（停滞判定の基準。stepsProgress 値）。 */
   focusBaseline: number;
   updatedAt: string;
 };
@@ -51,7 +51,7 @@ function parseWorkingMemory(raw: unknown): ConversationTurn[] {
 export async function loadSession(
   filePath: string,
   fallbackState: AgentState = DEFAULT_AGENT_STATE,
-): Promise<Pick<PersistedSession, "state" | "workingMemory" | "affect" | "concern" | "focusPlan" | "focusStreak" | "focusStall" | "focusBaseline">> {
+): Promise<Pick<PersistedSession, "state" | "workingMemory" | "affect" | "concern" | "focusSteps" | "focusStreak" | "focusStall" | "focusBaseline">> {
   try {
     const raw = await readFile(filePath, "utf8");
     const parsed = JSON.parse(raw) as Partial<PersistedSession & { innerState?: string }>;
@@ -67,8 +67,8 @@ export async function loadSession(
           : "";
     const concern =
       typeof parsed.concern === "string" ? parsed.concern : "";
-    const focusPlan =
-      typeof parsed.focusPlan === "string" ? parsed.focusPlan : "";
+    const focusSteps =
+      typeof parsed.focusSteps === "string" ? parsed.focusSteps : "";
     const focusStreak =
       typeof parsed.focusStreak === "number" && parsed.focusStreak >= 0
         ? parsed.focusStreak
@@ -86,7 +86,7 @@ export async function loadSession(
       workingMemory: parseWorkingMemory(parsed.workingMemory),
       affect,
       concern,
-      focusPlan,
+      focusSteps,
       focusStreak,
       focusStall,
       focusBaseline,
@@ -97,7 +97,7 @@ export async function loadSession(
       console.warn("[session] load failed, using defaults", err);
     }
   }
-  return { state: fallbackState, workingMemory: [], affect: "", concern: "", focusPlan: "", focusStreak: 0, focusStall: 0, focusBaseline: 0 };
+  return { state: fallbackState, workingMemory: [], affect: "", concern: "", focusSteps: "", focusStreak: 0, focusStall: 0, focusBaseline: 0 };
 }
 
 /** @deprecated loadSession を使う */
@@ -115,7 +115,7 @@ export async function saveSession(
     workingMemory: readonly ConversationTurn[];
     affect?: string;
     concern?: string;
-    focusPlan?: string;
+    focusSteps?: string;
     focusStreak?: number;
     focusStall?: number;
     focusBaseline?: number;
@@ -127,7 +127,7 @@ export async function saveSession(
     workingMemory: [...session.workingMemory],
     affect: session.affect ?? "",
     concern: session.concern ?? "",
-    focusPlan: session.focusPlan ?? "",
+    focusSteps: session.focusSteps ?? "",
     focusStreak: session.focusStreak ?? 0,
     focusStall: session.focusStall ?? 0,
     focusBaseline: session.focusBaseline ?? 0,

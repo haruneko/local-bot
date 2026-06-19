@@ -2,7 +2,7 @@
 
 ステータス: **段階1〜4 実装済み**（2026-06-13）。詳細は末尾「実装状況」
 
-共有メモ（`data/notes/`）の読み書きを、plan と同じ「**op + 構造は code が保証、LLM は op を1つ出すだけ**」モデルに作り変える。狙いは2つ。
+共有メモ（`data/notes/`）の読み書きを、steps と同じ「**op + 構造は code が保証、LLM は op を1つ出すだけ**」モデルに作り変える。狙いは2つ。
 
 1. **書きのナイーブさを消す** — 今は「新規作成」か「全文 append」しかなく、既存ファイルは強制 append。推敲（既存本文の部分修正）が一切できなかった。これが「創作系タスクに成果物 doer が居ない」本丸の正体だった（[[project-future-agenda]]）。
 2. **読みのナイーブさを消す** — 今は「1ファイル pick → 全文返す」だけ。メモが肥大化すると 30B のコンテキストで破綻する。
@@ -40,7 +40,7 @@ memo actor が activate
 > **locate は recall 認識を主にした**（当初は連想ディセント主・recall はフォールバックだった）。台帳のように同じノートへ繰り返し戻る用途で、木を盲目で降りる descent が「毎回新規に倒す＝断片化」する弱点を、top-k 一覧を見て*認識*する recall に替えて潰した（recall の認識 > ディセントの想起）。ディセントは browsing 的フォールバックとして温存。詳細は §3。
 
 - **read-before-edit が構造で保証される**: フェーズ1が常に先行するので「逆次性問題」が消える。並列自律 actor の世界観を壊さず、1ターン内で read→edit を完結。
-- op は純関数 applier で決定的に適用（plan の `applyPlanOp` と同じ哲学）。
+- op は純関数 applier で決定的に適用（steps の `applyStepsOp` と同じ哲学）。
 - creative doer は**別 actor を作らない**。集中時にこの memo actor が成果物ファイルへ `append`/`section_replace` を出す形で自然に成立する。
 
 ## 2. メモ＝連想でたどる木（MOC ツリー）
@@ -60,10 +60,10 @@ data/notes/
     01-新曲A.md            leaf（verbatim・真実）
 ```
 
-### 真実 vs 派生ビュー（plan と同じ構図）
+### 真実 vs 派生ビュー（steps と同じ構図）
 
 - **葉（verbatim 本文）＝真実**。LLM は要約・改変しない。
-- **`_index.md`（MOC）＝派生ビュー**。子のリンク＋見出しを列挙した**機械生成物**。op 適用後に code が再生成し上書きする。生成物なので上書きしてよい（本文ではない＝改変禁止に抵触しない）。これは `data/plans/<id>.json`（真実）→ markdown（派生ビュー）と同型。
+- **`_index.md`（MOC）＝派生ビュー**。子のリンク＋見出しを列挙した**機械生成物**。op 適用後に code が再生成し上書きする。生成物なので上書きしてよい（本文ではない＝改変禁止に抵触しない）。これは `data/steps/<id>.json`（真実）→ markdown（派生ビュー）と同型。
 
 Obsidian で開けば `_index` が索引・葉が中身として navigable。エージェント側は `memo_index`（LanceDB、既存の `path_segments`/`depth_1〜3` 構造を流用）で引く。二重に navigable。
 

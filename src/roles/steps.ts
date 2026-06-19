@@ -9,23 +9,23 @@ import {
 import { actionFailed, actionSucceeded, notAttempted } from "../action/outcome.js";
 import { lastUserMessageFromContext, type RunActionInput } from "../action/context.js";
 import type { ActionOutcome } from "../types.js";
-import { PLAN_SYSTEM } from "../prompts/roles.js";
-import { planOpJsonSchema, planOpSchema } from "../prompts/schemas.js";
+import { STEPS_SYSTEM } from "../prompts/roles.js";
+import { stepsOpJsonSchema, stepsOpSchema } from "../prompts/schemas.js";
 import type { LlmClient } from "../llm/types.js";
-import { listPlans, loadPlan, savePlan, type PlanState } from "../plan/state.js";
-import { applyPlanOp, type PlanOp } from "../plan/ops.js";
-import { renderPlan } from "../plan/render.js";
+import { listSteps, loadSteps, saveSteps, type StepsState } from "../steps/state.js";
+import { applyStepsOp, type StepsOp } from "../steps/ops.js";
+import { renderSteps } from "../steps/render.js";
 import { notesDir } from "../tools/notes.js";
 
-/** plan facts.action（表示と focus 制御に使う） */
-type PlanAction = "create" | "activate" | "shelve" | "retire" | "update";
+/** steps facts.action（表示と focus 制御に使う） */
+type StepsAction = "create" | "activate" | "shelve" | "retire" | "update";
 
-/** バインダーの目次（plan 一覧）を LLM 向けに整形する。 */
+/** バインダーの目次（steps 一覧）を LLM 向けに整形する。 */
 function renderBacklog(
-  plans: Awaited<ReturnType<typeof listPlans>>,
+  steps: Awaited<ReturnType<typeof listSteps>>,
   focusId: string,
 ): string {
-  const live = plans.filter((p) => !p.done && !p.retired);
+  const live = steps.filter((p) => !p.done && !p.retired);
   if (live.length === 0) return "（まだ計画はない）";
   return live
     .map((p) => {
@@ -37,8 +37,8 @@ function renderBacklog(
 }
 
 /** 意味のある中身（updatedAt 等を除く）が同じか。効果ゼロ op の検出に使う */
-function planContentEqual(a: PlanState, b: PlanState): boolean {
-  const pick = (p: PlanState) =>
+function stepsContentEqual(a: StepsState, b: StepsState): boolean {
+  const pick = (p: StepsState) =>
     JSON.stringify({
       title: p.title,
       goal: p.goal,
@@ -49,12 +49,12 @@ function planContentEqual(a: PlanState, b: PlanState): boolean {
   return pick(a) === pick(b);
 }
 
-function allMilestonesDone(p: PlanState): boolean {
+function allMilestonesDone(p: StepsState): boolean {
   return p.milestones.length > 0 && p.milestones.every((m) => m.done);
 }
 
-/** 構造化plan から Obsidian 互換の markdown ミラーを書き出す（派生ビューなので決定的に上書き） */
-async function writePlanMirror(id: string, body: string): Promise<string> {
+/** 構造化steps から Obsidian 互換の markdown ミラーを書き出す（派生ビューなので決定的に上書き） */
+async function writeStepsMirror(id: string, body: string): Promise<string> {
   const dir = path.join(notesDir(), "goals");
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, `${id}.md`), `${body}\n`, "utf8");
@@ -62,19 +62,19 @@ async function writePlanMirror(id: string, body: string): Promise<string> {
 }
 
 /**
- * plan actor 本体。LLM は op を1つ出すだけ。構造の更新・整形はコードが決定的に行う。
+ * steps actor 本体。LLM は op を1つ出すだけ。構造の更新・整形はコードが決定的に行う。
  * 文書生成も diff もさせない（強制ギプス）。
  */
-export async function runPlan(
+export async function runSteps(
   llm: LlmClient,
   input: RunActionInput,
 ): Promise<ActionOutcome> {
   const action = input.action;
   const { currentDateTime } = input.ctx;
-  const focusId = input.ctx.planId;
-  const backlog = await listPlans();
-  const focusPlan = focusId ? await loadPlan(focusId) : null;
-  const focusRendered = focusPlan ? renderPlan(focusPlan) : "（いま集中している計画はない）";
+  const focusId = input.ctx.stepsId;
+  const backlog = await listSteps();
+  const focusSteps = focusId ? await loadSteps(focusId) : null;
+  const focusRendered = focusSteps ? renderSteps(focusSteps) : "（いま集中している計画はない）";
 
   const speakerId =
     input.ctx.trigger.type === "user_message"
@@ -85,15 +85,15 @@ export async function runPlan(
     : "相手";
   const lastUserMessage = lastUserMessageFromContext(input.ctx);
 
-  const format = planOpJsonSchema as Record<string, unknown>;
+  const format = stepsOpJsonSchema as Record<string, unknown>;
   const llmAttempts: string[] = [];
   let lastParseFailure: ParseJsonFailure | undefined;
-  let op: PlanOp | null = null;
+  let op: StepsOp | null = null;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const raw = await llm.chat(
       [
-        { role: "system", content: PLAN_SYSTEM },
+        { role: "system", content: STEPS_SYSTEM },
         {
           role: "user",
           content: [
@@ -115,7 +115,7 @@ export async function runPlan(
       { format, temperature: 0 },
     );
     llmAttempts.push(raw);
-    const parsed = tryParseJsonWithSchema(raw, planOpSchema);
+    const parsed = tryParseJsonWithSchema(raw, stepsOpSchema);
     if (parsed.ok) {
       op = parsed.value;
       break;
@@ -132,36 +132,36 @@ export async function runPlan(
         lastParseFailure?.reason,
         lastParseFailure?.zodMessage,
       ),
-      "plan",
+      "steps",
     );
   }
 
   if (op.op === "noop") return notAttempted();
 
   // view（参照・読み取り専用）: focus を変えず保存もしない。報告・確認・言及のための op。
-  // planId 有り＝その計画の詳細／無し＝backlog 概観（「やり残しある？」への一覧）。言語野が body を読んで答える。
+  // stepsId 有り＝その計画の詳細／無し＝backlog 概観（「やり残しある？」への一覧）。言語野が body を読んで答える。
   if (op.op === "view") {
-    const id = (op.planId ?? "").trim();
+    const id = (op.stepsId ?? "").trim();
     if (id) {
-      const p = await loadPlan(id);
+      const p = await loadSteps(id);
       if (!p) {
         return actionFailed(action, "参照する計画が見つからない", {
           code: ACTION_ERROR_CODES.INVALID_ARGS,
           message: `view 対象の計画（${id}）が無い`,
-        }, "plan");
+        }, "steps");
       }
       return actionSucceeded(action, {
-        kind: "plan",
-        planId: id,
+        kind: "steps",
+        stepsId: id,
         filename: `goals/${id}.md`,
-        body: renderPlan(p),
+        body: renderSteps(p),
         achieved: false,
         action: "view",
       });
     }
     return actionSucceeded(action, {
-      kind: "plan",
-      planId: "",
+      kind: "steps",
+      stepsId: "",
       filename: "",
       body: `やり残し（いま進めてる段取り）:\n${renderBacklog(backlog, focusId)}`,
       achieved: false,
@@ -169,29 +169,29 @@ export async function runPlan(
     });
   }
 
-  // 対象の計画を解決。new_goal は新規・それ以外は planId（省略時 focusPlan）。
-  const targetId = (op.planId ?? "").trim() || focusId;
-  const before = op.op === "new_goal" ? null : await loadPlan(targetId);
+  // 対象の計画を解決。new_goal は新規・それ以外は stepsId（省略時 focusSteps）。
+  const targetId = (op.stepsId ?? "").trim() || focusId;
+  const before = op.op === "new_goal" ? null : await loadSteps(targetId);
 
   if (op.op !== "new_goal" && !before) {
     return actionFailed(action, "対象の計画が見つからない", {
       code: ACTION_ERROR_CODES.INVALID_ARGS,
       message: `op=${op.op} の対象計画（${targetId || "未指定"}）が無い`,
-    }, "plan");
+    }, "steps");
   }
 
-  let nextState = applyPlanOp(before, op, new Date());
+  let nextState = applyStepsOp(before, op, new Date());
   if (!nextState) {
     return actionFailed(action, "計画の操作を適用できなかった", {
       code: ACTION_ERROR_CODES.INVALID_ARGS,
       message: `op=${op.op} を適用できない`,
-    }, "plan");
+    }, "steps");
   }
 
   // 効果ゼロの編集（存在しない id への complete 等）は outcome にしない。
   // ただし activate/shelve は focus を動かす副作用が本体なので、内容不変でも通す。
   const focusOnlyOps = op.op === "activate" || op.op === "shelve";
-  if (!focusOnlyOps && before && planContentEqual(before, nextState)) {
+  if (!focusOnlyOps && before && stepsContentEqual(before, nextState)) {
     return notAttempted();
   }
 
@@ -207,9 +207,9 @@ export async function runPlan(
     };
   }
 
-  await savePlan(nextState);
-  const body = renderPlan(nextState);
-  const mirrorPath = await writePlanMirror(nextState.id, body);
+  await saveSteps(nextState);
+  const body = renderSteps(nextState);
+  const mirrorPath = await writeStepsMirror(nextState.id, body);
 
   const now = new Date().toISOString();
   await input.memoIndex?.upsert({
@@ -220,7 +220,7 @@ export async function runPlan(
   });
 
   // facts.action: 表示と focus 制御（orchestrator）に使う。
-  const planAction: PlanAction =
+  const stepsAction: StepsAction =
     op.op === "new_goal"
       ? op.activate
         ? "activate"
@@ -234,11 +234,11 @@ export async function runPlan(
             : "update";
 
   return actionSucceeded(action, {
-    kind: "plan",
-    planId: nextState.id,
+    kind: "steps",
+    stepsId: nextState.id,
     filename: mirrorPath,
     body,
     achieved,
-    action: planAction,
+    action: stepsAction,
   });
 }

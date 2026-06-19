@@ -5,7 +5,7 @@ data/state.json
 data/dream-state.json
 data/notes/*
 !data/notes/.gitkeep
-data/plans/
+data/steps/
 .env
 *.log
 article/
