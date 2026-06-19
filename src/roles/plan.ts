@@ -138,6 +138,37 @@ export async function runPlan(
 
   if (op.op === "noop") return notAttempted();
 
+  // view（参照・読み取り専用）: focus を変えず保存もしない。報告・確認・言及のための op。
+  // planId 有り＝その計画の詳細／無し＝backlog 概観（「やり残しある？」への一覧）。言語野が body を読んで答える。
+  if (op.op === "view") {
+    const id = (op.planId ?? "").trim();
+    if (id) {
+      const p = await loadPlan(id);
+      if (!p) {
+        return actionFailed(action, "参照する計画が見つからない", {
+          code: ACTION_ERROR_CODES.INVALID_ARGS,
+          message: `view 対象の計画（${id}）が無い`,
+        }, "plan");
+      }
+      return actionSucceeded(action, {
+        kind: "plan",
+        planId: id,
+        filename: `goals/${id}.md`,
+        body: renderPlan(p),
+        achieved: false,
+        action: "view",
+      });
+    }
+    return actionSucceeded(action, {
+      kind: "plan",
+      planId: "",
+      filename: "",
+      body: `やり残し（取り組み中の計画）:\n${renderBacklog(backlog, focusId)}`,
+      achieved: false,
+      action: "view",
+    });
+  }
+
   // 対象の計画を解決。new_goal は新規・それ以外は planId（省略時 focusPlan）。
   const targetId = (op.planId ?? "").trim() || focusId;
   const before = op.op === "new_goal" ? null : await loadPlan(targetId);

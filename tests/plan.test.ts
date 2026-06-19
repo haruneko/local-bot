@@ -210,6 +210,36 @@ describe("runPlan（op→決定的適用）", () => {
     }
   });
 
+  it("view(planId 無し) は backlog を報告するだけ（focus 変えず・action=view）", async () => {
+    await savePlan({ ...samplePlan(), id: "__v-a__", title: "星座を覚える" });
+    await savePlan({ ...samplePlan(), id: "__v-b__", title: "歌詞を書く" });
+    try {
+      const llm = new FakeLlmClient([JSON.stringify({ op: "view" })]);
+      const o = await runPlan(llm, makeInput("", "やり残しある？"));
+      expect(o.attempted && o.facts?.kind === "plan" && o.facts.action).toBe("view");
+      if (o.attempted && o.facts?.kind === "plan") {
+        expect(o.facts.body).toContain("星座を覚える");
+        expect(o.facts.body).toContain("歌詞を書く");
+      }
+    } finally {
+      await rm(path.join(plansDir(), "__v-a__.json"), { force: true });
+      await rm(path.join(plansDir(), "__v-b__.json"), { force: true });
+    }
+  });
+
+  it("view(planId 有り) はその計画の詳細を報告（読み取り専用＝始めない）", async () => {
+    const id = "__v-one__";
+    await savePlan({ ...samplePlan(), id });
+    try {
+      const llm = new FakeLlmClient([JSON.stringify({ op: "view", planId: id })]);
+      const o = await runPlan(llm, makeInput("", "あの計画どうなってる？"));
+      expect(o.attempted && o.facts?.kind === "plan" && o.facts.action).toBe("view");
+      expect(o.attempted && o.facts?.kind === "plan" && o.facts.planId).toBe(id);
+    } finally {
+      await rm(path.join(plansDir(), `${id}.json`), { force: true });
+    }
+  });
+
   it("activate は planId で既存計画を対象にし facts.action=activate を返す", async () => {
     const id = "__act__";
     await savePlan({ ...samplePlan(), id });

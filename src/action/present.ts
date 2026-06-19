@@ -9,8 +9,10 @@ export function noteDisplayPath(filename: string): string {
 }
 
 /** plan facts.action → 表示用の動詞。 */
-function planVerb(action: "create" | "activate" | "shelve" | "retire" | "update"): string {
+function planVerb(action: "view" | "create" | "activate" | "shelve" | "retire" | "update"): string {
   switch (action) {
+    case "view":
+      return "確認した";
     case "create":
       return "立てた";
     case "activate":

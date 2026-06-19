@@ -14,6 +14,7 @@ export type ActionFacts =
       body: string;
       achieved: boolean;
       /** この op が計画に対して何をしたか（表示と focus 制御に使う）。
-       *  create=立てた / activate=始めた・再開した / shelve=棚上げ / retire=見限り / update=手で更新 */
-      action: "create" | "activate" | "shelve" | "retire" | "update";
+       *  view=参照(読むだけ・focus変えない) / create=立てた / activate=始めた・再開した /
+       *  shelve=棚上げ / retire=見限り / update=手で更新 */
+      action: "view" | "create" | "activate" | "shelve" | "retire" | "update";
     };

@@ -33,6 +33,7 @@ export const memoOpJsonSchema = zodToJsonSchema(memoOpSchema, {
 export const planOpSchema = z.object({
   op: z.enum([
     "new_goal",
+    "view",
     "activate",
     "shelve",
     "retire",

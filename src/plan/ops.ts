@@ -8,6 +8,7 @@ import { planSlug } from "./state.js";
 export type PlanOp = {
   op:
     | "new_goal"
+    | "view"
     | "activate"
     | "shelve"
     | "retire"
