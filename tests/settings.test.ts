@@ -7,11 +7,16 @@ import {
 } from "../src/config/settings.js";
 
 describe("集中 State の actor 解決", () => {
-  it("実 config で全 State が steps actor を含む（静穏からの計画再開のため）", async () => {
+  it("対話・静穏は steps actor を含む（管理＝立てる/開始/報告/再開）", async () => {
     const s = await loadSettings();
-    expect(resolveEnabledActors(s, "集中")).toContain("steps");
     expect(resolveEnabledActors(s, "対話")).toContain("steps");
     expect(resolveEnabledActors(s, "静穏")).toContain("steps");
+  });
+  it("集中は steps actor を含まない（執行フェーズ＝doer が動き、前進は受け入れ判定が担う）", async () => {
+    const s = await loadSettings();
+    expect(resolveEnabledActors(s, "集中")).not.toContain("steps");
+    // 集中の doer（少なくとも作る人）は居る
+    expect(resolveEnabledActors(s, "集中")).toContain("synthesize");
   });
 });
 

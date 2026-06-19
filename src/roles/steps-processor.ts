@@ -27,10 +27,11 @@ function firstUndone(steps: StepsState): string | null {
   return steps.milestones.find((m) => !m.done)?.id ?? null;
 }
 
-/** 1マイルストーンが成果物の中で達成されているかを狭く二値判定する。失敗時は false（誤✓を避ける）。 */
+/** 1マイルストーンが「実際にやれたか」を狭く二値判定する。失敗時は false（誤✓を避ける）。
+ *  根拠は今回の行動の実結果＋これまでの成果物。意図・宣言・捏造では true にしない。 */
 async function judgeSatisfied(
   llm: LlmClient,
-  args: { goal: string; milestoneText: string; worksBody: string },
+  args: { goal: string; milestoneText: string; worksBody: string; actionResults: string },
 ): Promise<boolean> {
   const format = stepsMilestoneJudgeJsonSchema as Record<string, unknown>;
   const raw = await llm.chat(
@@ -39,10 +40,13 @@ async function judgeSatisfied(
       {
         role: "user",
         content: [
-          args.goal ? `計画の目標: ${args.goal}` : "",
-          `判定するマイルストーン: ${args.milestoneText}`,
+          args.goal ? `目標：${args.goal}` : "",
+          `現在のマイルストーン：${args.milestoneText}`,
           "",
-          "これまでに作られた成果物:",
+          "今回やったこと（行動の結果。失敗・空振りはやれていない）：",
+          args.actionResults.trim() ? args.actionResults : "（このターンでは何も起きていない）",
+          "",
+          "成果物：",
           args.worksBody.trim() ? args.worksBody : "（まだ何も作られていない）",
         ]
           .filter(Boolean)
@@ -56,17 +60,17 @@ async function judgeSatisfied(
 }
 
 /**
- * steps processor（前判定・集中の背骨）。
- * 成果物(works)と計画を突き合わせ、current から前に向かって「実際に満たされた」マイルストーンを
- * 機械が✓して current を進める。stuck ポインタを毎ターン頭で実態に合わせる＝書く人が常に正しい所を書く。
+ * steps processor（受け入れ判定・集中の背骨）。**実行のあと・結果を受けて**回す。
+ * 今回の行動の実結果（actionResults）＋これまでの成果物(works)を根拠に、current から前へ
+ * 「実際にやれたマイルストーン」を機械が✓して current を進める。失敗・空振りなら進めない（作話防止）。
  * 全✓になったら達成ログを1回足し allDone=true を返す（呼び出し側が集中を締める）。
  *
- * LLM の仕事は「このマイルストーンは成果物の中で達成されたか」の狭い二値だけ（分割統治）。
- * 構造の更新（✓・current 前進・達成ログ）はこの関数が決定的に行う。
+ * LLM の仕事は「このマイルストーンは実際にやれたか」の狭い二値だけ（doer とは別人格＝やった本人に
+ * 合否を出させない）。構造の更新（✓・current 前進・達成ログ）はこの関数が決定的に行う。
  */
 export async function runStepsProcessor(
   llm: LlmClient,
-  input: { steps: StepsState; worksBody: string },
+  input: { steps: StepsState; worksBody: string; actionResults: string },
 ): Promise<StepsProcessorResult> {
   const steps: StepsState = {
     ...input.steps,
@@ -88,6 +92,7 @@ export async function runStepsProcessor(
       goal: steps.goal,
       milestoneText: m.text,
       worksBody: input.worksBody,
+      actionResults: input.actionResults,
     });
     if (!satisfied) {
       steps.current = m.id; // 実態に合わせて current を未完の先頭へ

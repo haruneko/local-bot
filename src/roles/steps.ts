@@ -180,6 +180,12 @@ export async function runSteps(
     }, "steps");
   }
 
+  // 完了として畳む: 全部済んだ段取りは「完了」＝再び集中対象にしない。activate されても無視。
+  // （やり直したいなら reopen でマイルストーンを開けてから。）
+  if (op.op === "activate" && before && allMilestonesDone(before)) {
+    return notAttempted();
+  }
+
   let nextState = applyStepsOp(before, op, new Date());
   if (!nextState) {
     return actionFailed(action, "計画の操作を適用できなかった", {

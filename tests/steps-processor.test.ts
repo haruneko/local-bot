@@ -30,7 +30,7 @@ describe("steps processor（前判定・マイルストーン照合）", () => {
     const llm = new FakeLlmClient([yes, yes, no]);
     const result = await runStepsProcessor(llm, {
       steps: steps(),
-      worksBody: "段落1の本文。段落2の本文。",
+      worksBody: "段落1の本文。段落2の本文。", actionResults: "書いた",
     });
     expect(result.completedIds).toEqual(["m1", "m2"]);
     expect(result.steps.milestones.map((m) => m.done)).toEqual([true, true, false]);
@@ -47,7 +47,7 @@ describe("steps processor（前判定・マイルストーン照合）", () => {
         { id: "m1", text: "段落1を書く", done: false },
         { id: "m2", text: "段落2を書く", done: false },
       ] }),
-      worksBody: "段落1。段落2。",
+      worksBody: "段落1。段落2。", actionResults: "書いた",
     });
     expect(result.allDone).toBe(true);
     expect(result.steps.current).toBeNull();
@@ -59,7 +59,7 @@ describe("steps processor（前判定・マイルストーン照合）", () => {
   it("満たされたものが無ければ計画を変えない", async () => {
     const input = steps();
     const llm = new FakeLlmClient([no]);
-    const result = await runStepsProcessor(llm, { steps: input, worksBody: "" });
+    const result = await runStepsProcessor(llm, { steps: input, worksBody: "", actionResults: "" });
     expect(result.completedIds).toEqual([]);
     expect(result.allDone).toBe(false);
     expect(result.steps).toBe(input); // 同一参照＝無変更
@@ -69,7 +69,7 @@ describe("steps processor（前判定・マイルストーン照合）", () => {
   // T-PP04: 判定がパース不能なら未達扱い（誤✓を避ける）
   it("判定のパース失敗は未達として扱い✓しない", async () => {
     const llm = new FakeLlmClient(["これはJSONではない"]);
-    const result = await runStepsProcessor(llm, { steps: steps(), worksBody: "なにか" });
+    const result = await runStepsProcessor(llm, { steps: steps(), worksBody: "なにか", actionResults: "なにか" });
     expect(result.completedIds).toEqual([]);
     expect(result.steps.milestones.every((m) => !m.done)).toBe(true);
   });
@@ -86,7 +86,7 @@ describe("steps processor（前判定・マイルストーン照合）", () => {
         ],
         current: "m1", // 完了済みを指している
       }),
-      worksBody: "段落2。段落3。",
+      worksBody: "段落2。段落3。", actionResults: "書いた",
     });
     expect(result.completedIds).toEqual(["m2", "m3"]);
     expect(result.allDone).toBe(true);

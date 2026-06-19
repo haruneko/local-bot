@@ -66,6 +66,15 @@ export const stepsMilestoneJudgeJsonSchema = zodToJsonSchema(stepsMilestoneJudge
   name: "StepsMilestoneJudge",
   ...jsonSchemaOptions,
 });
+/** 集中の dispatcher（current タスクをどの手で進めるか）。hand は使える手の中から。 */
+export const stepsDispatchSchema = z.object({
+  hand: z.string(),
+  intent: z.string(),
+});
+export const stepsDispatchJsonSchema = zodToJsonSchema(stepsDispatchSchema, {
+  name: "StepsDispatch",
+  ...jsonSchemaOptions,
+});
 export const memoReadPickJsonSchema = zodToJsonSchema(memoReadPickOutputSchema, {
   name: "MemoReadPickOutput",
   ...jsonSchemaOptions,

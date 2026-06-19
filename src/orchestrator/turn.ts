@@ -34,6 +34,7 @@ import { listSteps, loadSteps, saveSteps } from "../steps/state.js";
 import { renderStepsForLanguage } from "../steps/render.js";
 import { stepsProgress, evaluateFocusGraduation } from "../steps/focus.js";
 import { runStepsProcessor } from "../roles/steps-processor.js";
+import { runStepsDispatcher } from "../roles/steps-dispatch.js";
 import { readNoteContent } from "../tools/notes.js";
 import type { VerboseLogger, VerboseLoggerImpl } from "../util/verbose.js";
 import { noopVerbose } from "../util/verbose.js";
@@ -354,35 +355,18 @@ export class TurnOrchestrator {
       imageFeed,
     );
 
-    // steps processor（前判定・集中の背骨）: 集中中、作った成果物(works)と計画を突き合わせ、
-    // 実際に満たされたマイルストーンを機械が✓して current を前へ進める（stuck ポインタの矯正を毎ターン頭で）。
-    // これで計画チャンネルが実態を指し、書く人(synthesize)が常に正しい所を書ける。全✓なら締める。
-    // 進行は「steps actor が発火するか」の博打でなく、集中中まわるこの機械フェーズが担う。
-    let stepsCompletedThisTurn = false;
     // 集中の doer に渡す「いま取り組む単一タスク」（current マイルストーン本文）。計画全体は渡さない。
+    // ★頭では判定・前進しない（ターンの頭で計画しない＝コアコンセプト）。current は前ターンの
+    //   受け入れ判定が置いたもの。doer はそれに沿って反応的に動く。判定は実行のあと（下）。
     let currentTask = "";
     if (startState === "集中" && this.focusSteps) {
-      const focusStepsState = await loadSteps(this.focusSteps);
-      if (focusStepsState && focusStepsState.milestones.length > 0 && !focusStepsState.retired) {
-        const worksBody = (await readNoteContent(`works/${this.focusSteps}.md`)) ?? "";
-        const processed = await runStepsProcessor(this.deps.llm, {
-          steps: focusStepsState,
-          worksBody,
-        });
-        if (processed.completedIds.length > 0) {
-          await saveSteps(processed.steps);
-          v?.stepsProcessor(processed.completedIds, processed.allDone);
-        }
-        stepsCompletedThisTurn = processed.allDone;
-        if (!processed.allDone) {
-          const cur = processed.steps.milestones.find((m) => m.id === processed.steps.current);
-          currentTask = cur?.text ?? "";
-        }
+      const fs = await loadSteps(this.focusSteps);
+      if (fs && !fs.retired) {
+        currentTask = fs.milestones.find((m) => m.id === fs.current)?.text ?? "";
       }
     }
 
     // 計画チャンネル: 集中 State のときだけ取り組み中のゴールノート全文を常駐させる
-    // （processor で✓・current を更新済みの計画を読む）
     const steps = await this.loadStepsChannel(startState);
 
     let ctx = createTurnContext({
@@ -426,6 +410,39 @@ export class TurnOrchestrator {
 
     // --- activate → actor pool ---
     ctx = await this.runActorPool(ctx, enabledActors, actionLlm, activatorLlm, actionDeps);
+
+    // --- steps 受け入れ判定（実行のあと・結果を受けて）---
+    // 集中中、いま終えた行動の実結果(ctx.actions)＋成果物を見て「current マイルストーンは実際にやれたか」を
+    // 判定し、機械が✓・current 前進・全✓なら締める。頭で計画せず結果で動く（コアコンセプト）。
+    // 判定役（runStepsProcessor）は doer とは別人格＝やった本人に合否を出させない（作話防止）。
+    // できなかった（失敗・空振り）なら進めない＝偽の done を作らない。
+    let stepsCompletedThisTurn = false;
+    if (startState === "集中" && this.focusSteps) {
+      const fs = await loadSteps(this.focusSteps);
+      // 完了として畳む: 既に全部済んだ／見限った段取りに焦点が残っていたら、判定し直さず集中を閉じる
+      //（達成後の空回り・触り直しを断つ）。ファイルが無い場合は触らない（焦点を保持）。
+      const alreadyDone = !!fs && fs.milestones.length > 0 && fs.milestones.every((m) => m.done);
+      if (fs && (alreadyDone || fs.retired)) {
+        this.focusSteps = "";
+      } else if (fs && fs.milestones.length > 0) {
+        const worksBody = (await readNoteContent(`works/${this.focusSteps}.md`)) ?? "";
+        // 「今回やったこと」は中身込みで渡す（synthesize なら書いた本文・research なら取れたデータ）。
+        const actionResults = ctx.actions
+          .filter((a) => a.attempted)
+          .map((a) => formatActionFactContent(a))
+          .join("\n\n");
+        const processed = await runStepsProcessor(this.deps.llm, {
+          steps: fs,
+          worksBody,
+          actionResults,
+        });
+        if (processed.completedIds.length > 0) {
+          await saveSteps(processed.steps);
+          v?.stepsProcessor(processed.completedIds, processed.allDone);
+        }
+        stepsCompletedThisTurn = processed.allDone;
+      }
+    }
 
     // steps actor の結果を収集する。focusSteps の付け替えは steps facts.action（手の意図）で決める：
     // activate=その計画を開始/再開（集中へ）／shelve・retire=いまの集中を手放す／create・update=変えない。
@@ -752,6 +769,53 @@ export class TurnOrchestrator {
     }
   }
 
+  /** 集中（段取り実行モード）: dispatcher が current タスクを進める手を1つ選び、その手だけ動かす。
+   *  current タスクが無ければ何もしない（達成直後など）。doer の結果は後段の受け入れ判定が見る。 */
+  private async runFocusDispatch(
+    ctx: TurnContext,
+    enabledActors: ActorName[],
+    actionLlm: LlmClient,
+    actionDeps: RunActionDeps,
+  ): Promise<TurnContext> {
+    const v = this.vlog;
+    const t0 = Date.now();
+    if (!ctx.currentTask.trim() || !ctx.stepsId) return ctx;
+
+    const hands = enabledActors.filter(
+      (n) => n === "synthesize" || n === "webSearch" || n === "urlBrowse" || n === "memo",
+    );
+    const fs = await loadSteps(ctx.stepsId);
+    const worksExcerpt = ((await readNoteContent(`works/${ctx.stepsId}.md`)) ?? "").slice(-1200);
+    const dispatch = await runStepsDispatcher(this.deps.llm, {
+      goal: fs?.goal ?? "",
+      currentTask: ctx.currentTask,
+      worksExcerpt,
+      hands,
+    });
+    if (!dispatch) return ctx;
+    // dispatcher は hands（= enabledActors のサブセット）の中からしか返さない＝ActorName 確定。
+    const hand = dispatch.hand as ActorName;
+    const actor = getActor(hand);
+    if (!actor) return ctx;
+
+    v?.actorsActivated([{ name: hand, intent: dispatch.intent }], hands.length, Date.now() - t0);
+    const channels =
+      this.deps.actorChannels?.[hand] ?? DEFAULT_ACTOR_CHANNELS[hand];
+    const actorLlm = this.deps.actorLlm?.[hand] ?? actionLlm;
+    const outcome = await actor.run(actorLlm, {
+      ctx,
+      intent: dispatch.intent,
+      channels,
+      deps: actionDeps,
+    });
+    if (outcome?.attempted) {
+      ctx = withAction(ctx, outcome);
+      this.turnContext = ctx;
+      v?.actionResult(outcome, Date.now() - t0);
+    }
+    return ctx;
+  }
+
   /** activate（各 actor 並列）→ 起動した actor を並列実行し ctx.actions に積む */
   private async runActorPool(
     ctx: TurnContext,
@@ -762,6 +826,13 @@ export class TurnOrchestrator {
   ): Promise<TurnContext> {
     const v = this.vlog;
     const actorStart = Date.now();
+
+    // 集中＝段取りの実行モード: current タスクがあれば dispatcher が「どの手で進めるか」を1つ選んで
+    // その手だけ動かす（汎用 activator でなく専用＝手の取り違え＝作話を防ぐ）。current が無ければ何もしない。
+    if (ctx.state === "集中") {
+      return await this.runFocusDispatch(ctx, enabledActors, actionLlm, actionDeps);
+    }
+
     const runners = enabledActors.flatMap((name) => getActor(name) ?? []);
     // 判断系（criteria）は multi-label が1発でまとめて判定。客観/機械ゲート（activate）は別途。
     const criteriaActors = runners.filter((a) => a.criteria);
