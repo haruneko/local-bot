@@ -13,6 +13,10 @@ import { STEPS_SYSTEM } from "../prompts/roles.js";
 import { stepsOpJsonSchema, stepsOpSchema } from "../prompts/schemas.js";
 import type { LlmClient } from "../llm/types.js";
 import { listSteps, loadSteps, saveSteps, type StepsState } from "../steps/state.js";
+import { lexicalRank } from "../recall/lexical.js";
+
+/** new_goal の重複防止しきい値（提案タイトル×既存タイトルの字句近さ＝bigram Dice）。これ超えで重複とみなす。 */
+const STEPS_DUP_DICE = 0.5;
 import { applyStepsOp, type StepsOp } from "../steps/ops.js";
 import { renderSteps } from "../steps/render.js";
 import { notesDir } from "../tools/notes.js";
@@ -167,6 +171,21 @@ export async function runSteps(
       achieved: false,
       action: "view",
     });
+  }
+
+  // 重複防止: 似た主題の段取りが既にあれば new_goal しない（完了済み・見限り含む全件と照合）。
+  // ＝達成後に関心事が残って同じ段取りを作り直す重複生成を断つ（memo の recall 認識と同型の役割）。
+  if (op.op === "new_goal") {
+    const proposed = `${(op.title ?? "").trim()} ${(op.goal ?? "").trim()}`.trim();
+    if (proposed) {
+      const all = await listSteps();
+      const dup = lexicalRank(
+        proposed,
+        all.map((p) => ({ key: p.id, text: `${p.title} ${p.goal}` })),
+        STEPS_DUP_DICE,
+      );
+      if (dup.length > 0) return notAttempted();
+    }
   }
 
   // 対象の計画を解決。new_goal は新規・それ以外は stepsId（省略時 focusSteps）。

@@ -240,6 +240,44 @@ describe("runSteps（op→決定的適用）", () => {
     }
   });
 
+  it("似た主題の段取りが既にあれば new_goal しない（重複生成の防止・完了済みも照合）", async () => {
+    const id = "__dup-exist__";
+    await saveSteps({
+      ...sampleSteps(),
+      id,
+      title: "記憶の4層を説明するまとめノートを作る",
+      goal: "記憶の4層を1段落ずつ説明する",
+      milestones: [{ id: "m1", text: "x", done: true }],
+    });
+    try {
+      const llm = new FakeLlmClient([
+        JSON.stringify({ op: "new_goal", title: "記憶の4層のまとめノートを作る", goal: "記憶の4層を段落で説明する", milestones: ["y"] }),
+      ]);
+      const o = await runSteps(llm, makeInput("", "記憶のまとめを作ろう"));
+      expect(o.attempted).toBe(false); // 重複なので作らない
+    } finally {
+      await rm(path.join(stepsDir(), `${id}.json`), { force: true });
+    }
+  });
+
+  it("別主題なら new_goal は作られる（重複防止が過剰に効かない）", async () => {
+    const id = "__dup-other__";
+    await saveSteps({ ...sampleSteps(), id, title: "Fコードのマスター", goal: "ギターのFを押さえる" });
+    try {
+      const llm = new FakeLlmClient([
+        JSON.stringify({ op: "new_goal", title: "浮き島と夜明けの歌詞を書く", goal: "1番を仕上げる", milestones: ["Aメロ"] }),
+      ]);
+      const o = await runSteps(llm, makeInput("", "歌詞作ろう"));
+      expect(o.attempted && o.facts?.kind === "steps").toBe(true);
+      if (o.attempted && o.facts?.kind === "steps") {
+        await rm(path.join(stepsDir(), `${o.facts.stepsId}.json`), { force: true });
+        await rm(path.join(notesDir(), "goals", `${o.facts.stepsId}.md`), { force: true });
+      }
+    } finally {
+      await rm(path.join(stepsDir(), `${id}.json`), { force: true });
+    }
+  });
+
   it("activate は stepsId で既存計画を対象にし facts.action=activate を返す", async () => {
     const id = "__act__";
     await saveSteps({ ...sampleSteps(), id });
