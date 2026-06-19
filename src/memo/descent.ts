@@ -92,10 +92,12 @@ export async function recallRecognizeTarget(
   intent: string,
   topK = 8,
 ): Promise<string | null> {
-  const vhits = await memoIndex.recall(intent, topK);
+  // goals/ は plan 所有の派生ビュー＝memo の対象にしない（plan の領分・取り合い防止）。
+  const notPlan = (p: string) => !p.startsWith("goals/");
+  const vhits = (await memoIndex.recall(intent, topK)).filter((h) => notPlan(h.path));
   // hybrid: 「名前そのまま」クエリは意味ベクトルが弱いので字句一致（ファイル名）を RRF 融合する。
   // ただしゲート（強い字句一致のときだけ）で話題クエリへのノイズ注入を防ぐ（eval:retrieval で検証）。
-  const all = await memoIndex.list();
+  const all = (await memoIndex.list()).filter((e) => notPlan(e.path));
   const lexPaths = lexicalRank(
     intent,
     all.map((e) => ({ key: e.path, text: e.path })),

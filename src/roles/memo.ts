@@ -151,6 +151,15 @@ export async function runMemo(
     baseContent = target ? current : null;
   }
 
+  // 境界: goals/ は plan の派生ビュー（plan 所有・renderPlan で機械再生成される）。
+  // memo で書くと次の plan 更新で上書き消失し取り合いになる。書かずに plan の領分へ譲る。
+  if (filename.startsWith("goals/")) {
+    return actionSucceeded(
+      action,
+      "計画ノート（goals/）は plan の領分なので memo では書かなかった",
+    );
+  }
+
   const result = applyMemoOp(baseContent, effectiveOp);
   if (!result.ok) {
     return actionFailed(action, "メモ操作を適用できなかった", {

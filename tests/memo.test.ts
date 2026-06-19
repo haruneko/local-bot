@@ -40,6 +40,19 @@ function makeInput(intent: string, memoIndex?: InMemoryMemoIndexStore) {
 }
 
 describe("runMemo（統合 actor・recall認識＋descent）", () => {
+  it("goals/（plan 所有の計画ノート）には書かない＝plan の領分へ譲る", async () => {
+    // 空ツリー＝descent は LLM を呼ばない → op の1応答のみ
+    const llm = new FakeLlmClient([
+      JSON.stringify({ op: "create", filename: "goals/song.md", content: "メモ追記" }),
+    ]);
+    const outcome = await runMemo(llm, makeInput("計画にメモを足す"));
+    // goals/ へは書かない（plan の領分）＝ファイルが作られない
+    expect(await readNoteContent("goals/song.md")).toBeNull();
+    // 失敗ではなく benign な no-op（facts 無しの成功）
+    expect(outcome.attempted && outcome.status).toBe("succeeded");
+  });
+
+
   it("空ツリーでは descent をスキップし create で新規作成、_index と memoIndex を更新", async () => {
     const memoIndex = new InMemoryMemoIndexStore();
     // ツリーが空 → descent は LLM を呼ばない → op の1応答のみ
