@@ -8,15 +8,33 @@ import {
 } from "../action/parse-json.js";
 import { actionFailed, actionSucceeded, notAttempted } from "../action/outcome.js";
 import { lastUserMessageFromContext, type RunActionInput } from "../action/context.js";
-import { formatActionsForLanguage } from "../action/present.js";
 import type { ActionOutcome } from "../types.js";
 import { PLAN_SYSTEM } from "../prompts/roles.js";
 import { planOpJsonSchema, planOpSchema } from "../prompts/schemas.js";
 import type { LlmClient } from "../llm/types.js";
-import { loadPlan, savePlan, type PlanState } from "../plan/state.js";
+import { listPlans, loadPlan, savePlan, type PlanState } from "../plan/state.js";
 import { applyPlanOp, type PlanOp } from "../plan/ops.js";
 import { renderPlan } from "../plan/render.js";
 import { notesDir } from "../tools/notes.js";
+
+/** plan facts.action（表示と focus 制御に使う） */
+type PlanAction = "create" | "activate" | "shelve" | "retire" | "update";
+
+/** バインダーの目次（plan 一覧）を LLM 向けに整形する。 */
+function renderBacklog(
+  plans: Awaited<ReturnType<typeof listPlans>>,
+  focusId: string,
+): string {
+  const live = plans.filter((p) => !p.done && !p.retired);
+  if (live.length === 0) return "（まだ計画はない）";
+  return live
+    .map((p) => {
+      const here = p.id === focusId ? " ←いま集中中" : "";
+      const where = p.current ? `・いま「${p.current}」` : "";
+      return `- (${p.id}) ${p.title}（${p.completed}/${p.total}${where}）${here}`;
+    })
+    .join("\n");
+}
 
 /** 意味のある中身（updatedAt 等を除く）が同じか。効果ゼロ op の検出に使う */
 function planContentEqual(a: PlanState, b: PlanState): boolean {
@@ -53,9 +71,10 @@ export async function runPlan(
 ): Promise<ActionOutcome> {
   const action = input.action;
   const { currentDateTime } = input.ctx;
-  const activeId = input.ctx.planId;
-  const current = activeId ? await loadPlan(activeId) : null;
-  const rendered = current ? renderPlan(current) : "（まだ計画はない）";
+  const focusId = input.ctx.planId;
+  const backlog = await listPlans();
+  const focusPlan = focusId ? await loadPlan(focusId) : null;
+  const focusRendered = focusPlan ? renderPlan(focusPlan) : "（いま集中している計画はない）";
 
   const speakerId =
     input.ctx.trigger.type === "user_message"
@@ -83,11 +102,11 @@ export async function runPlan(
             `意図: ${action.intent}`,
             lastUserMessage ? `${speaker}があなたに言ったこと: ${lastUserMessage}` : "",
             "",
-            "このターンで実際に起きたこと（行動の結果）:",
-            formatActionsForLanguage(input.ctx.actions),
+            "いまの計画一覧:",
+            renderBacklog(backlog, focusId),
             "",
-            "いまの計画:",
-            rendered,
+            "いま集中している計画:",
+            focusRendered,
           ]
             .filter(Boolean)
             .join("\n"),
@@ -117,22 +136,35 @@ export async function runPlan(
     );
   }
 
-  // 変更なし → 行動しなかった扱い（focusPlan / 集中入室を起こさない）
   if (op.op === "noop") return notAttempted();
 
-  const before = op.op === "new_goal" ? null : current;
-  let nextState = applyPlanOp(before, op, new Date());
-  if (!nextState) {
-    return actionFailed(action, "更新対象の計画がない", {
+  // 対象の計画を解決。new_goal は新規・それ以外は planId（省略時 focusPlan）。
+  const targetId = (op.planId ?? "").trim() || focusId;
+  const before = op.op === "new_goal" ? null : await loadPlan(targetId);
+
+  if (op.op !== "new_goal" && !before) {
+    return actionFailed(action, "対象の計画が見つからない", {
       code: ACTION_ERROR_CODES.INVALID_ARGS,
-      message: "取り組み中の計画が無い状態で更新 op が来た",
+      message: `op=${op.op} の対象計画（${targetId || "未指定"}）が無い`,
     }, "plan");
   }
 
-  // 効果ゼロの op（存在しない id への complete 等）は outcome にしない
-  if (before && planContentEqual(before, nextState)) return notAttempted();
+  let nextState = applyPlanOp(before, op, new Date());
+  if (!nextState) {
+    return actionFailed(action, "計画の操作を適用できなかった", {
+      code: ACTION_ERROR_CODES.INVALID_ARGS,
+      message: `op=${op.op} を適用できない`,
+    }, "plan");
+  }
 
-  // 達成判定: 新たに全マイルストーン完了になったら達成ログを1回足す
+  // 効果ゼロの編集（存在しない id への complete 等）は outcome にしない。
+  // ただし activate/shelve は focus を動かす副作用が本体なので、内容不変でも通す。
+  const focusOnlyOps = op.op === "activate" || op.op === "shelve";
+  if (!focusOnlyOps && before && planContentEqual(before, nextState)) {
+    return notAttempted();
+  }
+
+  // 達成判定: 手動 complete で新たに全マイルストーン完了になったら達成ログを1回足す
   const achieved = allMilestonesDone(nextState);
   if (achieved && !(before && allMilestonesDone(before))) {
     nextState = {
@@ -156,11 +188,26 @@ export async function runPlan(
     updatedAt: now,
   });
 
+  // facts.action: 表示と focus 制御（orchestrator）に使う。
+  const planAction: PlanAction =
+    op.op === "new_goal"
+      ? op.activate
+        ? "activate"
+        : "create"
+      : op.op === "activate"
+        ? "activate"
+        : op.op === "shelve"
+          ? "shelve"
+          : op.op === "retire"
+            ? "retire"
+            : "update";
+
   return actionSucceeded(action, {
     kind: "plan",
     planId: nextState.id,
     filename: mirrorPath,
     body,
     achieved,
+    action: planAction,
   });
 }

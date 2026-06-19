@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const PLANS_DIR_DEFAULT = path.join(process.cwd(), "data", "plans");
@@ -62,4 +62,55 @@ export async function savePlan(state: PlanState): Promise<void> {
     `${JSON.stringify(state, null, 2)}\n`,
     "utf8",
   );
+}
+
+/** plan の一覧用サマリ（バインダーの目次）。plan actor が「どの計画を扱うか」を選ぶための入力。 */
+export type PlanSummary = {
+  id: string;
+  title: string;
+  goal: string;
+  /** 全マイルストーン完了済み */
+  done: boolean;
+  /** 見限り済み（自動復帰しない） */
+  retired: boolean;
+  /** いま取り組む milestone の本文（なければ null） */
+  current: string | null;
+  completed: number;
+  total: number;
+  updatedAt: string;
+};
+
+/** plans ディレクトリの全 plan を読み、サマリ一覧を返す（新しい順）。無ければ空配列。 */
+export async function listPlans(): Promise<PlanSummary[]> {
+  let files: string[];
+  try {
+    files = (await readdir(plansDir())).filter((f) => f.endsWith(".json"));
+  } catch {
+    return [];
+  }
+  const out: PlanSummary[] = [];
+  for (const f of files) {
+    try {
+      const p = JSON.parse(
+        await readFile(path.join(plansDir(), f), "utf8"),
+      ) as PlanState;
+      const completed = p.milestones.filter((m) => m.done).length;
+      const cur = p.milestones.find((m) => m.id === p.current);
+      out.push({
+        id: p.id,
+        title: p.title,
+        goal: p.goal,
+        done: p.milestones.length > 0 && completed === p.milestones.length,
+        retired: !!p.retired,
+        current: cur?.text ?? null,
+        completed,
+        total: p.milestones.length,
+        updatedAt: p.updatedAt,
+      });
+    } catch {
+      // 壊れた JSON はスキップ
+    }
+  }
+  out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return out;
 }

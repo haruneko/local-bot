@@ -8,12 +8,19 @@ import { planSlug } from "./state.js";
 export type PlanOp = {
   op:
     | "new_goal"
+    | "activate"
+    | "shelve"
+    | "retire"
     | "complete"
     | "reopen"
     | "set_current"
     | "add_milestone"
     | "log"
     | "noop";
+  /** 対象の計画 id（省略時 = focusPlan）。new_goal では無視（生成する） */
+  planId?: string;
+  /** new_goal のみ: true で作って即開始 */
+  activate?: boolean;
   id?: string;
   text?: string;
   title?: string;
@@ -102,6 +109,23 @@ export function applyPlanOp(
     case "log": {
       const text = (op.text ?? "").trim();
       if (text) next.log.push({ date: isoDate(now), text });
+      break;
+    }
+    case "retire": {
+      next.retired = true;
+      next.log.push({ date: isoDate(now), text: `「${next.title}」を見限った` });
+      break;
+    }
+    case "activate": {
+      // 開始/再開: focusPlan の付け替えは orchestrator が行う。ここでは current が空なら
+      // 未完の先頭へ戻す（再開時に取り組む対象を確定）。構造の変更はそれだけ。
+      if (!next.current) next.current = next.milestones.find((m) => !m.done)?.id ?? null;
+      if (next.retired) next.retired = false; // 再開＝見限り解除
+      break;
+    }
+    case "shelve": {
+      // 棚上げ: focusPlan から外すのは orchestrator。plan 自体は active のまま残す。
+      next.log.push({ date: isoDate(now), text: `「${next.title}」を棚上げした` });
       break;
     }
     case "noop":

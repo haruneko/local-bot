@@ -8,6 +8,22 @@ export function noteDisplayPath(filename: string): string {
   return `data/notes/${filename}`;
 }
 
+/** plan facts.action → 表示用の動詞。 */
+function planVerb(action: "create" | "activate" | "shelve" | "retire" | "update"): string {
+  switch (action) {
+    case "create":
+      return "立てた";
+    case "activate":
+      return "始めた";
+    case "shelve":
+      return "棚上げした";
+    case "retire":
+      return "見限った";
+    case "update":
+      return "更新した";
+  }
+}
+
 function truncateBody(text: string, max = MAX_BODY_IN_SUMMARY): string {
   const trimmed = text.trim();
   if (trimmed.length <= max) return trimmed;
@@ -37,7 +53,7 @@ export function formatActionSummary(facts: ActionFacts): string {
     case "synthesize":
       return `${noteDisplayPath(facts.filename)} に書き起こした:\n${truncateBody(facts.body)}`;
     case "plan":
-      return `${noteDisplayPath(facts.filename)} の計画を更新した:\n${truncateBody(facts.body)}`;
+      return `${noteDisplayPath(facts.filename)} の計画を${planVerb(facts.action)}:\n${truncateBody(facts.body)}`;
   }
 }
 
@@ -138,7 +154,7 @@ export function formatActionFactContent(
         shrinkBody(facts.body, audience, factExternalizesNewInfo(facts)),
       ].join("\n");
     case "plan":
-      return [`${facts.filename} の計画ノートを更新した:`, facts.body].join("\n");
+      return [`${facts.filename} の計画ノートを${planVerb(facts.action)}:`, facts.body].join("\n");
   }
 }
 
@@ -232,7 +248,7 @@ function languageSuccessLine(facts: ActionFacts, intent: string): string {
     case "synthesize":
       return `${facts.filename}に思いついたことを書き留めた`;
     case "plan":
-      return `${facts.filename}の計画を更新した`;
+      return `${facts.filename}の計画を${planVerb(facts.action)}`;
   }
 }
 

@@ -427,18 +427,23 @@ export class TurnOrchestrator {
     // --- activate → actor pool ---
     ctx = await this.runActorPool(ctx, enabledActors, actionLlm, activatorLlm, actionDeps);
 
-    // plan actor の結果を収集する。ここでは focusPlan を確定しない（＝計画の作成・更新と
-    // 「集中に入る」を切り離す。メモ感覚で計画を1つ作っただけで集中に固定されないようにする）。
+    // plan actor の結果を収集する。focusPlan の付け替えは plan facts.action（手の意図）で決める：
+    // activate=その計画を開始/再開（集中へ）／shelve・retire=いまの集中を手放す／create・update=変えない。
+    // ＝「計画を作った/触った＝集中」でなく「明示 activate で開始」。うっかり集中を防ぐ。
     let planAchieved = false;
-    let planIdThisTurn = "";
+    let activatePlanId = "";
+    let setAsidePlanId = "";
     for (const a of ctx.actions) {
       if (a.attempted && a.status === "succeeded" && a.facts?.kind === "plan") {
         if (a.facts.achieved) planAchieved = true;
-        else planIdThisTurn = a.facts.planId;
+        if (a.facts.action === "activate") activatePlanId = a.facts.planId;
+        else if (a.facts.action === "shelve" || a.facts.action === "retire") {
+          setAsidePlanId = a.facts.planId;
+        }
       }
     }
-    // ゴール達成 → 集中対象から外す（言語野が次の State を選ぶ）
-    // 達成は plan actor（planAchieved）／plan processor の前判定（planCompletedThisTurn）どちらでも成立する。
+    // ゴール達成 → 集中対象から外す。達成は plan actor（planAchieved）／plan processor の
+    // 前判定（planCompletedThisTurn）どちらでも成立する。
     const prevFocusPlan = this.focusPlan;
     if (planAchieved || planCompletedThisTurn) this.focusPlan = "";
 
@@ -452,11 +457,14 @@ export class TurnOrchestrator {
       await this.deps.outputChannel.say(ctx.speech ?? null, artifacts);
     }
 
-    // 入口: 集中は「計画を実際に前進させた」観測から立つ（言語野の宣言でなく行動から創発）。
-    // 計画を作った/更新したターンに focusPlan を確定する。安全（暴走防止）は入口ゲートでなく
-    // 「会話で中断され対話へ戻る・疲労・見限り」が担う。意志で集中を点けるボタンは存在しない。
-    if (!planAchieved && !planCompletedThisTurn && planIdThisTurn) {
-      this.focusPlan = planIdThisTurn;
+    // 入口/出口: 手（plan actor）の明示的な意図で focusPlan を動かす。
+    // activate → その計画を開始/再開（集中へ）。shelve/retire → いまの集中を手放す。
+    if (!planAchieved && !planCompletedThisTurn) {
+      if (activatePlanId) {
+        this.focusPlan = activatePlanId;
+      } else if (setAsidePlanId && this.focusPlan === setAsidePlanId) {
+        this.focusPlan = "";
+      }
     }
 
     // 集中力の上限（強制ギプス）: 集中が MAX_FOCUS_STREAK ターン続いたら集中力が切れる。

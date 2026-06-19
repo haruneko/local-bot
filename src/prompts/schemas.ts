@@ -33,6 +33,9 @@ export const memoOpJsonSchema = zodToJsonSchema(memoOpSchema, {
 export const planOpSchema = z.object({
   op: z.enum([
     "new_goal",
+    "activate",
+    "shelve",
+    "retire",
     "complete",
     "reopen",
     "set_current",
@@ -40,6 +43,10 @@ export const planOpSchema = z.object({
     "log",
     "noop",
   ]),
+  /** 対象の計画 id（省略時 = いま集中している計画）。new_goal では生成される */
+  planId: z.string().optional(),
+  /** new_goal のみ: true で作って即開始（集中へ）／false（既定）は積むだけ */
+  activate: z.boolean().optional(),
   id: z.string().optional(),
   text: z.string().optional(),
   title: z.string().optional(),

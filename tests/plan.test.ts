@@ -12,7 +12,6 @@ import {
   buildActorContext,
   createTurnContext,
   renderLanguageUserContent,
-  withAction,
 } from "../src/context/turn-context.js";
 import { notesDir } from "../src/tools/notes.js";
 
@@ -195,37 +194,81 @@ describe("runPlan（op→決定的適用）", () => {
     }
   });
 
-  it("計画プロンプトに『このターンの行動結果』が渡る（失敗が見える＝事後グラウンディング）", async () => {
-    let ctx = createTurnContext({
-      turnId: "t",
-      state: "集中",
-      trigger: { type: "user_message", content: "進めよう", speakerId: "claude_kuro" },
-      dialogue: { resolveUserDisplayName: () => "クロ" },
-      recentTurns: [],
-      recalledEpisodes: [],
-      planId: "",
-    });
-    ctx = withAction(ctx, {
-      attempted: true,
-      kind: "research",
-      op: "research",
-      intent: "曲のコードを調べる",
-      status: "failed",
-      summary: "失敗",
-      error: { code: "tool_failed", message: "探索ツールに接続できない（fetch failed）" },
-    });
-    const llm = new FakeLlmClient([JSON.stringify({ op: "noop" })]);
-    await runPlan(llm, {
-      ctx,
-      action: { kind: "memory" as const, intent: "進捗記録" },
-      episodes: new InMemoryEpisodeStore(),
-      episodeRecallTopK: 3,
-    });
-    const prompt = llm.calls[0]!.messages[1].content;
-    expect(prompt).toContain("このターンで実際に起きたこと");
-    // 失敗が明示＋理由として見える（事後グラウンディング）
-    expect(prompt).toContain("うまくいかなかった");
-    expect(prompt).toContain("探索ツールに接続できない");
+  it("計画プロンプトに計画一覧（backlog）と集中中の計画が渡る", async () => {
+    await savePlan({ ...samplePlan(), id: "__bk-a__", title: "星座を覚える" });
+    await savePlan({ ...samplePlan(), id: "__bk-b__", title: "歌詞を書く" });
+    try {
+      const llm = new FakeLlmClient([JSON.stringify({ op: "noop" })]);
+      await runPlan(llm, makeInput("", "計画を見る"));
+      const prompt = llm.calls[0]!.messages[1].content;
+      expect(prompt).toContain("いまの計画一覧");
+      expect(prompt).toContain("星座を覚える");
+      expect(prompt).toContain("歌詞を書く");
+    } finally {
+      await rm(path.join(plansDir(), "__bk-a__.json"), { force: true });
+      await rm(path.join(plansDir(), "__bk-b__.json"), { force: true });
+    }
+  });
+
+  it("activate は planId で既存計画を対象にし facts.action=activate を返す", async () => {
+    const id = "__act__";
+    await savePlan({ ...samplePlan(), id });
+    try {
+      const llm = new FakeLlmClient([JSON.stringify({ op: "activate", planId: id })]);
+      const o = await runPlan(llm, makeInput("", "あれ再開しよう"));
+      expect(o.attempted && o.facts?.kind === "plan" && o.facts.action).toBe("activate");
+      expect(o.attempted && o.facts?.kind === "plan" && o.facts.planId).toBe(id);
+    } finally {
+      await rm(path.join(plansDir(), `${id}.json`), { force: true });
+      await rm(path.join(notesDir(), "goals", `${id}.md`), { force: true });
+    }
+  });
+
+  it("shelve は facts.action=shelve（内容不変でも focus 副作用があるので通す）", async () => {
+    const id = "__shv__";
+    await savePlan({ ...samplePlan(), id });
+    try {
+      const llm = new FakeLlmClient([JSON.stringify({ op: "shelve", planId: id })]);
+      const o = await runPlan(llm, makeInput(id, "棚上げ"));
+      expect(o.attempted && o.facts?.kind === "plan" && o.facts.action).toBe("shelve");
+    } finally {
+      await rm(path.join(plansDir(), `${id}.json`), { force: true });
+      await rm(path.join(notesDir(), "goals", `${id}.md`), { force: true });
+    }
+  });
+
+  it("retire は retired:true を保存し facts.action=retire", async () => {
+    const id = "__ret__";
+    await savePlan({ ...samplePlan(), id });
+    try {
+      const llm = new FakeLlmClient([JSON.stringify({ op: "retire", planId: id })]);
+      const o = await runPlan(llm, makeInput(id, "もう見限る"));
+      expect(o.attempted && o.facts?.kind === "plan" && o.facts.action).toBe("retire");
+      expect((await loadPlan(id))!.retired).toBe(true);
+    } finally {
+      await rm(path.join(plansDir(), `${id}.json`), { force: true });
+      await rm(path.join(notesDir(), "goals", `${id}.md`), { force: true });
+    }
+  });
+
+  it("new_goal の activate フラグで facts.action が activate / create に分かれる", async () => {
+    const mk = (activate: boolean) =>
+      new FakeLlmClient([
+        JSON.stringify({ op: "new_goal", title: `__ng-${activate}__`, goal: "G", milestones: ["x"], activate }),
+      ]);
+    for (const activate of [true, false]) {
+      const o = await runPlan(mk(activate), makeInput("", "計画"));
+      try {
+        expect(o.attempted && o.facts?.kind === "plan" && o.facts.action).toBe(
+          activate ? "activate" : "create",
+        );
+      } finally {
+        if (o.attempted && o.facts?.kind === "plan") {
+          await rm(path.join(plansDir(), `${o.facts.planId}.json`), { force: true });
+          await rm(path.join(notesDir(), "goals", `${o.facts.planId}.md`), { force: true });
+        }
+      }
+    }
   });
 
   it("効果ゼロの op（存在しない id への complete）は notAttempted", async () => {

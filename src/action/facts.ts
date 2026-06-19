@@ -7,4 +7,13 @@ export type ActionFacts =
   | { kind: "research"; tool: string; title: string; summary: string; body: string }
   | { kind: "express"; tool: string; title: string; body: string }
   | { kind: "synthesize"; filename: string; body: string }
-  | { kind: "plan"; planId: string; filename: string; body: string; achieved: boolean };
+  | {
+      kind: "plan";
+      planId: string;
+      filename: string;
+      body: string;
+      achieved: boolean;
+      /** この op が計画に対して何をしたか（表示と focus 制御に使う）。
+       *  create=立てた / activate=始めた・再開した / shelve=棚上げ / retire=見限り / update=手で更新 */
+      action: "create" | "activate" | "shelve" | "retire" | "update";
+    };
