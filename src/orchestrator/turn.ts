@@ -30,7 +30,7 @@ import {
 } from "./episode-persist.js";
 import { runActivator, runMultiLabelActivator } from "./activator.js";
 import { getActor } from "../actors/registry.js";
-import { loadPlan, savePlan } from "../plan/state.js";
+import { listPlans, loadPlan, savePlan } from "../plan/state.js";
 import { renderPlanForLanguage } from "../plan/render.js";
 import { planProgress, evaluateFocusGraduation } from "../plan/focus.js";
 import { runPlanProcessor } from "../roles/plan-processor.js";
@@ -815,7 +815,24 @@ export class TurnOrchestrator {
     const planSpec = activeSpecs.find((s) => s.name === "plan");
 
     for (const o of await Promise.all(others.map(runOne))) append(o);
-    if (planSpec) append(await runOne(planSpec));
+    if (planSpec) {
+      append(await runOne(planSpec));
+    } else if (enabledActors.includes("plan") && ctx.state === "静穏" && !ctx.planId) {
+      // idle backlog surface（静穏 idle の機械ゲート＝distill と同類の客観条件）:
+      // 手が空いて取り組み中の計画が無いとき、未完の backlog があれば plan actor に
+      // 「思い出して掴むか」を判断させる（activate するかは LLM・無ければ noop）。
+      // ＝Tier 2 の自発の点火。常時 recall に plan を混ぜる過剰引力を避け、idle に限定する。
+      const backlog = (await listPlans()).filter((p) => !p.done && !p.retired);
+      if (backlog.length > 0) {
+        append(
+          await runOne({
+            name: "plan",
+            intent:
+              "手が空いた。やりかけの計画があれば思い出して、いま再開する価値があるものだけ activate する。無理に始めなくてよい（無ければ noop）。",
+          }),
+        );
+      }
+    }
 
     return ctx;
   }
