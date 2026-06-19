@@ -792,13 +792,27 @@ export class TurnOrchestrator {
     );
     const fs = await loadSteps(ctx.stepsId);
     const worksExcerpt = ((await readNoteContent(`works/${ctx.stepsId}.md`)) ?? "").slice(-1200);
+    // 直近でやったこと＝自分の最近の独り言（「調べたら〜」等・作業の痕跡）。
+    // dispatcher が「もう調べた→次は書く」を判断する材料にする。
+    const recentActions = ctx.priorTurns
+      .filter((t) => t.role === "assistant")
+      .slice(-3)
+      .map((t) => `- ${t.content}`)
+      .join("\n");
     const dispatch = await runStepsDispatcher(this.deps.llm, {
       goal: fs?.goal ?? "",
       currentTask: ctx.currentTask,
       worksExcerpt,
+      recentActions,
       hands,
     });
     if (!dispatch) return ctx;
+    // none＝current をどの手でもできない → その段取りは集中から外す（grind させない＝入口で塞ぐ）。
+    if (dispatch.hand === "none") {
+      this.focusSteps = "";
+      v?.stepsProcessor([], false); // 集中を畳んだことを info に残す（completedIds 空）
+      return ctx;
+    }
     // dispatcher は hands（= enabledActors のサブセット）の中からしか返さない＝ActorName 確定。
     const hand = dispatch.hand as ActorName;
     const actor = getActor(hand);

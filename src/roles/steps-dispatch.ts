@@ -21,7 +21,13 @@ export type StepsDispatch = { hand: string; intent: string };
  */
 export async function runStepsDispatcher(
   llm: LlmClient,
-  input: { goal: string; currentTask: string; worksExcerpt: string; hands: string[] },
+  input: {
+    goal: string;
+    currentTask: string;
+    worksExcerpt: string;
+    recentActions: string;
+    hands: string[];
+  },
 ): Promise<StepsDispatch | null> {
   const hands = input.hands.filter((h) => HAND_DESCRIPTIONS[h]);
   if (hands.length === 0) return null;
@@ -29,14 +35,21 @@ export async function runStepsDispatcher(
   const system = [
     "今のマイルストーンを、どの手で進めるか決めます。手を一つ選び、JSON を一つだけ返してください。",
     "",
-    `{"hand":"${hands.join("|")}","intent":"具体的な一手"}`,
+    `{"hand":"${hands.join("|")}|none","intent":"具体的な一手"}`,
     "",
     "使える手：",
     ...hands.map((h) => `- ${h}: ${HAND_DESCRIPTIONS[h]}`),
+    "",
+    "- **外界の事実（部品の仕様・値段・最新情報・実在のやり方など）を根拠に要する**のに**まだ調べていない**なら、書く前に必ず webSearch で実データを取る。**記憶や推測で外界の事実を書かない（作話になる）**。「選定」「まとめ」でも根拠が未取得なら先に調べる。",
+    "- **直近でその情報をもう調べてある**（直近でやったことに結果がある）なら、また調べず synthesize で結論・選定・まとめを書く（works に残す）。同じことを繰り返し調べない。",
+    "- このマイルストーンが**自分の手で実行できないこと**（楽器の練習・実際の配線や工作・掃除・買い物など物理/現実の行動）なら、代わりの『ガイド』『メモ』を書いてごまかさず、hand に \"none\" を返す。",
   ].join("\n");
   const user = [
     input.goal ? `目標：${input.goal}` : "",
     `現在のマイルストーン：${input.currentTask}`,
+    input.recentActions.trim()
+      ? `\n直近でやったこと：\n${input.recentActions}`
+      : "",
     input.worksExcerpt.trim()
       ? `\nこれまでの成果物（抜粋）：\n${input.worksExcerpt}`
       : "",
@@ -56,6 +69,7 @@ export async function runStepsDispatcher(
     const parsed = tryParseJsonWithSchema(raw, stepsDispatchSchema);
     if (!parsed.ok) continue;
     const hand = parsed.value.hand.trim();
+    if (hand === "none") return { hand: "none", intent: "" }; // どの手でもできない＝呼び出し側が shelve
     const intent = parsed.value.intent.trim();
     if (hands.includes(hand) && intent) return { hand, intent };
   }
