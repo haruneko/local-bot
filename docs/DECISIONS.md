@@ -3,7 +3,7 @@
 CONCEPT.md の思想は変えず、実装判断だけをここに固定する。これは**ログ**なので、過去の決定（後に置き換わったものを含む）が時系列で積まれている。
 
 > **現状サマリ（2026-06・古い決定エントリより優先）**
-> - actor pool＝`memory / memo / webSearch / urlBrowse / (webcam未) / steps / synthesize`。記憶系は性質で2 faculty: **`memory`＝受動の記憶**（recall+forget 統合・op で 想起/忘却 を選ぶ・Read+Delete のみ）／**`memo`＝能動の記録**（notes の full CRUD）。**ジャッジ・カテゴリサブエージェント・memory-agent/research-agent・記憶統括は廃止/却下**（B'＝§記憶系アクターの分割統治）。
+> - actor pool＝`memo / webSearch / urlBrowse / (webcam未) / steps / synthesize`（`src/actors/registry.ts` が正）。記憶系は **`memo`＝能動の記録**（notes の full CRUD）だけが actor。**受動の記憶（recall）は actor でなくプリプロセスの背景 recall に一本化**（能動 recall actor は 2026-06-18 に撤去＝concern-aware の背景 recall に上乗せゼロと実測・§記憶 faculty）。**忘却は意志の op でなく減衰**（`recencyDecay`×importance。本気の削除はプライバシー用 out-of-band の `runForget` 関数として温存＝通常ターンの口は持たない）。**ジャッジ・カテゴリサブエージェント・memory-agent/research-agent・記憶統括・旧 `memory`（recall+forget 統合）actor は廃止/却下**（B'＝§記憶系アクターの分割統治）。
 > - **`remember` 廃止**：意図的な内部記憶は「書き込み」でなく importance 採点（気にかけ度・**内心更新 affect と同じ呼び出しで採点**＝§内省の見える範囲）で扱う。`EpisodeSource "remember"` は履歴用に温存。
 > - **`memoWrite`/`memoRead` を統合 `memo` actor に置換**：op（view/create/append/replace/section_replace）＋純関数 applier＋MOC ツリー＋連想ディセント＋recall フォールバック＋サイズ自動分割（[MEMO-TREE.md](MEMO-TREE.md)）。
 > - 以下の各エントリ内の `remember`/`memoWrite`/`memoRead`/ジャッジ/memory-agent 等への言及は、上記より前の文脈。現状は本サマリ＋ACTION-DESIGN.md/SPEC.md を正とする。
@@ -24,7 +24,7 @@ CONCEPT.md の思想は変えず、実装判断だけをここに固定する。
 ## エージェント出力
 
 - **各 actor の `activate()`**: Ollama `format`（JSON Schema）で `{ active: false }` または `{ active: true, intent: "..." }` を出力。各 actor が自分の判断で起動するかを決める。パース失敗・リトライ失敗 → `null`（起動しない）にフォールバック。
-- **language-agent**: `{ speech: "...", nextState: "..." }` を出力。`speech` が空文字のとき発話なし。`nextState` バリデーションなし（未知値はログのみ）。
+- **language-agent**: `{ speech: "..." }` を出力。`speech` が空文字のとき発話なし。**State は出力しない**（旧 `nextState` は廃止＝State は観測事実から機械導出・SPEC §2/§4.2。`parseLanguageOutput` は壊れた出力に紛れる `nextState` の痕跡を除去するだけ）。
 - 起動の段はアクターごと（none / systematic / llm・§ARCH-NEXT 1.6）。**起動が"状況の判断"を要するアクターは必ず LLM**で判断し、キーワード/ヒューリスティックでショートカット・スキップしない。**起動が"客観条件"で一意に決まるアクターは機械ゲートでよい**（recall=常時・視覚=画像の有無・distill=静穏idle）。「必ず LLM」は判断系限定で、全アクター強制ではない（recall は元から機械実行・非同期化でこの区別が必須になった）。
 
 ## 内省くんの入力（CONCEPT からの拡張）

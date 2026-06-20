@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { researchSummaryForUser } from "../src/roles/subagent.js";
+import { researchSummaryForUser } from "../src/roles/research-executor.js";
 
 describe("researchSummaryForUser — ユーザーには要約だけ・出典 dump は出さない", () => {
   it("web_search 本文（要約: ...\\n\\n[出典]）から要約部分だけ取り出す", () => {

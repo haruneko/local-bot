@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { TurnOrchestrator } from "../src/orchestrator/turn.js";
+import { saveSteps, type StepsState } from "../src/steps/state.js";
 import { InMemoryEpisodeStore } from "../src/memory/episode.js";
 import {
   InMemorySemanticStore,
@@ -558,5 +562,92 @@ describe("TurnOrchestrator", () => {
     expect(ep.metadata.groundedFacts).toContain("やっほー");
     // 本文(body)は内省のまま＝想起は無傷
     expect(ep.body).toBe("内省テキスト");
+  });
+});
+
+// focusSteps 遷移の集約（resolveFocusAfterActions ＋ setFocusSteps）を orchestrator 経由で確認する。
+// dispatcher none / 完了畳み は実 steps ファイルが要るので STEPS_DIR を temp に隔離する。
+describe("TurnOrchestrator — focusSteps 遷移（STEPS_DIR 隔離）", () => {
+  let tmpRoot: string;
+  beforeEach(async () => {
+    tmpRoot = await mkdtemp(path.join(tmpdir(), "turn-focus-"));
+    process.env.STEPS_DIR = path.join(tmpRoot, "steps");
+    process.env.MEMO_NOTES_DIR = path.join(tmpRoot, "notes");
+  });
+  afterEach(async () => {
+    delete process.env.STEPS_DIR;
+    delete process.env.MEMO_NOTES_DIR;
+    await rm(tmpRoot, { recursive: true, force: true });
+  });
+
+  function stepsFixture(over: Partial<StepsState> = {}): StepsState {
+    return {
+      id: "p",
+      title: "t",
+      goal: "g",
+      milestones: [{ id: "m1", text: "やること", done: false }],
+      current: "m1",
+      log: [],
+      createdAt: "2026-06-19",
+      updatedAt: "2026-06-19",
+      ...over,
+    };
+  }
+
+  it("完了畳み: 全✓済みの段取りに焦点が残っていたら手放す（停滞カウントも 0 に新規化）", async () => {
+    // current=null＝dispatcher を起こさない（LLM は language のみ）。全 milestone done で alreadyDone 畳み。
+    await saveSteps(
+      stepsFixture({ milestones: [{ id: "m1", text: "やること", done: true }], current: null }),
+    );
+    const llm = new FakeLlmClient([lang("")]); // idle heartbeat
+    let persisted: { state: string; focusSteps: string; focusStall: number } | null = null;
+    const orch = new TurnOrchestrator(
+      "集中",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        initialFocusSteps: "p",
+        initialFocusStall: 4,
+        onSessionPersist: async (s) => {
+          persisted = { state: s.state, focusSteps: s.focusSteps, focusStall: s.focusStall };
+        },
+      }),
+    );
+
+    const result = await orch.run({ type: "heartbeat" });
+
+    expect(persisted!.focusSteps).toBe(""); // 畳んで手放す
+    expect(persisted!.focusStall).toBe(0); // setFocusSteps が停滞カウントを新規化
+    expect(result.nextState).toBe("静穏");
+    expect(llm.calls).toHaveLength(1); // dispatcher も processor も呼ばれない
+  });
+
+  it("dispatcher none: current をどの手でもできないと段取りを集中から外す（入口で塞ぐ・停滞 0）", async () => {
+    await saveSteps(stepsFixture()); // current=m1（未完）→ dispatcher を起こす
+    const llm = new FakeLlmClient([
+      JSON.stringify({ hand: "none", intent: "" }), // dispatcher → none
+      lang(""), // language（idle）
+    ]);
+    let persisted: { state: string; focusSteps: string; focusStall: number } | null = null;
+    const orch = new TurnOrchestrator(
+      "集中",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        initialFocusSteps: "p",
+        initialFocusStall: 2,
+        resolveForState: () => ({ enabledActors: ["synthesize"], episodeRecallTopK: 3 }),
+        onSessionPersist: async (s) => {
+          persisted = { state: s.state, focusSteps: s.focusSteps, focusStall: s.focusStall };
+        },
+      }),
+    );
+
+    const result = await orch.run({ type: "heartbeat" });
+
+    expect(persisted!.focusSteps).toBe(""); // none → shelve（手放す）
+    expect(persisted!.focusStall).toBe(0);
+    expect(result.nextState).toBe("静穏");
+    expect(llm.calls).toHaveLength(2); // dispatcher + language（doer は走らない）
   });
 });

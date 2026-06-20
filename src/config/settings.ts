@@ -254,9 +254,11 @@ export function resolveEnabledActors(
   settings: AppSettings,
   state: string,
 ): ActorName[] {
+  // registry に登録済みの actor だけ。webcam は型上の placeholder（未実装・registry 未登録）なので
+  // フォールバックに入れない（入れても getActor で黙って drop されるだけ＝潜在 no-op を避ける）。
   const ALL_ACTORS: ActorName[] = [
     "memo",
-    "webSearch", "urlBrowse", "webcam", "steps", "synthesize",
+    "webSearch", "urlBrowse", "steps", "synthesize",
   ];
   const stateActors = settings.stateConfig?.[state]?.actors;
   const candidates = stateActors ?? ALL_ACTORS;

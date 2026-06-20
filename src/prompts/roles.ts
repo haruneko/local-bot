@@ -1,4 +1,4 @@
-export const SUBAGENT_STEP_SYSTEM = `カテゴリ内のツールを1つ選び実行するか、完了を宣言します。
+export const RESEARCH_STEP_SYSTEM = `カテゴリ内のツールを1つ選び実行するか、完了を宣言します。
 ロールプレイ・説明は不要。JSON オブジェクト1つだけを返す:
 {"done":true,"reason":"完了理由"} または {"done":false,"tool":"ツール名","arguments":{...}}
 done=false のとき tool は必須。arguments はツールに応じて省略可。

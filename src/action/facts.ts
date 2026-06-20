@@ -1,3 +1,6 @@
+// remember / recall は現状どの actor も生成しない名残（remember 廃止＝importance 採点へ・能動 recall actor 撤去＝背景 recall へ）。
+// present.ts の exhaustive switch と過去エピソードの互換のため型は残す。forget は out-of-band の runForget が、
+// research/express は webSearch/urlBrowse の研究実行器が生成する（現役）。
 export type ActionFacts =
   | { kind: "memo_read"; filename: string; body: string }
   | { kind: "memo_write"; filename: string; body: string }

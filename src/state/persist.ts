@@ -100,14 +100,6 @@ export async function loadSession(
   return { state: fallbackState, workingMemory: [], affect: "", concern: "", focusSteps: "", focusStreak: 0, focusStall: 0, focusBaseline: 0 };
 }
 
-/** @deprecated loadSession を使う */
-export async function loadAgentState(
-  filePath: string,
-  fallback: AgentState = DEFAULT_AGENT_STATE,
-): Promise<AgentState> {
-  return (await loadSession(filePath, fallback)).state;
-}
-
 export async function saveSession(
   filePath: string,
   session: {
@@ -134,18 +126,4 @@ export async function saveSession(
     updatedAt: new Date().toISOString(),
   };
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-}
-
-/** @deprecated saveSession を使う */
-export async function saveAgentState(
-  filePath: string,
-  state: AgentState,
-): Promise<void> {
-  const existing = await loadSession(filePath, state);
-  await saveSession(filePath, {
-    state,
-    workingMemory: existing.workingMemory,
-    affect: existing.affect,
-    concern: existing.concern,
-  });
 }

@@ -32,7 +32,11 @@ import { runActivator, runMultiLabelActivator } from "./activator.js";
 import { getActor } from "../actors/registry.js";
 import { listSteps, loadSteps, saveSteps } from "../steps/state.js";
 import { renderStepsForLanguage } from "../steps/render.js";
-import { stepsProgress, evaluateFocusGraduation } from "../steps/focus.js";
+import {
+  stepsProgress,
+  evaluateFocusGraduation,
+  resolveFocusAfterActions,
+} from "../steps/focus.js";
 import { runStepsProcessor } from "../roles/steps-processor.js";
 import { runStepsDispatcher } from "../roles/steps-dispatch.js";
 import { readNoteContent } from "../tools/notes.js";
@@ -199,6 +203,18 @@ export class TurnOrchestrator {
   }
 
   /**
+   * focusSteps を遷移させる唯一の口。値が実際に変わったら進捗卒業の停滞カウントを新規化する
+   * （別目標の停滞を引き継がない・空になったらリセット）。「focus が変わったら stall を新規にする」
+   * という不変条件を1箇所に集約し、ターン末の prevFocusSteps 比較ロジックを不要にする。
+   */
+  private setFocusSteps(next: string): void {
+    if (next === this.focusSteps) return;
+    this.focusSteps = next;
+    this.focusStall = 0;
+    this.focusBaseline = 0;
+  }
+
+  /**
    * 進捗ベース卒業（達成不能 goal の見限り）。集中して focusSteps に取り組んでいるターンで、
    * 進捗（stepsProgress）が伸びないまま MAX_FOCUS_STALL 続いたら、その計画を retired にして手放す。
    * 疲労（focusStreak＝休む・goal は残す）と違い、こちらは「見限り」＝自動復帰しない。
@@ -229,7 +245,7 @@ export class TurnOrchestrator {
           },
         ],
       });
-      this.focusSteps = "";
+      this.setFocusSteps("");
     }
   }
 
@@ -429,7 +445,7 @@ export class TurnOrchestrator {
       //（達成後の空回り・触り直しを断つ）。ファイルが無い場合は触らない（焦点を保持）。
       const alreadyDone = !!fs && fs.milestones.length > 0 && fs.milestones.every((m) => m.done);
       if (fs && (alreadyDone || fs.retired)) {
-        this.focusSteps = "";
+        this.setFocusSteps("");
       } else if (fs && fs.milestones.length > 0) {
         const worksBody = (await readNoteContent(`works/${this.focusSteps}.md`)) ?? "";
         // 「今回やったこと」は中身込みで渡す（synthesize なら書いた本文・research なら取れたデータ）。
@@ -465,12 +481,8 @@ export class TurnOrchestrator {
         }
       }
     }
-    // ゴール達成 → 集中対象から外す。達成は steps actor（stepsAchieved）／steps processor の
-    // 前判定（stepsCompletedThisTurn）どちらでも成立する。
-    const prevFocusSteps = this.focusSteps;
-    if (stepsAchieved || stepsCompletedThisTurn) this.focusSteps = "";
-
     // --- language-agent（常に起動） ---
+    // 発話は this.focusSteps を読まない（ctx 経由）ので、focusSteps の付け替えは発話の後にまとめてよい。
     ctx = await this.generateSpeech(ctx, trigger, languageLlm);
 
     // 口の効果器: 発話＋成果物を即出力（push）。内省/affect はこの後＝async-reflect。
@@ -480,29 +492,24 @@ export class TurnOrchestrator {
       await this.deps.outputChannel.say(ctx.speech ?? null, artifacts);
     }
 
-    // 入口/出口: 手（steps actor）の明示的な意図で focusSteps を動かす。
-    // activate → その計画を開始/再開（集中へ）。shelve/retire → いまの集中を手放す。
-    if (!stepsAchieved && !stepsCompletedThisTurn) {
-      if (activateStepsId) {
-        this.focusSteps = activateStepsId;
-      } else if (setAsideStepsId && this.focusSteps === setAsideStepsId) {
-        this.focusSteps = "";
-      }
-    }
+    // actor 実行後の focusSteps を1箇所で決める（優先順位は resolveFocusAfterActions＝focus.ts）：
+    // 達成/完了（steps actor の achieved・受け入れ判定の全✓）＞明示 activate ＞いまの集中の shelve/retire。
+    // 停滞カウントの新規化は setFocusSteps（値が変わったとき）が担う。
+    this.setFocusSteps(
+      resolveFocusAfterActions({
+        current: this.focusSteps,
+        achievedOrCompleted: stepsAchieved || stepsCompletedThisTurn,
+        activateStepsId,
+        setAsideStepsId,
+      }),
+    );
 
     // 集中力の上限（強制ギプス）: 集中が MAX_FOCUS_STREAK ターン続いたら集中力が切れる。
     // focusSteps を一旦手放す（goal ノートは data/steps に残るので、後で表に出れば再開できる）。
     // これでハートビートの「ずっと同じことを考え続ける」無限ループを断つ。
     if (this.focusStreak >= MAX_FOCUS_STREAK) {
-      this.focusSteps = "";
+      this.setFocusSteps("");
       this.focusStreak = 0;
-    }
-
-    // focusSteps が乗り換わった／手放された → 進捗ベース卒業の停滞カウントは新規にする
-    // （別の目標の停滞を引き継がない・空になったらリセット）。
-    if (this.focusSteps !== prevFocusSteps) {
-      this.focusStall = 0;
-      this.focusBaseline = 0;
     }
 
     // --- 内省・内心更新 ---
@@ -809,7 +816,7 @@ export class TurnOrchestrator {
     if (!dispatch) return ctx;
     // none＝current をどの手でもできない → その段取りは集中から外す（grind させない＝入口で塞ぐ）。
     if (dispatch.hand === "none") {
-      this.focusSteps = "";
+      this.setFocusSteps("");
       v?.stepsProcessor([], false); // 集中を畳んだことを info に残す（completedIds 空）
       return ctx;
     }

@@ -9,6 +9,34 @@ export function stepsProgress(p: StepsState): number {
   return p.milestones.filter((m) => m.done).length + p.log.length;
 }
 
+/** actor 実行後の focusSteps 遷移を決める入力（手の意図と達成シグナル）。 */
+export type FocusActionSignals = {
+  /** いまの focusSteps（空＝集中対象なし） */
+  current: string;
+  /** この計画は達成/完了したか（steps actor の achieved・受け入れ判定の全✓・畳みのいずれか） */
+  achievedOrCompleted: boolean;
+  /** steps actor が activate した計画 id（無ければ空） */
+  activateStepsId: string;
+  /** steps actor が shelve/retire した計画 id（無ければ空） */
+  setAsideStepsId: string;
+};
+
+/**
+ * actor 実行後の focusSteps を決める純関数。優先順位を1箇所に集約する：
+ *   1. 達成/完了 → 手放す（最優先・activate より勝つ＝達成したターンに掴み直さない）
+ *   2. 明示 activate → その計画を集中に（乗り換え/起立）
+ *   3. いまの集中を shelve/retire → 手放す（対象が現 focus のときだけ）
+ *   4. それ以外 → 現状維持
+ * 入口で塞ぐ dispatcher none・畳み（alreadyDone/retired）・疲労ギプス・進捗卒業は
+ * フェーズ依存の別ステップ（呼び出し側で setFocusSteps を通す）。
+ */
+export function resolveFocusAfterActions(s: FocusActionSignals): string {
+  if (s.achievedOrCompleted) return "";
+  if (s.activateStepsId) return s.activateStepsId;
+  if (s.setAsideStepsId && s.current === s.setAsideStepsId) return "";
+  return s.current;
+}
+
 export type FocusGraduation = {
   /** 次の停滞カウント */
   stall: number;

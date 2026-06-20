@@ -6,7 +6,10 @@ data/dream-state.json
 data/notes/*
 !data/notes/.gitkeep
 data/steps/
+data/_steps_archive/
 .env
 *.log
 article/
 data/frames/
+# 使い捨ての調査・プローブスクリプト（_ 接頭・コミットしない）
+scripts/_*.mts

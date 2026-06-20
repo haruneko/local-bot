@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { stepsProgress, evaluateFocusGraduation } from "../src/steps/focus.js";
+import {
+  stepsProgress,
+  evaluateFocusGraduation,
+  resolveFocusAfterActions,
+} from "../src/steps/focus.js";
 import type { StepsState } from "../src/steps/state.js";
 
 function steps(over: Partial<StepsState> = {}): StepsState {
@@ -56,5 +60,37 @@ describe("evaluateFocusGraduation", () => {
     expect(r.graduated).toBe(false);
     expect(r.stall).toBe(0);
     expect(r.baseline).toBe(5);
+  });
+});
+
+describe("resolveFocusAfterActions", () => {
+  const base = { current: "A", achievedOrCompleted: false, activateStepsId: "", setAsideStepsId: "" };
+
+  it("達成/完了は最優先で手放す（activate より勝つ＝達成したターンに掴み直さない）", () => {
+    expect(
+      resolveFocusAfterActions({ ...base, achievedOrCompleted: true, activateStepsId: "B" }),
+    ).toBe("");
+  });
+
+  it("達成でなければ明示 activate でその計画に乗り換える", () => {
+    expect(resolveFocusAfterActions({ ...base, activateStepsId: "B" })).toBe("B");
+  });
+
+  it("activate は shelve より優先（両方あれば乗り換え）", () => {
+    expect(
+      resolveFocusAfterActions({ ...base, activateStepsId: "B", setAsideStepsId: "A" }),
+    ).toBe("B");
+  });
+
+  it("いまの集中を shelve/retire したら手放す", () => {
+    expect(resolveFocusAfterActions({ ...base, setAsideStepsId: "A" })).toBe("");
+  });
+
+  it("現 focus でない計画の shelve/retire は無視（巻き込まれない）", () => {
+    expect(resolveFocusAfterActions({ ...base, setAsideStepsId: "B" })).toBe("A");
+  });
+
+  it("シグナルが無ければ現状維持", () => {
+    expect(resolveFocusAfterActions(base)).toBe("A");
   });
 });

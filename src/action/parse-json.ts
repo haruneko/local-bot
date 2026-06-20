@@ -38,7 +38,7 @@ export function repairCommonJsonErrors(text: string): string {
 }
 
 /**
- * qwen が開いたオブジェクト（subagent の arguments 等）で引用符を過剰エスケープし
+ * qwen が開いたオブジェクト（research step の arguments 等）で引用符を過剰エスケープし
  * `{"query\":\"値\"}` のような不正 JSON を吐くことがある。`\"`→`"` で戻す。
  * 元が正しい JSON なら候補の先頭で通るので、これは壊れた時だけ効くフォールバック。
  */

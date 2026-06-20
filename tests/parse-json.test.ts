@@ -37,7 +37,7 @@ describe("parseJsonWithSchema", () => {
     }
   });
 
-  it("過剰エスケープした subagent arguments を de-escape で救う", () => {
+  it("過剰エスケープした research step の arguments を de-escape で救う", () => {
     // qwen が開いた arguments で吐く実際の壊れ方
     const broken =
       '{"done":false,"tool":"web_search","arguments":{"query\\":\\"ビットコイン 現在価格\\"}}';

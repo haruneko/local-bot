@@ -78,7 +78,7 @@ idle heartbeat 判定:
 
 ## 5. actor pool（v0.7〜）
 
-各ツールが独立した actor として並列に自律実行する。memory-agent / research-agent / カテゴリ・サブエージェントの束ねは廃止（dead-in-prod コードも 2026-06 に削除済み）。
+各ツールが独立した actor として並列に自律実行する。memory-agent / research-agent / カテゴリで actor を束ねるディスパッチャは廃止（dead-in-prod の束ねコードは 2026-06 に削除済み）。webSearch/urlBrowse は研究実行器（`src/roles/research-executor.ts` の `runResearchExecutor`・MCP ツールを最大数ステップ叩いて要約する単発ユニット）を呼ぶ＝束ねでない。
 
 ### 5.1 actor 一覧
 

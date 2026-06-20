@@ -16,23 +16,23 @@ import { formatCatalogForPrompt } from "../tools/catalog.js";
 import type { TurnContext } from "../context/turn-context.js";
 import type { LlmClient } from "../llm/types.js";
 import type { McpToolProvider } from "../mcp/types.js";
-import { SUBAGENT_STEP_SYSTEM } from "../prompts/roles.js";
+import { RESEARCH_STEP_SYSTEM } from "../prompts/roles.js";
 
-export const MAX_SUBAGENT_STEPS = 3;
+export const MAX_RESEARCH_STEPS = 3;
 
-export const subagentStepSchema = z.object({
+export const researchStepSchema = z.object({
   done: z.boolean(),
   tool: z.string().optional(),
   arguments: z.record(z.unknown()).optional(),
   reason: z.string().optional(),
 });
 
-export const subagentStepJsonSchema = zodToJsonSchema(subagentStepSchema, {
-  name: "SubagentStep",
+export const researchStepJsonSchema = zodToJsonSchema(researchStepSchema, {
+  name: "ResearchStep",
   $refStrategy: "none",
 });
 
-export type SubagentPickInput = {
+export type ResearchPickInput = {
   category: ToolCategory;
   intent: string;
   catalog: readonly CatalogTool[];
@@ -40,7 +40,7 @@ export type SubagentPickInput = {
   priorSteps?: string[];
 };
 
-export type SubagentPickResult = {
+export type ResearchPickResult = {
   done: boolean;
   tool?: string;
   arguments?: Record<string, unknown>;
@@ -50,11 +50,11 @@ export type SubagentPickResult = {
   error?: ActionErrorInfo;
 };
 
-export async function runSubagentToolPick(
+export async function runResearchToolPick(
   llm: LlmClient,
-  input: SubagentPickInput,
-): Promise<SubagentPickResult> {
-  const format = subagentStepJsonSchema as Record<string, unknown>;
+  input: ResearchPickInput,
+): Promise<ResearchPickResult> {
+  const format = researchStepJsonSchema as Record<string, unknown>;
   const attempts: string[] = [];
   let lastFailure: ParseJsonFailure | undefined;
 
@@ -74,7 +74,7 @@ export async function runSubagentToolPick(
 
     const raw = await llm.chat(
       [
-        { role: "system", content: SUBAGENT_STEP_SYSTEM },
+        { role: "system", content: RESEARCH_STEP_SYSTEM },
         {
           role: "user",
           content: [
@@ -95,7 +95,7 @@ export async function runSubagentToolPick(
       { format, temperature: 0 },
     );
     attempts.push(raw);
-    const parsed = tryParseJsonWithSchema(raw, subagentStepSchema);
+    const parsed = tryParseJsonWithSchema(raw, researchStepSchema);
     if (!parsed.ok) {
       lastFailure = parsed.failure;
       continue;
@@ -144,7 +144,7 @@ function findCatalogTool(
   return catalog.find((t) => t.name === name);
 }
 
-export async function runResearchSubagent(
+export async function runResearchExecutor(
   llm: LlmClient,
   input: RunActionInput,
   allowedToolNames?: string[],
@@ -171,8 +171,8 @@ export async function runResearchSubagent(
   let lastSummary = "";
   let lastFailure: { summary: string; content: string } | undefined;
 
-  for (let step = 0; step < MAX_SUBAGENT_STEPS; step++) {
-    const pick = await runSubagentToolPick(llm, {
+  for (let step = 0; step < MAX_RESEARCH_STEPS; step++) {
+    const pick = await runResearchToolPick(llm, {
       category: "research",
       intent: action.intent,
       catalog: tools,

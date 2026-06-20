@@ -1,6 +1,6 @@
 import type { ActorRunner } from "./types.js";
 import { buildActorContext } from "../context/turn-context.js";
-import { runResearchSubagent } from "../roles/subagent.js";
+import { runResearchExecutor } from "../roles/research-executor.js";
 
 export const webSearchActor: ActorRunner = {
   name: "webSearch",
@@ -11,7 +11,7 @@ export const webSearchActor: ActorRunner = {
   run: (llm, input) => {
     const action = { kind: "research" as const, intent: input.intent };
     // 検索は web_search（Tavily＝綺麗）のみ。browse_url を選ばせない（検索ページのゴミ回避）
-    return runResearchSubagent(llm, { ctx: input.ctx, action, ...input.deps }, ["web_search"]);
+    return runResearchExecutor(llm, { ctx: input.ctx, action, ...input.deps }, ["web_search"]);
   },
 };
 
@@ -33,6 +33,6 @@ export const urlBrowseActor: ActorRunner = {
   run: (llm, input) => {
     const action = { kind: "research" as const, intent: input.intent };
     // URL 閲覧は browse_url のみ（会話に実 URL があるとき起動）
-    return runResearchSubagent(llm, { ctx: input.ctx, action, ...input.deps }, ["browse_url"]);
+    return runResearchExecutor(llm, { ctx: input.ctx, action, ...input.deps }, ["browse_url"]);
   },
 };

@@ -371,8 +371,8 @@ export function detectLlmRole(messages: ChatMessage[]): string {
   const act = sys.match(/あなたは\s*(\S+?)\s*の起動判定係/);
   if (act) return `activate.${act[1]}`;
 
-  // サブエージェントのツール選択
-  if (sys.includes("カテゴリ内のツールを1つ選び")) return "subagent.pick";
+  // research 実行器のツール選択
+  if (sys.includes("カテゴリ内のツールを1つ選び")) return "research.pick";
 
   // memory 系 actor 本体
   if (sys.includes("認識して選ぶ")) return "memo.recall_pick";

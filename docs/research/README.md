@@ -16,7 +16,7 @@
 |---|---|
 | embedding-locate-eval-2026-06-17.md | CLAUDE.md §embed の証拠（記事版は article/） |
 | vertex-migration-scoping-2026-06-18.md | ROADMAP の移行スコープ |
-| merge-lang-intro-refutation-2026-06-18.md | DECISIONS/ARCH-NEXT/EFFECTORS-PLAN の反証 |
+| merge-lang-intro-refutation-2026-06-18.md | DECISIONS/ARCH-NEXT/EFFECTORS-STEPS の反証 |
 | recall-mechanical-2026-06-18.md / recall-baseline-2026-06-18.md | DECISIONS（recall 機械化）の before/after |
 | code-structure-diagnosis-2026-06-18.md | コード構造の自己診断スナップショット |
 | doc-staleness-audit-2026-06-18.md | docs 陳腐化監査スナップショット |
