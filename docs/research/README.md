@@ -22,3 +22,4 @@
 | doc-staleness-audit-2026-06-18.md | docs 陳腐化監査スナップショット |
 | activator-model-candidates-2026-06-18.md | activator 軽量モデル候補調査 |
 | language-role-api-ab-2026-07-14.md | 言語野モデル A/B（35B vs Haiku/Sonnet リプレイ・コスト実測）・未引用 |
+| stack-chan-api-2026-07-14.md | スタックチャン API/ファーム事前調査（口首目耳の HTTP 化・公式機の WS+Opus 発見）・未引用 |
