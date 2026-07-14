@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   stepsProgress,
+  collectStepsActionSignals,
   evaluateFocusGraduation,
   resolveFocusAfterActions,
 } from "../src/steps/focus.js";
 import type { StepsState } from "../src/steps/state.js";
+import type { ActionOutcome } from "../src/types.js";
+import type { ActionFacts } from "../src/action/facts.js";
 
 function steps(over: Partial<StepsState> = {}): StepsState {
   return {
@@ -60,6 +63,76 @@ describe("evaluateFocusGraduation", () => {
     expect(r.graduated).toBe(false);
     expect(r.stall).toBe(0);
     expect(r.baseline).toBe(5);
+  });
+});
+
+describe("collectStepsActionSignals", () => {
+  function stepsOutcome(
+    action: Extract<ActionFacts, { kind: "steps" }>["action"],
+    over: { stepsId?: string; achieved?: boolean; status?: "succeeded" | "failed" } = {},
+  ): ActionOutcome {
+    return {
+      attempted: true,
+      kind: "memory",
+      intent: "",
+      status: over.status ?? "succeeded",
+      op: "steps",
+      facts: {
+        kind: "steps",
+        stepsId: over.stepsId ?? "A",
+        filename: "goals/A.md",
+        body: "",
+        achieved: over.achieved ?? false,
+        action,
+      },
+      summary: "",
+    };
+  }
+
+  it("activate と shelve/retire の stepsId、achieved を拾う", () => {
+    const signals = collectStepsActionSignals([
+      { attempted: false },
+      stepsOutcome("activate", { stepsId: "B" }),
+      stepsOutcome("shelve", { stepsId: "A" }),
+      stepsOutcome("update", { achieved: true }),
+    ]);
+    expect(signals).toEqual({
+      achieved: true,
+      activateStepsId: "B",
+      setAsideStepsId: "A",
+    });
+  });
+
+  it("view/create はシグナルを立てない（触った＝集中にしない）", () => {
+    const signals = collectStepsActionSignals([
+      stepsOutcome("view"),
+      stepsOutcome("create", { stepsId: "C" }),
+    ]);
+    expect(signals).toEqual({ achieved: false, activateStepsId: "", setAsideStepsId: "" });
+  });
+
+  it("失敗した steps op は無視する", () => {
+    const signals = collectStepsActionSignals([
+      stepsOutcome("activate", { stepsId: "B", status: "failed" }),
+    ]);
+    expect(signals.activateStepsId).toBe("");
+  });
+
+  it("steps 以外の facts は無視する", () => {
+    const outcome: ActionOutcome = {
+      attempted: true,
+      kind: "memory",
+      intent: "",
+      status: "succeeded",
+      op: "memo_write",
+      facts: { kind: "memo_write", filename: "a.md", body: "" },
+      summary: "",
+    };
+    expect(collectStepsActionSignals([outcome])).toEqual({
+      achieved: false,
+      activateStepsId: "",
+      setAsideStepsId: "",
+    });
   });
 });
 

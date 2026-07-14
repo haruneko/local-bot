@@ -18,6 +18,8 @@
     "score-importance": "tsx src/cli/score-importance.ts",
     "reindex": "tsx src/cli/reindex.ts",
     "notes:rm": "tsx src/cli/notes-rm.ts",
+    "forget": "tsx src/cli/forget.ts",
+    "backup": "bash scripts/backup-data.sh",
     "eval:retrieval": "tsx src/cli/eval-retrieval.ts"
   },
   "dependencies": {

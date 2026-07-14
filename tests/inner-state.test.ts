@@ -88,6 +88,23 @@ describe("updateAffectAndConcern (T-IS01, T-IS02)", () => {
     expect(result.importance).toBe(5);
   });
 
+  it("JSON でない出力へのフォールバックでも think ブロックを affect に混入させない", async () => {
+    const llm = new FakeLlmClient([
+      "<think>ここは思考の生ダンプ</think>嬉しかった、それだけ",
+    ]);
+    const result = await updateAffectAndConcern(llm, {
+      prevAffect: "",
+      prevConcern: "",
+      introspection: "褒めてもらえた",
+      speech: "ありがとう",
+      actions: [],
+      currentDateTime: "2026-06-10 10:00",
+    });
+    expect(result.affect).toBe("嬉しかった、それだけ");
+    expect(result.affect).not.toContain("<think>");
+    expect(result.importance).toBe(5);
+  });
+
   it("T-IS02: prevAffect and prevConcern show placeholder when empty", async () => {
     const llm = new FakeLlmClient(['{"affect":"初めての感想","concern":""}']);
     await updateAffectAndConcern(llm, {

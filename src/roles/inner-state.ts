@@ -7,7 +7,7 @@ import type { ChatMessage, LlmClient } from "../llm/types.js";
 import type { ActionOutcome } from "../types.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { tryParseJsonWithSchema } from "../action/parse-json.js";
+import { stripThinkBlocks, tryParseJsonWithSchema } from "../action/parse-json.js";
 
 export type UpdateAffectAndConcernInput = {
   prevAffect: string;
@@ -93,16 +93,18 @@ function parseAffectAndConcern(raw: string): AffectAndConcern {
   if (strict.ok) {
     return { ...strict.value, importance: clampImportance(strict.value.importance) };
   }
-  // フォールバック: importance 欠落・型ズレでも affect/concern は拾う
+  // フォールバック: importance 欠落・型ズレでも affect/concern は拾う。
+  // think ブロックは剥がす＝affect は state.json に持ち越すので思考の生ダンプを混入させない
+  const cleaned = stripThinkBlocks(raw).trim();
   try {
-    const parsed = JSON.parse(raw.trim()) as Partial<AffectAndConcern>;
+    const parsed = JSON.parse(cleaned) as Partial<AffectAndConcern>;
     return {
       affect: typeof parsed.affect === "string" ? parsed.affect : "",
       concern: typeof parsed.concern === "string" ? parsed.concern : "",
       importance: clampImportance(parsed.importance),
     };
   } catch {
-    return { affect: raw.trim(), concern: "", importance: DEFAULT_IMPORTANCE };
+    return { affect: cleaned, concern: "", importance: DEFAULT_IMPORTANCE };
   }
 }
 

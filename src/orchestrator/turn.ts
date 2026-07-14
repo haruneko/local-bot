@@ -34,6 +34,7 @@ import { listSteps, loadSteps, saveSteps } from "../steps/state.js";
 import { renderStepsForLanguage } from "../steps/render.js";
 import {
   stepsProgress,
+  collectStepsActionSignals,
   evaluateFocusGraduation,
   resolveFocusAfterActions,
 } from "../steps/focus.js";
@@ -42,9 +43,11 @@ import { runStepsDispatcher } from "../roles/steps-dispatch.js";
 import { readNoteContent } from "../tools/notes.js";
 import type { VerboseLogger, VerboseLoggerImpl } from "../util/verbose.js";
 import { noopVerbose } from "../util/verbose.js";
-import { formatActionMeta } from "../action/types.js";
+import { formatActionMeta, type ActionKind } from "../action/types.js";
+import { actionFailed } from "../action/outcome.js";
+import { ACTION_ERROR_CODES } from "../action/error.js";
 import type { RunActionDeps } from "../action/context.js";
-import type { AgentState, ConversationTurn } from "../types.js";
+import type { ActionOutcome, AgentState, ConversationTurn } from "../types.js";
 import type { McpToolProvider } from "../mcp/types.js";
 import type { CatalogTool } from "../tools/catalog.js";
 import type {
@@ -155,6 +158,35 @@ export type TurnDeps = {
 /** 抑制バッファの有効ターン数 */
 const INHIBITION_WINDOW_TURNS = 4;
 
+/** actor 名 → AbstractAction.kind（クラッシュ時の失敗 outcome の分類用） */
+const ACTOR_ACTION_KIND: Partial<Record<ActorName, ActionKind>> = {
+  memo: "memory",
+  steps: "memory",
+  synthesize: "memory",
+  webSearch: "research",
+  urlBrowse: "research",
+};
+
+/**
+ * actor の run が throw した（LLM 落ち・ツール例外）ときの失敗 outcome。
+ * actor の一手の失敗でターンを殺さない（1つの手の故障で内省・エピソード永続化まで
+ * 巻き添えにしない）。黙殺もしない＝失敗として言語野・内省に見せる。
+ */
+function actorCrashOutcome(
+  name: ActorName,
+  intent: string,
+  err: unknown,
+): ActionOutcome {
+  return actionFailed(
+    { kind: ACTOR_ACTION_KIND[name] ?? "memory", intent },
+    `${name} の実行が中断した`,
+    {
+      code: ACTION_ERROR_CODES.TOOL_FAILED,
+      message: err instanceof Error ? err.message : String(err),
+    },
+  );
+}
+
 /** 集中力の上限（強制ギプス・アドホック）。集中が連続でこのターン数続いたら「集中力が切れる」。
  *  ハートビートで未達 goal を永遠にループ＝「ずっと同じことを考え続ける」のを防ぐ＝人間の疲労の代替。 */
 const MAX_FOCUS_STREAK = 10;
@@ -249,6 +281,42 @@ export class TurnOrchestrator {
     }
   }
 
+  /**
+   * steps 受け入れ判定（実行のあと・結果を受けて）。集中中、いま終えた行動の実結果(ctx.actions)＋
+   * 成果物を見て「current マイルストーンは実際にやれたか」を判定し、機械が✓・current 前進・
+   * 全✓なら締める。頭で計画せず結果で動く（コアコンセプト）。
+   * 判定役（runStepsProcessor）は doer とは別人格＝やった本人に合否を出させない（作話防止）。
+   * できなかった（失敗・空振り）なら進めない＝偽の done を作らない。
+   * 戻り値: このターンで全マイルストーンが済んだか（完了畳みは呼び出し側の resolveFocusAfterActions へ）。
+   */
+  private async runStepsAcceptance(ctx: TurnContext): Promise<boolean> {
+    const fs = await loadSteps(this.focusSteps);
+    // 完了として畳む: 既に全部済んだ／見限った段取りに焦点が残っていたら、判定し直さず集中を閉じる
+    //（達成後の空回り・触り直しを断つ）。ファイルが無い場合は触らない（焦点を保持）。
+    const alreadyDone = !!fs && fs.milestones.length > 0 && fs.milestones.every((m) => m.done);
+    if (fs && (alreadyDone || fs.retired)) {
+      this.setFocusSteps("");
+      return false;
+    }
+    if (!fs || fs.milestones.length === 0) return false;
+    const worksBody = (await readNoteContent(`works/${this.focusSteps}.md`)) ?? "";
+    // 「今回やったこと」は中身込みで渡す（synthesize なら書いた本文・research なら取れたデータ）。
+    const actionResults = ctx.actions
+      .filter((a) => a.attempted)
+      .map((a) => formatActionFactContent(a))
+      .join("\n\n");
+    const processed = await runStepsProcessor(this.deps.llm, {
+      steps: fs,
+      worksBody,
+      actionResults,
+    });
+    if (processed.completedIds.length > 0) {
+      await saveSteps(processed.steps);
+      this.vlog?.stepsProcessor(processed.completedIds, processed.allDone);
+    }
+    return processed.allDone;
+  }
+
   private excludeTurnIds(): ReadonlySet<string> {
     return new Set(this.recentEpisodeTurnIds);
   }
@@ -287,8 +355,9 @@ export class TurnOrchestrator {
     void this.persistSession();
   }
 
-  private persistSession(): void {
-    void this.deps.onSessionPersist?.({
+  /** セッション永続化の唯一の組み立て口（フィールド追加時にここだけ触ればよい）。 */
+  private persistSession(): Promise<void> | undefined {
+    return this.deps.onSessionPersist?.({
       state: this.state,
       workingMemory: this.deps.workingMemory.getRecent(),
       affect: this.affect,
@@ -434,53 +503,13 @@ export class TurnOrchestrator {
     ctx = await this.runActorPool(ctx, enabledActors, actionLlm, activatorLlm, actionDeps);
 
     // --- steps 受け入れ判定（実行のあと・結果を受けて）---
-    // 集中中、いま終えた行動の実結果(ctx.actions)＋成果物を見て「current マイルストーンは実際にやれたか」を
-    // 判定し、機械が✓・current 前進・全✓なら締める。頭で計画せず結果で動く（コアコンセプト）。
-    // 判定役（runStepsProcessor）は doer とは別人格＝やった本人に合否を出させない（作話防止）。
-    // できなかった（失敗・空振り）なら進めない＝偽の done を作らない。
-    let stepsCompletedThisTurn = false;
-    if (startState === "集中" && this.focusSteps) {
-      const fs = await loadSteps(this.focusSteps);
-      // 完了として畳む: 既に全部済んだ／見限った段取りに焦点が残っていたら、判定し直さず集中を閉じる
-      //（達成後の空回り・触り直しを断つ）。ファイルが無い場合は触らない（焦点を保持）。
-      const alreadyDone = !!fs && fs.milestones.length > 0 && fs.milestones.every((m) => m.done);
-      if (fs && (alreadyDone || fs.retired)) {
-        this.setFocusSteps("");
-      } else if (fs && fs.milestones.length > 0) {
-        const worksBody = (await readNoteContent(`works/${this.focusSteps}.md`)) ?? "";
-        // 「今回やったこと」は中身込みで渡す（synthesize なら書いた本文・research なら取れたデータ）。
-        const actionResults = ctx.actions
-          .filter((a) => a.attempted)
-          .map((a) => formatActionFactContent(a))
-          .join("\n\n");
-        const processed = await runStepsProcessor(this.deps.llm, {
-          steps: fs,
-          worksBody,
-          actionResults,
-        });
-        if (processed.completedIds.length > 0) {
-          await saveSteps(processed.steps);
-          v?.stepsProcessor(processed.completedIds, processed.allDone);
-        }
-        stepsCompletedThisTurn = processed.allDone;
-      }
-    }
+    const stepsCompletedThisTurn =
+      startState === "集中" && this.focusSteps
+        ? await this.runStepsAcceptance(ctx)
+        : false;
 
-    // steps actor の結果を収集する。focusSteps の付け替えは steps facts.action（手の意図）で決める：
-    // activate=その計画を開始/再開（集中へ）／shelve・retire=いまの集中を手放す／create・update=変えない。
-    // ＝「計画を作った/触った＝集中」でなく「明示 activate で開始」。うっかり集中を防ぐ。
-    let stepsAchieved = false;
-    let activateStepsId = "";
-    let setAsideStepsId = "";
-    for (const a of ctx.actions) {
-      if (a.attempted && a.status === "succeeded" && a.facts?.kind === "steps") {
-        if (a.facts.achieved) stepsAchieved = true;
-        if (a.facts.action === "activate") activateStepsId = a.facts.stepsId;
-        else if (a.facts.action === "shelve" || a.facts.action === "retire") {
-          setAsideStepsId = a.facts.stepsId;
-        }
-      }
-    }
+    // steps actor のシグナル（達成・activate・shelve/retire）を拾う（純関数・focus.ts）。
+    const stepsSignals = collectStepsActionSignals(ctx.actions);
     // --- language-agent（常に起動） ---
     // 発話は this.focusSteps を読まない（ctx 経由）ので、focusSteps の付け替えは発話の後にまとめてよい。
     ctx = await this.generateSpeech(ctx, trigger, languageLlm);
@@ -498,9 +527,9 @@ export class TurnOrchestrator {
     this.setFocusSteps(
       resolveFocusAfterActions({
         current: this.focusSteps,
-        achievedOrCompleted: stepsAchieved || stepsCompletedThisTurn,
-        activateStepsId,
-        setAsideStepsId,
+        achievedOrCompleted: stepsSignals.achieved || stepsCompletedThisTurn,
+        activateStepsId: stepsSignals.activateStepsId,
+        setAsideStepsId: stepsSignals.setAsideStepsId,
       }),
     );
 
@@ -537,16 +566,7 @@ export class TurnOrchestrator {
     this.focusStreak = this.state === "集中" ? this.focusStreak + 1 : 0;
     // 進捗ベース卒業: 集中して取り組んでいるのに進捗が出ないターンが続いたら、その goal を見限る（retired）。
     await this.applyFocusGraduation();
-    await this.deps.onSessionPersist?.({
-      state: this.state,
-      workingMemory: this.deps.workingMemory.getRecent(),
-      affect: this.affect,
-      concern: this.concern,
-      focusSteps: this.focusSteps,
-      focusStreak: this.focusStreak,
-      focusStall: this.focusStall,
-      focusBaseline: this.focusBaseline,
-    });
+    await this.persistSession();
     v?.stateTransition(prevState, this.state);
 
     // 自発 distill: 静穏 idle ハートビート（手が空いた時）に蒸留を回す。睡眠中の記憶整理のイメージ。
@@ -829,12 +849,19 @@ export class TurnOrchestrator {
     const channels =
       this.deps.actorChannels?.[hand] ?? DEFAULT_ACTOR_CHANNELS[hand];
     const actorLlm = this.deps.actorLlm?.[hand] ?? actionLlm;
-    const outcome = await actor.run(actorLlm, {
-      ctx,
-      intent: dispatch.intent,
-      channels,
-      deps: actionDeps,
-    });
+    let outcome: ActionOutcome | null;
+    try {
+      outcome = await actor.run(actorLlm, {
+        ctx,
+        intent: dispatch.intent,
+        channels,
+        deps: actionDeps,
+      });
+    } catch (err) {
+      // 手の故障でターンを殺さない。失敗 outcome は受け入れ判定にも見える＝current は前進しない（正直）。
+      v?.error(`actor:${hand}`, err);
+      outcome = actorCrashOutcome(hand, dispatch.intent, err);
+    }
     if (outcome?.attempted) {
       ctx = withAction(ctx, outcome);
       this.turnContext = ctx;
@@ -884,20 +911,25 @@ export class TurnOrchestrator {
     const activeSpecs = [...multiActive, ...gateActive];
     v?.actorsActivated(activeSpecs, runners.length, Date.now() - actorStart);
 
-    const runOne = (spec: (typeof activeSpecs)[number]) => {
+    const runOne = async (spec: (typeof activeSpecs)[number]) => {
       const actor = getActor(spec.name);
-      if (!actor) return Promise.resolve(null);
+      if (!actor) return null;
       const channels =
         this.deps.actorChannels?.[spec.name] ?? DEFAULT_ACTOR_CHANNELS[spec.name];
       const actorLlm = this.deps.actorLlm?.[spec.name] ?? actionLlm;
-      return actor.run(actorLlm, {
-        ctx,
-        intent: spec.intent,
-        timeRange: spec.timeRange,
-        op: spec.op,
-        channels,
-        deps: actionDeps,
-      });
+      try {
+        return await actor.run(actorLlm, {
+          ctx,
+          intent: spec.intent,
+          timeRange: spec.timeRange,
+          op: spec.op,
+          channels,
+          deps: actionDeps,
+        });
+      } catch (err) {
+        v?.error(`actor:${spec.name}`, err);
+        return actorCrashOutcome(spec.name, spec.intent, err);
+      }
     };
     const append = (outcome: Awaited<ReturnType<typeof runOne>>) => {
       if (outcome?.attempted) {

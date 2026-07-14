@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { TurnOrchestrator } from "../src/orchestrator/turn.js";
-import { saveSteps, type StepsState } from "../src/steps/state.js";
+import { loadSteps, saveSteps, type StepsState } from "../src/steps/state.js";
+import { readNoteContent } from "../src/tools/notes.js";
 import { InMemoryEpisodeStore } from "../src/memory/episode.js";
 import {
   InMemorySemanticStore,
@@ -649,5 +650,97 @@ describe("TurnOrchestrator — focusSteps 遷移（STEPS_DIR 隔離）", () => {
     expect(persisted!.focusStall).toBe(0);
     expect(result.nextState).toBe("静穏");
     expect(llm.calls).toHaveLength(2); // dispatcher + language（doer は走らない）
+  });
+
+  it("full-cycle: dispatcher→synthesize→受け入れ判定→前進→全✓で完了畳み（2ターン通し）", async () => {
+    await saveSteps(
+      stepsFixture({
+        goal: "短い文章を仕上げる",
+        milestones: [
+          { id: "m1", text: "書き出しを書く", done: false },
+          { id: "m2", text: "締めを書く", done: false },
+        ],
+        current: "m1",
+      }),
+    );
+    // ターン1: dispatcher が synthesize を選ぶ → 一片生成 → 判定 m1=済/m2=未 → current 前進
+    const llm = new FakeLlmClient([
+      JSON.stringify({ hand: "synthesize", intent: "書き出しを書く" }), // dispatcher
+      "はじめの一片。", // synthesize 生成
+      JSON.stringify({ satisfied: true }), // 受け入れ判定 m1
+      JSON.stringify({ satisfied: false }), // 受け入れ判定 m2（まだ）
+      lang(""), // language（独り作業・無言）
+      "内省1", // 行動が成功したので内省は永続化される
+      '{"tags":[]}',
+      '{"affect":"","concern":"","importance":5}',
+      // ターン2: 締めを書く → m2 も済 → 全✓ → 完了畳み
+      JSON.stringify({ hand: "synthesize", intent: "締めを書く" }),
+      "締めの一片。",
+      JSON.stringify({ satisfied: true }), // m2 → allDone
+      lang(""),
+      "内省2",
+      '{"tags":[]}',
+      '{"affect":"","concern":"","importance":5}',
+    ]);
+    const persisted: { state: string; focusSteps: string }[] = [];
+    const orch = new TurnOrchestrator(
+      "集中",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        initialFocusSteps: "p",
+        resolveForState: () => ({ enabledActors: ["synthesize"], episodeRecallTopK: 3 }),
+        onSessionPersist: async (s) => {
+          persisted.push({ state: s.state, focusSteps: s.focusSteps });
+        },
+      }),
+    );
+
+    const r1 = await orch.run({ type: "heartbeat" });
+    expect(r1.nextState).toBe("集中"); // m2 が残っている＝焦点保持
+    const afterTurn1 = await loadSteps("p");
+    expect(afterTurn1?.milestones.find((m) => m.id === "m1")?.done).toBe(true);
+    expect(afterTurn1?.milestones.find((m) => m.id === "m2")?.done).toBe(false);
+    expect(afterTurn1?.current).toBe("m2"); // 受け入れ判定が current を前進させた
+    expect(await readNoteContent("works/p.md")).toContain("はじめの一片。");
+
+    const r2 = await orch.run({ type: "heartbeat" });
+    expect(r2.nextState).toBe("静穏"); // 全✓ → 完了畳みで焦点を手放す
+    expect(persisted.at(-1)!.focusSteps).toBe("");
+    const afterTurn2 = await loadSteps("p");
+    expect(afterTurn2?.milestones.every((m) => m.done)).toBe(true);
+    expect(afterTurn2?.log.some((l) => l.text.includes("達成"))).toBe(true); // 達成ログ
+    expect(await readNoteContent("works/p.md")).toContain("締めの一片。");
+  });
+
+  it("degrade: 集中の doer がクラッシュしてもターンは死なず、current は前進しない（正直）", async () => {
+    await saveSteps(stepsFixture()); // m1 未完・current=m1
+    const llm = new FakeLlmClient([
+      JSON.stringify({ hand: "synthesize", intent: "書く" }), // dispatcher
+      JSON.stringify({ satisfied: false }), // 受け入れ判定（失敗した手を見て進めない）
+      lang(""), // language（失敗のみ・無言 → 内省は永続化されない）
+    ]);
+    let persisted: { focusSteps: string } | null = null;
+    const orch = new TurnOrchestrator(
+      "集中",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        initialFocusSteps: "p",
+        resolveForState: () => ({ enabledActors: ["synthesize"], episodeRecallTopK: 3 }),
+        // doer の LLM を空キューにして throw させる（Ollama 落ちの代役）
+        actorLlm: { synthesize: new FakeLlmClient([]) },
+        onSessionPersist: async (s) => {
+          persisted = { focusSteps: s.focusSteps };
+        },
+      }),
+    );
+
+    const result = await orch.run({ type: "heartbeat" });
+
+    expect(result.nextState).toBe("集中"); // ターンは生きて焦点も保持
+    expect(persisted!.focusSteps).toBe("p");
+    const after = await loadSteps("p");
+    expect(after?.milestones[0]?.done).toBe(false); // 偽の前進を作らない
   });
 });

@@ -1,3 +1,4 @@
+import type { ActionOutcome } from "../types.js";
 import type { StepsState } from "./state.js";
 
 /**
@@ -35,6 +36,40 @@ export function resolveFocusAfterActions(s: FocusActionSignals): string {
   if (s.activateStepsId) return s.activateStepsId;
   if (s.setAsideStepsId && s.current === s.setAsideStepsId) return "";
   return s.current;
+}
+
+export type StepsActionSignals = {
+  /** steps actor が achieved を立てたか */
+  achieved: boolean;
+  /** steps actor が activate した計画 id（無ければ空） */
+  activateStepsId: string;
+  /** steps actor が shelve/retire した計画 id（無ければ空） */
+  setAsideStepsId: string;
+};
+
+/**
+ * actor 結果から steps の手のシグナル（達成・activate・shelve/retire）を拾う純関数。
+ * focusSteps の付け替えは steps facts.action（手の意図）で決める＝「計画を作った/触った＝集中」
+ * でなく「明示 activate で開始」。うっかり集中を防ぐ。結果は resolveFocusAfterActions が消費する。
+ */
+export function collectStepsActionSignals(
+  actions: readonly ActionOutcome[],
+): StepsActionSignals {
+  const signals: StepsActionSignals = {
+    achieved: false,
+    activateStepsId: "",
+    setAsideStepsId: "",
+  };
+  for (const a of actions) {
+    if (a.attempted && a.status === "succeeded" && a.facts?.kind === "steps") {
+      if (a.facts.achieved) signals.achieved = true;
+      if (a.facts.action === "activate") signals.activateStepsId = a.facts.stepsId;
+      else if (a.facts.action === "shelve" || a.facts.action === "retire") {
+        signals.setAsideStepsId = a.facts.stepsId;
+      }
+    }
+  }
+  return signals;
 }
 
 export type FocusGraduation = {

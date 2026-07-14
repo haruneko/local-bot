@@ -3,16 +3,14 @@ import { createApp } from "../app/bootstrap.js";
 import { parseArgs } from "./args.js";
 import { printTurnSummary } from "./output.js";
 import { normalizeImage } from "../sensor/image.js";
+import {
+  downloadSlackImages as downloadImages,
+  postArtifact as postArtifactIo,
+  type ArtifactPoster,
+  type SlackFile,
+} from "../slack/io.js";
 
 const DEFAULT_HEARTBEAT_MS = 60 * 60 * 1000;
-/** これを超える成果物は inline で流さず Slack snippet（折りたたみ添付）にする */
-const ARTIFACT_INLINE_MAX = 1200;
-
-type SlackFile = {
-  mimetype?: string;
-  url_private?: string;
-  url_private_download?: string;
-};
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -44,47 +42,25 @@ async function main(): Promise<void> {
     socketMode: true,
   });
 
-  // Slack の添付画像を bot トークンで DL → base64（文字起こししない・生のまま image_feed へ）。
-  // files:read スコープが無い/DL 失敗時は黙ってスキップ＝テキストとして続行（壊さない）。
-  async function downloadSlackImages(files: SlackFile[] | undefined): Promise<string[]> {
-    if (!files?.length || !botToken) return [];
-    const out: string[] = [];
-    for (const f of files) {
-      if (!f.mimetype?.startsWith("image/")) continue;
-      const url = f.url_private_download ?? f.url_private;
-      if (!url) continue;
-      try {
-        const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${botToken}` },
-        });
-        if (!res.ok) continue;
-        const raw = Buffer.from(await res.arrayBuffer()).toString("base64");
-        out.push(await normalizeImage(raw, settings.imageMaxLongSide));
-      } catch {
-        // スコープ未付与・DL 失敗 → スキップ
-      }
-    }
-    return out;
-  }
+  // I/O 本体は src/slack/io.ts（テスト可能な形で切り出し）。ここでは実 Bolt / fetch を束ねるだけ。
+  const downloadSlackImages = (files: SlackFile[] | undefined) =>
+    downloadImages(files, {
+      botToken,
+      normalize: (raw) => normalizeImage(raw, settings.imageMaxLongSide),
+    });
 
-  // 成果物の投稿: 短いものは通常メッセージ、長いものは Slack snippet（折りたたみ添付）で
-  // チャットを流さない。snippet 失敗時は通常投稿にフォールバック（壊さない）。
-  async function postArtifact(channel: string, text: string): Promise<void> {
-    if (text.length <= ARTIFACT_INLINE_MAX) {
-      await bolt.client.chat.postMessage({ channel, text });
-      return;
-    }
-    try {
-      await bolt.client.files.uploadV2({
+  const artifactPoster: ArtifactPoster = {
+    postMessage: (channel, text) => bolt.client.chat.postMessage({ channel, text }),
+    uploadSnippet: (channel, content) =>
+      bolt.client.files.uploadV2({
         channel_id: channel,
-        content: text,
+        content,
         filename: "result.md",
         title: "（長い成果物）",
-      });
-    } catch {
-      await bolt.client.chat.postMessage({ channel, text });
-    }
-  }
+      }),
+  };
+  const postArtifact = (channel: string, text: string) =>
+    postArtifactIo(channel, text, artifactPoster);
 
   async function handleMessage(
     text: string,

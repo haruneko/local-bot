@@ -13,3 +13,4 @@ article/
 data/frames/
 # 使い捨ての調査・プローブスクリプト（_ 接頭・コミットしない）
 scripts/_*.mts
+backups/
