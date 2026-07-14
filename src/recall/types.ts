@@ -1,4 +1,5 @@
-/** 文脈との関連度に応じた提示レベル（遠いものは omit＝出さない。旧 vague は廃止） */
+/** 提示レベル。想起提示は常に full（本文そのまま・LLM 要約廃止）。
+ *  "summarize" はトークン予算超過時の fitTurnContext フォールバック要約のみ（遠いものは omit＝出さない） */
 export type RecallPresentation = "summarize" | "full";
 
 export type RecalledEpisode = {

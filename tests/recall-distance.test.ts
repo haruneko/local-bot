@@ -4,51 +4,36 @@ import {
   cosineSimilarity,
   DEFAULT_RECALL_DISTANCE_THRESHOLDS,
   distanceToRelevance,
-  filterRecallByDistance,
   recencyDecay,
 } from "../src/recall/distance.js";
 
-describe("recall distance filter", () => {
-  it("maps L2 distance to presentation levels（vague 廃止＝summarizeMax 超は omit）", () => {
-    const result = filterRecallByDistance(
+describe("recall distance gating", () => {
+  it("summarizeMax 以下は通し、超は omit（vague 廃止・LLM 要約廃止＝提示は本文そのまま）", () => {
+    const result = classifyRecallHits(
       [
-        { body: "原文A", distance: 0.4 }, // ≤fullMax → full
-        { body: "原文B", distance: 0.65 }, // ≤summarizeMax → summarize
-        { body: "原文C", distance: 0.8 }, // 旧 vague → omit
+        { body: "原文A", distance: 0.4 },
+        { body: "原文B", distance: 0.65 },
+        { body: "原文C", distance: 0.8 }, // omit
         { body: "原文D", distance: 1.0 }, // omit
       ],
       DEFAULT_RECALL_DISTANCE_THRESHOLDS,
     );
 
     expect(result).toHaveLength(2);
-    expect(result[0].presented).toBe("原文A");
-    expect(result[0].presentation).toBe("full");
-    expect(result.find((e) => e.presentation === "summarize")?.presented).toMatch(
-      /^原文B/,
-    );
-    expect(result.some((e) => (e.presentation as string) === "vague")).toBe(false);
-  });
-
-  it("omits hits above vagueMax (strict)", () => {
-    const result = filterRecallByDistance([
-      { body: "遠い記憶", distance: 0.86 },
-      { body: "近い記憶", distance: 0.5 },
-    ]);
-    expect(result).toHaveLength(1);
-    expect(result[0].presented).toBe("近い記憶");
+    expect(result.map((h) => h.body)).toEqual(["原文A", "原文B"]);
   });
 
   it("returns empty for no hits", () => {
-    expect(filterRecallByDistance([])).toEqual([]);
+    expect(classifyRecallHits([])).toEqual([]);
   });
 
   it("sorts by relevance descending", () => {
-    const result = filterRecallByDistance([
+    const result = classifyRecallHits([
       { body: "b", distance: 0.7 },
       { body: "a", distance: 0.4 },
     ]);
-    expect(result[0].presented).toMatch(/^a$/);
-    expect(result[0].relevance).toBeGreaterThan(result[1].relevance);
+    expect(result[0]!.body).toBe("a");
+    expect(result[0]!.relevance).toBeGreaterThan(result[1]!.relevance);
   });
 
   it("distanceToRelevance returns 0 above vagueMax", () => {
@@ -75,11 +60,11 @@ describe("recall distance filter", () => {
     const now = new Date();
     const recent = now.toISOString();
     const old = new Date(now.getTime() - 200 * 86_400_000).toISOString();
-    const result = filterRecallByDistance([
+    const result = classifyRecallHits([
       { body: "old", distance: 0.4, timestamp: old },
       { body: "new", distance: 0.4, timestamp: recent },
     ]);
-    expect(result[0].presented).toBe("new");
+    expect(result[0]!.body).toBe("new");
   });
 });
 

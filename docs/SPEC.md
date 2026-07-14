@@ -78,7 +78,9 @@ idle heartbeat 判定:
 
 ## 5. actor pool（v0.7〜）
 
-各ツールが独立した actor として並列に自律実行する。memory-agent / research-agent / カテゴリで actor を束ねるディスパッチャは廃止（dead-in-prod の束ねコードは 2026-06 に削除済み）。webSearch/urlBrowse は研究実行器（`src/roles/research-executor.ts` の `runResearchExecutor`・MCP ツールを最大数ステップ叩いて要約する単発ユニット）を呼ぶ＝束ねでない。
+各ツールが独立した actor として自律実行する。memory-agent / research-agent / カテゴリで actor を束ねるディスパッチャは廃止（dead-in-prod の束ねコードは 2026-06 に削除済み）。webSearch/urlBrowse は研究実行器（`src/roles/research-executor.ts` の `runResearchExecutor`・MCP ツールを最大数ステップ叩いて要約する単発ユニット）を呼ぶ＝束ねでない。
+
+実行順序（2026-07-14〜・DECISIONS §研究→記録の実行順序）: **研究系（webSearch/urlBrowse 等）→ `memo` → `steps`**。memo は転記（実物からのグラウンディング）なので同ターンの調べ物の実結果（`ctx.actions`）が積まれてから動き、op プロンプトに「このターンで実際にやったこと」として実結果を受け取る＝調べる前に自前知識で書く作話を構造で断つ。steps は「実際に何が起きたか」を見て事後に記録するため最後。研究系同士は並列（判断は独立・decode 律速なので直列化のレイテンシ代はほぼゼロ）。
 
 ### 5.1 actor 一覧
 
@@ -208,7 +210,7 @@ type ActionOutcome = { attempted: false } | {
 
 - センサー: システム時刻（ISO8601）を常に含める
 - 作業記憶: 直近 `workingMemoryTurns` 件
-- エピソード想起: 直近ユーザー発話（なければ空文字）で embed → top-k → **直近 `recencyExclusionTurns` ターンの turnId を除外**（`excludeTurnIds`）→ 距離分類（`full`/`summarize`、`summarizeMax` 超は `omit`）→ `summarize` は LLM が作業状況に照らして提示文を生成（無関係なら省略）
+- エピソード想起: 直近ユーザー発話（なければ空文字）で embed → top-k → **直近 `recencyExclusionTurns` ターンの turnId を除外**（`excludeTurnIds`）→ 距離ゲート（`summarizeMax` 超は `omit`）→ 残りは**本文そのまま**提示（LLM 提示なし・純関数。旧 summarize 帯の LLM 要約は 2026-07-14 に廃止＝DECISIONS §想起提示の LLM 要約廃止。遠さは relevance と `occurredAt` の時刻前置きが表す）
 - 計画チャンネル: `state==="集中"` かつ `data/state.json` の `focusSteps`（取り組み中 steps id）があれば、`data/steps/<id>.json` を `renderSteps` して `ctx.steps` に載せ言語野・steps チャンネル actor に常駐注入。集中以外は空
 - トークン超過時（`fitTurnContext`）: 先に作業記憶の古いターンを削り、なお超過なら chatModel（既定 35B）で**想起エピソードのみ**を要約（失敗時のみ機械切り詰め）
 

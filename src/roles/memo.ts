@@ -4,6 +4,7 @@ import {
   type ParseJsonFailure,
 } from "../action/parse-json.js";
 import { actionFailed, actionSucceeded } from "../action/outcome.js";
+import { formatActionFactContent } from "../action/present.js";
 import {
   lastUserMessageFromContext,
   type RunActionInput,
@@ -56,6 +57,12 @@ export async function runMemo(
   const intent = action.intent;
   const { currentDateTime } = input.ctx;
   const lastUserMessage = lastUserMessageFromContext(input.ctx);
+  // 同ターンで先に済んだ行動（調べ物等）の実結果。memo は研究系の後に走る（turn.ts の実行順序）ので、
+  // 「調べてメモして」の転記元がここに載る＝文脈に無いことを自前知識で補う理由を無くす。
+  const actionResults = input.ctx.actions
+    .filter((a) => a.attempted && a.status === "succeeded" && a.facts)
+    .map((a) => formatActionFactContent(a))
+    .join("\n\n");
 
   // --- フェーズ1: 対象メモを locate（無ければ null = 新規） ---
   // 主経路: recall 認識（memo_index の top-k 一覧を見て「意図の対象」を認識し、明確一致は必ず再利用）。
@@ -83,6 +90,9 @@ export async function runMemo(
             `基準日時: ${currentDateTime}`,
             `意図: ${intent}`,
             lastUserMessage ? `相手があなたに言ったこと: ${lastUserMessage}` : "",
+            actionResults
+              ? `\nこのターンであなたが実際にやったこと（転記に使ってよい実結果）:\n${actionResults}`
+              : "",
             "",
             target
               ? `候補メモ: ${target}（下が現在の全文。意図と別主題なら無視して create で新規にしてよい）`

@@ -12,6 +12,8 @@ import {
 } from "../src/memory/semantic.js";
 import { WorkingMemory } from "../src/memory/working.js";
 import { FakeLlmClient } from "../src/llm/fake.js";
+import { FakeMcpToolProvider } from "../src/mcp/fake.js";
+import { buildToolCatalog } from "../src/tools/catalog.js";
 import { DEFAULT_RECALL_DISTANCE_THRESHOLDS } from "../src/recall/distance.js";
 import type { TurnDeps } from "../src/orchestrator/turn.js";
 
@@ -594,6 +596,49 @@ describe("TurnOrchestrator — focusSteps 遷移（STEPS_DIR 隔離）", () => {
       ...over,
     };
   }
+
+  it("実行順序: memo は webSearch の後に走り、op プロンプトに検索の実結果が載る（転記元のグラウンディング）", async () => {
+    const llm = new FakeLlmClient([
+      // multi-label activator: memo と webSearch が同時起動（「調べてメモして」）
+      JSON.stringify({
+        memo: { active: true, intent: "調べた結果を控える" },
+        webSearch: { active: true, intent: "Stack-chan を調べる" },
+      }),
+      // webSearch（wave1）: pick1=web_search 実行 → pick2=done で締める（executor は2段・done は必須）
+      JSON.stringify({ done: false, tool: "web_search", arguments: { query: "Stack-chan" } }),
+      JSON.stringify({ done: true, reason: "十分な結果が得られた" }),
+      // memo（wave2）: 検索の実結果を見た上で op を出す
+      JSON.stringify({ op: "noop" }),
+      lang("調べて控えたよ"),
+      "内省",
+      '{"tags":[]}',
+      '{"affect":"","concern":"","importance":5}',
+    ]);
+    const mcp = new FakeMcpToolProvider();
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        resolveForState: () => ({
+          enabledActors: ["memo", "webSearch"],
+          episodeRecallTopK: 3,
+        }),
+        actionDeps: { mcp, toolCatalog: await buildToolCatalog(mcp) },
+      }),
+    );
+
+    await orch.run({
+      type: "user_message",
+      content: "Stack-chan がどんなものか調べてメモしといて",
+      speakerId: "u1",
+    });
+
+    // 4番目の LLM 呼び出し＝memo の op 段。webSearch（pick×2）が先に済んでいるので実結果が載る
+    const memoOpPrompt = llm.calls[3]!.messages[1]!.content;
+    expect(memoOpPrompt).toContain("実際にやったこと");
+    expect(memoOpPrompt).toContain("検索結果（fake）: Stack-chan");
+  });
 
   it("完了畳み: 全✓済みの段取りに焦点が残っていたら手放す（停滞カウントも 0 に新規化）", async () => {
     // current=null＝dispatcher を起こさない（LLM は language のみ）。全 milestone done で alreadyDone 畳み。

@@ -1,5 +1,5 @@
 import type { EpisodeRecallHit } from "../memory/episode.js";
-import type { RecalledEpisode, RecallPresentation } from "./types.js";
+import type { RecalledEpisode } from "./types.js";
 
 /** importance の正規化（1-10 → 0-1）。未設定は中立値 0.5 */
 const IMPORTANCE_DEFAULT = 5;
@@ -35,10 +35,10 @@ function maxInhibition(vector: number[] | undefined, buffer: readonly number[][]
   return max;
 }
 
-export const SUMMARIZE_MAX_CHARS = 80;
-
 /** LanceDB 既定の L2 距離（小さいほど類似）。厳しめ omit。
- *  vagueMax は presentation の段ではなく relevance 正規化（0 になる距離）の上限として残す。 */
+ *  提示は本文そのまま（LLM 要約廃止・DECISIONS §想起提示の LLM 要約廃止）なので、
+ *  効くのは summarizeMax（omit ゲート）と vagueMax（relevance 正規化の上限）のみ。
+ *  fullMax は互換のため残るが提示には効かない。 */
 export type RecallDistanceThresholds = {
   fullMax: number;
   summarizeMax: number;
@@ -74,36 +74,10 @@ export function recencyDecay(
   return Math.exp(-RECENCY_DECAY_LAMBDA * ageDays);
 }
 
-function mechanicalSummarize(text: string): string {
-  const t = text.trim();
-  if (!t) return "（内容不明）";
-  if (t.length <= SUMMARIZE_MAX_CHARS) return t;
-  return `${t.slice(0, SUMMARIZE_MAX_CHARS)}…`;
-}
-
-export function presentationFromDistance(
-  distance: number,
-  thresholds: RecallDistanceThresholds,
-): RecallPresentation | "omit" {
-  if (distance <= thresholds.fullMax) return "full";
-  if (distance <= thresholds.summarizeMax) return "summarize";
-  return "omit";
-}
-
-export function resolvePresentedMechanical(
-  presentation: RecallPresentation | "omit",
-  body: string,
-): string | null {
-  if (presentation === "omit") return null;
-  if (presentation === "full") return body.trim();
-  return mechanicalSummarize(body); // summarize
-}
-
 export type ClassifiedRecallHit = {
   id: number;
   body: string;
   distance: number;
-  presentation: RecallPresentation;
   relevance: number;
   /** エピソードの発生時刻（ISO 8601）。想起提示で「N分前/N日前」に変換する用 */
   occurredAt?: string;
@@ -131,8 +105,7 @@ export function classifyRecallHits(
     // 横断（ImageBind）ヒットは別空間＝別閾値（無ければ text 閾値にフォールバック）。
     const th =
       hit.space === "xmodal" && xmodalThresholds ? xmodalThresholds : thresholds;
-    const presentation = presentationFromDistance(hit.distance, th);
-    if (presentation === "omit") continue;
+    if (hit.distance > th.summarizeMax) continue; // omit ゲート
 
     const baseRelevance =
       distanceToRelevance(hit.distance, th.vagueMax) *
@@ -153,7 +126,6 @@ export function classifyRecallHits(
       id,
       body: hit.body,
       distance: hit.distance,
-      presentation,
       relevance:
         baseRelevance * importanceScore * inhibitionPenalty * speakerBoost,
       occurredAt: hit.timestamp,
@@ -170,29 +142,6 @@ export function distanceToRelevance(
 ): number {
   if (distance > vagueMax) return 0;
   return Math.max(0, 1 - distance / vagueMax);
-}
-
-/** ベクトル検索ヒットを距離閾値でグラデーション提示する */
-export function filterRecallByDistance(
-  hits: readonly EpisodeRecallHit[],
-  thresholds: RecallDistanceThresholds = DEFAULT_RECALL_DISTANCE_THRESHOLDS,
-  options: RecallScoreOptions = {},
-): RecalledEpisode[] {
-  const classified = classifyRecallHits(hits, thresholds, options);
-  const result: RecalledEpisode[] = [];
-
-  for (const hit of classified) {
-    const presented = resolvePresentedMechanical(hit.presentation, hit.body);
-    if (!presented) continue;
-
-    result.push({
-      presented,
-      relevance: hit.relevance,
-      presentation: hit.presentation,
-    });
-  }
-
-  return result.sort((a, b) => b.relevance - a.relevance);
 }
 
 /** テスト用: 本文だけから full として RecalledEpisode を作る */

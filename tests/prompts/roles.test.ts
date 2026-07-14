@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   LANGUAGE_HEARTBEAT_SYSTEM_PREFIX,
   LANGUAGE_SYSTEM_PREFIX,
+  MEMO_OP_SYSTEM,
+  STEPS_SYSTEM,
 } from "../../src/prompts/roles.js";
+import { memoActor } from "../../src/actors/memo.js";
 import { formatActionForLanguage } from "../../src/action/present.js";
 
 describe("role prompts", () => {
@@ -18,6 +21,22 @@ describe("role prompts", () => {
     expect(LANGUAGE_HEARTBEAT_SYSTEM_PREFIX).not.toContain("質問で返さない");
   });
 
+  it("STEPS_SYSTEM は段取り一覧の id を (m1) 形式と誤って例示しない（stepsId=タイトル・m1 はマイルストーン専用）", () => {
+    // 段取り一覧の実レンダリング（renderBacklog）は (タイトル) 形式。
+    // (m1) を一覧の例として教えると steps actor が stepsId:"m1" を幻覚する（2026-07-14 ラリーで実測）。
+    expect(STEPS_SYSTEM).not.toContain("「いまの段取り一覧」（(m1)");
+    expect(STEPS_SYSTEM).toContain("stepsId＝タイトルがそのまま id");
+    expect(STEPS_SYSTEM).toContain("マイルストーン専用");
+  });
+
+  it("MEMO_OP_SYSTEM は転記の境界を示す（文脈に無いことを一般知識で補って書かない）", () => {
+    expect(MEMO_OP_SYSTEM).toContain("一般知識で補って書かない");
+  });
+
+  it("memo criteria は転記の境界（自分の知識で書かない・調べる依頼だけでは起動しない）を示す", () => {
+    expect(memoActor.criteria).toContain("自分の知識では書かない");
+    expect(memoActor.criteria).toContain("調べる依頼だけ（記録まで頼まれていない）では起動しない");
+  });
 });
 
 describe("formatActionForLanguage regression", () => {

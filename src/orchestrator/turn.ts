@@ -8,9 +8,8 @@ import {
   type TurnContext,
 } from "../context/turn-context.js";
 import type { RecallDistanceThresholds } from "../recall/distance.js";
-import { presentRecallEpisodes } from "../recall/llm-present.js";
+import { presentRecallEpisodes } from "../recall/present.js";
 import { fitTurnContext } from "../context/preprocess.js";
-import { buildContextClock } from "../sensor/datetime.js";
 import type { EpisodeRecallHit, EpisodeStore } from "../memory/episode.js";
 import type { SemanticStore } from "../memory/semantic.js";
 import type { MemoIndexStore } from "../memory/memo-index.js";
@@ -417,7 +416,6 @@ export class TurnOrchestrator {
     v?.workingMemory(this.deps.workingMemory.getRecent());
 
     const turnNow = new Date();
-    const clock = buildContextClock(turnNow, this.deps.timeZone);
     const allRecentTurns = this.deps.workingMemory.getRecent();
     const recentTurns = workingMemoryTurns !== undefined
       ? allRecentTurns.slice(-workingMemoryTurns)
@@ -442,7 +440,6 @@ export class TurnOrchestrator {
       trigger,
       startState,
       episodeRecallTopK,
-      clock.currentDateTime,
       imageFeed,
     );
 
@@ -612,10 +609,9 @@ export class TurnOrchestrator {
     trigger: TurnTrigger,
     startState: AgentState,
     episodeRecallTopK: number,
-    currentDateTime: string,
     imageFeed: readonly string[],
   ): Promise<{
-    recalled: Awaited<ReturnType<typeof presentRecallEpisodes>>;
+    recalled: ReturnType<typeof presentRecallEpisodes>;
     semanticFacts: ReturnType<typeof presentSemanticFacts>;
     memoHits: Awaited<ReturnType<MemoIndexStore["recall"]>>;
   }> {
@@ -665,14 +661,8 @@ export class TurnOrchestrator {
     this.addToInhibitionBuffer(recallHits);
 
     const filterStart = Date.now();
-    const triggerLabel =
-      trigger.type === "user_message"
-        ? trigger.content
-        : `（ハートビート・${startState}）`;
-    const recalled = await presentRecallEpisodes(
-      this.deps.llm,
+    const recalled = presentRecallEpisodes(
       recallHits,
-      { state: startState, currentDateTime, triggerLabel, recallQuery: queryLabel },
       this.deps.recallDistanceThresholds,
       {
         inhibitionBuffer: this.getActiveInhibitionVectors(),
@@ -939,12 +929,17 @@ export class TurnOrchestrator {
       }
     };
 
-    // steps は「実際に何が起きたか」を見て事後に記録する（意図でなく結果でグラウンディング）ため、
-    // 他の actor を先に並列実行して ctx.actions に積んでから最後に走らせる。
-    const others = activeSpecs.filter((s) => s.name !== "steps");
+    // 実行順序: 研究系（webSearch/urlBrowse 等）→ memo → steps。
+    // memo は転記（実物からのグラウンディング）なので、同ターンの調べ物の実結果が ctx.actions に
+    // 積まれてから動く＝調べる前に自前知識で書く作話を構造で断つ（2026-07-14 ラリーで実測した穴）。
+    // steps は「実際に何が起きたか」を見て事後に記録する（意図でなく結果でグラウンディング）ため最後。
+    // この直列化のレイテンシ代はほぼゼロ（decode 律速の実測で LLM 同士の並列は直列と同速・DECISIONS §想起提示）。
+    const others = activeSpecs.filter((s) => s.name !== "steps" && s.name !== "memo");
+    const memoSpec = activeSpecs.find((s) => s.name === "memo");
     const stepsSpec = activeSpecs.find((s) => s.name === "steps");
 
     for (const o of await Promise.all(others.map(runOne))) append(o);
+    if (memoSpec) append(await runOne(memoSpec));
     if (stepsSpec) {
       append(await runOne(stepsSpec));
     } else if (

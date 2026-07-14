@@ -6,7 +6,8 @@ import { runMemo } from "../src/roles/memo.js";
 import { FakeLlmClient } from "../src/llm/fake.js";
 import { InMemoryEpisodeStore } from "../src/memory/episode.js";
 import { InMemoryMemoIndexStore } from "../src/memory/memo-index.js";
-import { createTurnContext } from "../src/context/turn-context.js";
+import { createTurnContext, withAction } from "../src/context/turn-context.js";
+import { actionSucceeded } from "../src/action/outcome.js";
 import { readNoteContent, writeNoteContent } from "../src/tools/notes.js";
 
 const dialogue = { resolveUserDisplayName: () => "HAL" };
@@ -40,6 +41,27 @@ function makeInput(intent: string, memoIndex?: InMemoryMemoIndexStore) {
 }
 
 describe("runMemo（統合 actor・recall認識＋descent）", () => {
+  it("同ターンで先に済んだ調べ物の実結果が op プロンプトに載る（転記元のグラウンディング）", async () => {
+    const input = makeInput("調べた結果を控える");
+    const research = actionSucceeded(
+      { kind: "research", intent: "Stack-chan を調べる" },
+      {
+        kind: "research",
+        tool: "web_search",
+        title: "Stack-chan",
+        summary: "M5Stack ベースの手のひらロボット",
+        body: "Stack-chan は M5Stack ベースのオープンソース手のひらロボット。",
+      },
+    );
+    const ctx = withAction(input.ctx, research);
+    const llm = new FakeLlmClient([JSON.stringify({ op: "noop" })]);
+    await runMemo(llm, { ...input, ctx });
+
+    const opPrompt = llm.calls.at(-1)!.messages[1]!.content;
+    expect(opPrompt).toContain("実際にやったこと");
+    expect(opPrompt).toContain("M5Stack ベース");
+  });
+
   it("goals/（steps 所有の計画ノート）には書かない＝steps の領分へ譲る", async () => {
     // 空ツリー＝descent は LLM を呼ばない → op の1応答のみ
     const llm = new FakeLlmClient([

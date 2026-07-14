@@ -80,19 +80,6 @@ export const memoReadPickJsonSchema = zodToJsonSchema(memoReadPickOutputSchema, 
   ...jsonSchemaOptions,
 });
 
-export const recallPresentSummarizeItemSchema = z.object({
-  id: z.number(),
-  presented: z.string(),
-});
-
-export const recallPresentSummarizeOutputSchema = z.object({
-  items: z.array(recallPresentSummarizeItemSchema),
-});
-export const recallPresentSummarizeJsonSchema = zodToJsonSchema(
-  recallPresentSummarizeOutputSchema,
-  { name: "RecallPresentSummarizeOutput", ...jsonSchemaOptions },
-);
-
 export const forgetPickOutputSchema = z.object({
   turnId: z.string().nullable(),
   summary: z.string(),

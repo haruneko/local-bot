@@ -21,7 +21,7 @@
 [自律エージェントフェーズ]
   activate（各 actor 並列）: 各 actor が mini-context を読み自分の起動可否を判断
        ↓
-  actor pool（並列）: 起動した各 actor が自律実行 → ctx.actions に積む
+  actor pool: 起動した各 actor が自律実行 → ctx.actions に積む（順序: 研究系→memo→steps・SPEC §5）
        ↓
   language-agent: 全 facts を受け取り発話生成 + NEXT_STATE 決定
        ↓
@@ -33,7 +33,7 @@
 ```mermaid
 flowchart TD
     Input["プリプロセス<br/>(センサー/記憶/作業記憶 → TurnContext)"] --> Act["activate（各 actor 並列）<br/>(各 actor が自分の起動を判断)"]
-    Act --> Pool["actor pool（並列）<br/>起動した recall / memo / webSearch / ..."]
+    Act --> Pool["actor pool（研究系→memo→steps）<br/>起動した memo / webSearch / ..."]
     Pool --> Lang["language-agent<br/>(発話生成 + NEXT_STATE)"]
     Lang --> Intro["内省 → LanceDB"]
     Intro --> Inner["内心更新 → state.json"]
