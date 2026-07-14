@@ -20,7 +20,8 @@ import { presentSemanticFacts } from "../recall/semantic-present.js";
 import { collectUserArtifacts, formatActionFactContent } from "../action/present.js";
 import { WorkingMemory } from "../memory/working.js";
 import type { LlmClient } from "../llm/types.js";
-import { runLanguage } from "../roles/language.js";
+import { runLanguage, runLanguageStream } from "../roles/language.js";
+import { AsyncQueue } from "../util/async-queue.js";
 import { updateAffectAndConcern } from "../roles/inner-state.js";
 import { extractEpisodeTags, runIntrospection } from "../roles/introspection.js";
 import {
@@ -84,6 +85,9 @@ export type TurnResult = {
  *  言語野の発話生成直後に呼ばれ、内省/affect の前に出力する（async-reflect）。speech が null なら成果物のみ。 */
 export type OutputChannel = {
   say(speech: string | null, artifacts: string[]): void | Promise<void>;
+  /** 文単位ストリーミング出力。実装があれば turn は生成中の文を逐次流す。
+   *  say と排他（ストリーミングで出したターンは say を呼ばない）。 */
+  sayStream?(sentences: AsyncIterable<string>, artifacts: string[]): Promise<void>;
 };
 
 export type TurnDeps = {
@@ -507,14 +511,24 @@ export class TurnOrchestrator {
 
     // steps actor のシグナル（達成・activate・shelve/retire）を拾う（純関数・focus.ts）。
     const stepsSignals = collectStepsActionSignals(ctx.actions);
+
+    // 口の効果器へ渡す成果物は言語野の前に確定できる（actions は確定済み）。
+    // ストリーミング経路（chatStream ＋ sayStream の両方があるとき）は成果物を先に握る必要がある。
+    const artifacts = collectUserArtifacts(ctx.actions);
+
     // --- language-agent（常に起動） ---
     // 発話は this.focusSteps を読まない（ctx 経由）ので、focusSteps の付け替えは発話の後にまとめてよい。
-    ctx = await this.generateSpeech(ctx, trigger, languageLlm);
+    // ストリーミング経路なら発話生成中に文を逐次 sayStream へ流し、その場合ここで say は済ませる。
+    const streamed = await this.generateSpeech(ctx, trigger, languageLlm, artifacts);
+    ctx = streamed.ctx;
 
     // 口の効果器: 発話＋成果物を即出力（push）。内省/affect はこの後＝async-reflect。
-    // 行動(effect)は発話の上流＝ここで artifacts も確定済み。
-    const artifacts = collectUserArtifacts(ctx.actions);
-    if (this.deps.outputChannel && (ctx.speech || artifacts.length > 0)) {
+    // ストリーミングで出したターンは say を呼ばない（sayStream と排他）。
+    if (
+      !streamed.emittedViaStream &&
+      this.deps.outputChannel &&
+      (ctx.speech || artifacts.length > 0)
+    ) {
       await this.deps.outputChannel.say(ctx.speech ?? null, artifacts);
     }
 
@@ -971,21 +985,59 @@ export class TurnOrchestrator {
     return ctx;
   }
 
-  /** language-agent（常に起動）。発話と NEXT_STATE を ctx に載せ、発話を作業記憶へ追加 */
+  /**
+   * language-agent（常に起動）。発話と NEXT_STATE を ctx に載せ、発話を作業記憶へ追加。
+   *
+   * languageLlm.chatStream ＋ outputChannel.sayStream の両方があれば**ストリーミング経路**：
+   * 生成中の文を逐次 sayStream へ流す（提示専用）。正本は完了後の全文 parse（withSpeech に載る）。
+   * どちらか無ければ現行どおり生成完了後に返す（呼び出し側が say する）。
+   *
+   * 戻り値の emittedViaStream=true なら、この関数内で sayStream 経由の出力を済ませている
+   * （呼び出し側は say を呼ばない＝排他）。
+   */
   private async generateSpeech(
     ctx: TurnContext,
     trigger: TurnTrigger,
     languageLlm: LlmClient,
-  ): Promise<TurnContext> {
+    artifacts: string[],
+  ): Promise<{ ctx: TurnContext; emittedViaStream: boolean }> {
     const v = this.vlog;
     const langStart = Date.now();
     ctx = withPersona(ctx, await this.deps.getPersona());
+    const numPredict = this.deps.languageNumPredict ?? 400;
+    const outputChannel = this.deps.outputChannel;
+
+    const canStream = !!languageLlm.chatStream && !!outputChannel?.sayStream;
+    let emittedViaStream = false;
+
     try {
-      const { speech } = await runLanguage(
-        languageLlm,
-        ctx,
-        this.deps.languageNumPredict ?? 400,
-      );
+      let speech: string;
+      if (canStream) {
+        // 非同期キューを sayStream へ渡し、生成中の文を push で流す（await しない）。
+        const queue = new AsyncQueue<string>();
+        const saying = outputChannel!.sayStream!(queue, artifacts);
+        emittedViaStream = true;
+        try {
+          const out = await runLanguageStream(
+            languageLlm,
+            ctx,
+            (s) => queue.push(s),
+            numPredict,
+          );
+          speech = out.speech;
+        } finally {
+          queue.end();
+        }
+        // 出力チャンネル側の失敗でターンを殺さない（本文は既に表示側で扱う設計・say と同じ degrade）。
+        try {
+          await saying;
+        } catch (err) {
+          v?.error("outputChannel:sayStream", err);
+        }
+      } else {
+        const out = await runLanguage(languageLlm, ctx, numPredict);
+        speech = out.speech;
+      }
       ctx = withSpeech(ctx, speech.trim() || null);
       this.turnContext = ctx;
       v?.languageSpeech(ctx.speech ?? "", Date.now() - langStart);
@@ -1002,7 +1054,7 @@ export class TurnOrchestrator {
           : { role: "assistant", channel: "monologue", content: ctx.speech },
       );
     }
-    return ctx;
+    return { ctx, emittedViaStream };
   }
 
   /** 内省 → タグ抽出 → 内心更新 → エピソード追記。idle heartbeat はスキップ */

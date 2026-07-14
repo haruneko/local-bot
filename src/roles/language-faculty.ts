@@ -15,6 +15,7 @@ import {
   repairCommonJsonErrors,
   stripThinkBlocks,
 } from "../action/parse-json.js";
+import { extractSpeechStream, splitSentences } from "./speech-stream.js";
 
 export type LanguageOutput = { speech: string };
 
@@ -165,13 +166,12 @@ function resolveNumPredict(ctx: TurnContext, defaultNumPredict: number): number 
   return defaultNumPredict;
 }
 
-export async function generateDialogueSpeech(
-  llm: LlmClient,
+/** 発話生成の LLM 呼び出しの入力（messages＋options）を組み立てる。chat / chatStream で共通。 */
+function buildLanguageRequest(
   ctx: TurnContext,
-  defaultNumPredict = 400,
-): Promise<LanguageOutput> {
+  defaultNumPredict: number,
+): { messages: ChatMessage[]; options: { temperature: number; numPredict: number; format: Record<string, unknown> } } {
   const persona = ctx.persona ?? "";
-  const format = languageJsonSchema;
   const systemPrefix = ctx.trigger.type === "heartbeat"
     ? LANGUAGE_HEARTBEAT_SYSTEM_PREFIX
     : LANGUAGE_SYSTEM_PREFIX;
@@ -180,6 +180,50 @@ export async function generateDialogueSpeech(
   // 既定 0.6（屋久島プローブの温度sweepで決定: 0.8は記憶主張の作話を尾で引く / 0.4は平板 / 0.6が安全＋多様）。
   // LANG_TEMP env で tuning 可。
   const langTemp = process.env.LANG_TEMP ? Number(process.env.LANG_TEMP) : 0.6;
-  const raw = await llm.chat(messages, { temperature: langTemp, numPredict, format });
+  return {
+    messages,
+    options: { temperature: langTemp, numPredict, format: languageJsonSchema },
+  };
+}
+
+export async function generateDialogueSpeech(
+  llm: LlmClient,
+  ctx: TurnContext,
+  defaultNumPredict = 400,
+): Promise<LanguageOutput> {
+  const { messages, options } = buildLanguageRequest(ctx, defaultNumPredict);
+  const raw = await llm.chat(messages, options);
+  return parseLanguageOutput(raw);
+}
+
+/**
+ * 発話をストリーミング生成し、文が確定するたび onSentence へ流す（提示専用）。
+ *
+ * llm.chatStream の生差分を extractSpeechStream → splitSentences に通し、文ごとに onSentence を呼ぶ。
+ * 同時に生差分を全て連結し、終了後 parseLanguageOutput(raw) を返す＝**これが正本**（作業記憶・内省が読む）。
+ * ストリーム途中の throw はそのまま上へ（呼び出し側の catch が speech=null にする）。
+ *
+ * 呼び出し側は llm.chatStream の存在を保証する（この関数は degrade しない）。
+ */
+export async function generateDialogueSpeechStream(
+  llm: LlmClient,
+  ctx: TurnContext,
+  onSentence: (sentence: string) => void,
+  defaultNumPredict = 400,
+): Promise<LanguageOutput> {
+  const { messages, options } = buildLanguageRequest(ctx, defaultNumPredict);
+
+  let raw = "";
+  const deltas = (async function* () {
+    for await (const d of llm.chatStream!(messages, options)) {
+      raw += d;
+      yield d;
+    }
+  })();
+
+  for await (const sentence of splitSentences(extractSpeechStream(deltas))) {
+    onSentence(sentence);
+  }
+
   return parseLanguageOutput(raw);
 }

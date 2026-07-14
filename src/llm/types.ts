@@ -14,4 +14,7 @@ export type ChatOptions = {
 
 export interface LlmClient {
   chat(messages: ChatMessage[], options?: ChatOptions): Promise<string>;
+  /** ストリーミング生成。yield は content の差分。全差分の連結 = chat() が返す文字列と同等。
+   *  未実装のクライアントでは undefined（呼び出し側が chat() にフォールバックする）。 */
+  chatStream?(messages: ChatMessage[], options?: ChatOptions): AsyncIterable<string>;
 }

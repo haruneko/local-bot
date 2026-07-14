@@ -566,6 +566,107 @@ describe("TurnOrchestrator", () => {
     // 本文(body)は内省のまま＝想起は無傷
     expect(ep.body).toBe("内省テキスト");
   });
+
+  // --- 発話ストリーミング（chatStream ＋ sayStream の両方があるとき） ---
+
+  it("T-OC03: sayStream 経路で文が順に届き、ctx.speech は正本の全文・say は呼ばれない", async () => {
+    // FakeLlmClient.chatStream は queue 応答を ~8 文字ずつに割る。
+    const full = lang("こんにちは、太郎。今日はいい天気だね。", "対話");
+    const llm = new FakeLlmClient([full, "内省", '{"tags":[]}', "新しい気分"]);
+
+    const received: string[] = [];
+    let sayCalled = false;
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        outputChannel: {
+          say: async () => {
+            sayCalled = true;
+          },
+          sayStream: async (sentences) => {
+            for await (const s of sentences) received.push(s);
+          },
+        },
+      }),
+    );
+
+    const result = await orch.run({
+      type: "user_message",
+      content: "やあ",
+      speakerId: "u1",
+    });
+
+    // ① 文が順に届く
+    expect(received.length).toBeGreaterThanOrEqual(2);
+    expect(received.join("")).toBe("こんにちは、太郎。今日はいい天気だね。");
+    // ② ctx.speech（正本＝全文 parse）が一致
+    expect(result.speech).toBe("こんにちは、太郎。今日はいい天気だね。");
+    // ③ say は呼ばれない（sayStream と排他）
+    expect(sayCalled).toBe(false);
+  });
+
+  it("T-OC04: sayStream が throw してもターンは完走する（degrade）", async () => {
+    const full = lang("しっかりした長さの返答だよ。", "対話");
+    const llm = new FakeLlmClient([full, "内省", '{"tags":[]}', "気分"]);
+
+    let sayCalled = false;
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        outputChannel: {
+          say: async () => {
+            sayCalled = true;
+          },
+          sayStream: async (sentences) => {
+            // 一応消費してから落とす（現実の出力先クラッシュの代役）
+            for await (const _ of sentences) {
+              /* consume */
+            }
+            throw new Error("output sink down");
+          },
+        },
+      }),
+    );
+
+    const result = await orch.run({
+      type: "user_message",
+      content: "やあ",
+      speakerId: "u1",
+    });
+
+    // ターンは完走し、正本の発話・内省・エピソードは残る
+    expect(result.speech).toBe("しっかりした長さの返答だよ。");
+    expect(result.episodeSaved).toBe(true);
+    // sayStream 経路で出したので say は呼ばれない（排他は throw でも保たれる）
+    expect(sayCalled).toBe(false);
+  });
+
+  it("T-OC05: sayStream が無ければ現行どおり say 経路（ストリーミングしない）", async () => {
+    const llm = new FakeLlmClient([lang("ふつうの返答", "対話"), "内省", '{"tags":[]}', "気分"]);
+    let sayArgs: { speech: string | null; artifacts: string[] } | null = null;
+    const orch = new TurnOrchestrator(
+      "対話",
+      baseTurnDeps({
+        llm,
+        workingMemory: new WorkingMemory(20),
+        // say のみ（sayStream 無し）→ chatStream があっても非ストリーミング経路
+        outputChannel: {
+          say: async (speech, artifacts) => {
+            sayArgs = { speech, artifacts };
+          },
+        },
+      }),
+    );
+
+    const result = await orch.run({ type: "user_message", content: "やあ", speakerId: "u1" });
+
+    expect(sayArgs).toEqual({ speech: "ふつうの返答", artifacts: [] });
+    expect(result.speech).toBe("ふつうの返答");
+  });
 });
 
 // focusSteps 遷移の集約（resolveFocusAfterActions ＋ setFocusSteps）を orchestrator 経由で確認する。

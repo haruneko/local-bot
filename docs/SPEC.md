@@ -164,6 +164,8 @@ type ActionOutcome = { attempted: false } | {
 
 - **`OutputChannel`**: `say(speech, artifacts)`（媒体別の出し分けは実装内）。`TurnDeps` に注入（`actionDeps.mcp` と同じ立て付け）。
 - 言語野が発話生成**直後に** `say` を呼ぶ（§4.2 phase 3）。＝ユーザーへの出力は orchestrator が pull で代行せず、口の効果器が push する。
+- **文単位ストリーミング（2026-07-14〜・optional）**: `OutputChannel.sayStream?(sentences, artifacts)` と `LlmClient.chatStream?` の**両方がある時だけ**、turn は生成中の発話を文単位（`src/roles/speech-stream.ts`＝JSON `speech` 値の incremental 抽出→文分割）で逐次流す（say と排他）。**正本は完了後の全文パース**（`parseLanguageOutput`）＝ストリーミングは提示（音声・表示）専用で、作業記憶・内省が読むのは確定した全文。出力チャンネル側の失敗はターンを殺さない（catch して verbose）。片方でも無ければ現行 say 経路のまま＝degrade が自然に効く。
+- **音声シンク（`src/voice/`）**: VOICEVOX ENGINE（WSL2 の Docker・`settings.voice`・既定 `127.0.0.1:50021`）で文ごとに合成し**直列再生**。テキスト表示が先・合成/再生の失敗はその文をスキップして続行（音声が死んでも会話は死なない）。**artifacts は読み上げない**（`TurnResult.artifacts` の設計どおり）。CLI は `--voice` か `settings.voice.enabled` で有効化・`npm run smoke:voice` で疎通確認。
 - **アダプタ（`slack.ts`/`say.ts`）の役割**: 「`TurnResult` を消費して出力」→「`OutputChannel` を**提供**」へ。
 - **順序（不変条件）**: 成果物を作る actor は発話の上流＝say 時点で副作用も `artifacts` も確定。内省・affect は say の**後**（post-hoc）。**次ターンの recall は今ターンの affect/episode に依存＝反省は次ターン前に完了**（`run()` が反省まで await して返す）。
 - **効果器の所在**: 口＝`OutputChannel`（注入）／手＝notes 記録（`writeNoteContent`・actor 所有）／steps＝`saveSteps`（actor 所有）／外界探索＝`deps.mcp`（注入・webSearch/urlBrowse/express）／首＝カメラ（未実装）。**全て所有 action が起こす**（orchestrator は代行しない）。

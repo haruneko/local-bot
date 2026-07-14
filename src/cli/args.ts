@@ -5,6 +5,8 @@ export type CliArgs = {
   memory?: "lance" | "memory";
   /** 未指定時はエントリポイント側が既定を決める（REPL=quiet, 常駐=info） */
   logLevel?: LogLevel;
+  /** --voice: settings.voice.enabled を上書きして音声出力を有効化 */
+  voice?: boolean;
 };
 
 export type DreamCliArgs = CliArgs & {
@@ -20,6 +22,7 @@ export function parseArgs(argv: string[]): CliArgs {
   if (argv.includes("--memory-only")) out.memory = "memory";
   if (argv.includes("--verbose") || argv.includes("-v")) out.logLevel = "debug";
   else if (argv.includes("--quiet") || argv.includes("-q")) out.logLevel = "quiet";
+  if (argv.includes("--voice")) out.voice = true;
   return out;
 }
 

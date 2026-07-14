@@ -1,6 +1,8 @@
 import { createApp } from "../app/bootstrap.js";
 import { parseArgs } from "./args.js";
 import { printTurnSummary } from "./output.js";
+import { loadSettings, resolveVoiceSettings } from "../config/settings.js";
+import { createVoiceOutputChannel } from "../voice/channel.js";
 
 /** 既定の話者。クロ（開発を手伝う相棒の AI）として話す */
 const DEFAULT_SPEAKER = "claude_kuro";
@@ -11,6 +13,7 @@ const FLAGS = new Set([
   "-v",
   "--quiet",
   "-q",
+  "--voice",
 ]);
 
 /** --user <id> とフラグ以外の位置引数を本文として連結する */
@@ -34,7 +37,7 @@ async function main(): Promise<void> {
   const content = extractMessage(argv);
   if (!content) {
     console.error(
-      '使い方: npm run say -- [--user <id>] [--memory-only] [-v] "メッセージ"',
+      '使い方: npm run say -- [--user <id>] [--memory-only] [-v] [--voice] "メッセージ"',
     );
     process.exit(1);
   }
@@ -42,13 +45,27 @@ async function main(): Promise<void> {
   const speakerId = args.speakerId ?? DEFAULT_SPEAKER;
   console.error(`say: 接続中… (話者: ${speakerId})`);
 
+  // 音声チャンネルの判断: --voice フラグ または settings.voice.enabled
+  const settings = await loadSettings();
+  const voiceCfg = resolveVoiceSettings(settings);
+  const useVoice = args.voice === true || voiceCfg.enabled;
+
   // 口の効果器: 発話＋成果物を即出力（push）。単発 CLI でも出力路を効果器に揃える（特別経路を作らない）。
-  const outputChannel = {
+  const voiceChannel = useVoice
+    ? createVoiceOutputChannel({
+        print: (text) => console.log(text),
+        printArtifact: (text) => console.log(text),
+        voice: { host: voiceCfg.host, speaker: voiceCfg.speaker },
+      })
+    : null;
+
+  const outputChannel = voiceChannel ?? {
     say: (speech: string | null, artifacts: string[]) => {
       if (speech) console.log(speech);
       for (const artifact of artifacts) console.log(`\n${artifact}`);
     },
   };
+
   const app = await createApp({
     speakerId,
     memory: args.memory,
@@ -65,6 +82,11 @@ async function main(): Promise<void> {
     speakerId,
   });
   printTurnSummary(result, verbose);
+
+  // 音声キューが残っていれば終わるまで待ってからプロセス終了
+  if (voiceChannel) {
+    await voiceChannel.flush();
+  }
 }
 
 main()

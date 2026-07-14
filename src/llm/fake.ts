@@ -19,4 +19,20 @@ export class FakeLlmClient implements LlmClient {
     }
     return next;
   }
+
+  /** 次の queue 応答を ~8 文字ずつのチャンクに割って yield。calls は chat() と同形式で記録。 */
+  async *chatStream(
+    messages: ChatMessage[],
+    options?: ChatOptions,
+  ): AsyncIterable<string> {
+    this.calls.push({ messages, options });
+    const next = this.responses.shift();
+    if (next === undefined) {
+      throw new Error("FakeLlmClient: no more queued responses");
+    }
+    const size = 8;
+    for (let i = 0; i < next.length; i += size) {
+      yield next.slice(i, i + size);
+    }
+  }
 }

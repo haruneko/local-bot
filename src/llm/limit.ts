@@ -21,6 +21,41 @@ export function runLimited<T>(fn: () => Promise<T>): Promise<T> {
   return limit(fn);
 }
 
+/**
+ * ストリーミング LLM 呼び出しを同時実行リミッタ越しに実行する。
+ * chat() と違い返るのが AsyncIterable なので、スロットは**反復が終わる**まで保持する
+ * （正常終了・throw・早期 break のいずれでも finally で解放）。
+ * p-limit は fn の Promise が settle するとスロットを返すので、
+ * fn を「反復完了まで解決しない gate」にしてスロットを掴み続ける。
+ */
+export async function* runLimitedStream<T>(
+  fn: () => AsyncIterable<T>,
+): AsyncGenerator<T> {
+  // fn は反復完了で解決する gate を返す＝その間 p-limit のスロットを占有し続ける
+  let releaseSlot!: () => void;
+  const slotHeld = new Promise<void>((resolve) => {
+    releaseSlot = resolve;
+  });
+  // runLimited に「スロットを取れたら知らせる」ハンドシェイクを載せる
+  let acquired!: () => void;
+  const slotAcquired = new Promise<void>((resolve) => {
+    acquired = resolve;
+  });
+  const limited = runLimited(() => {
+    acquired();
+    return slotHeld;
+  });
+  // runLimited の rejection（通常起きないが握りつぶさない）を伝播できるよう握っておく
+  limited.catch(() => {});
+  try {
+    await slotAcquired;
+    yield* fn();
+  } finally {
+    releaseSlot();
+    await limited;
+  }
+}
+
 // **速く失敗する**一過性エラー＝リトライして良い（接続瞬断・レート制限・5xx）。
 // ヘッダ/ボディタイムアウト（数分かけて失敗）は除外する：リトライしても倍待つだけで、
 // これは同時実行リミッタで「予防」する種類のもの。

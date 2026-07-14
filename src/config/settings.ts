@@ -72,6 +72,16 @@ export type RoleConfig = {
   think?: OllamaThinkSetting;
 };
 
+/** 音声出力（VOICEVOX）の設定 */
+export type VoiceSettings = {
+  /** true のときのみ音声出力を有効化（既定 false） */
+  enabled: boolean;
+  /** VOICEVOX ENGINE の URL（既定 http://127.0.0.1:50021） */
+  host: string;
+  /** 話者 ID（既定 1） */
+  speaker: number;
+};
+
 export type AppSettings = {
   workingMemoryTurns: number;
   contextTokenBudget: number;
@@ -122,6 +132,8 @@ export type AppSettings = {
   /** 取り込んだ画像の縮小上限（長辺・px）。未設定は 1024。高解像度はタイル増でトークン爆発するので
    *  取り込み口で縮小する（`src/sensor/image.ts`）。重ければ下げる（800 等）。 */
   imageMaxLongSide?: number;
+  /** 音声出力（VOICEVOX）の設定 */
+  voice?: VoiceSettings;
   /** 明示的 recall actor での距離上限（未設定は 0.45＝背景想起の fullMax と同値）。
    *  背景より厳しくすると「背景には浮かんでるのに明示的に思い出せない」逆転が起きるため、
    *  背景の確信(full)層と揃える。それ以上の関連度は bullet 要約側で落とす */
@@ -266,6 +278,15 @@ export function resolveEnabledActors(
     const cfg = settings.actors?.[name];
     return cfg === undefined || cfg.enabled !== false;
   });
+}
+
+/** 音声設定を解決する。未設定時の既定値を補完して返す */
+export function resolveVoiceSettings(settings: AppSettings): VoiceSettings {
+  return {
+    enabled: settings.voice?.enabled ?? false,
+    host: settings.voice?.host ?? "http://127.0.0.1:50021",
+    speaker: settings.voice?.speaker ?? 1,
+  };
 }
 
 export async function loadSettings(): Promise<AppSettings> {

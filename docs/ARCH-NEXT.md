@@ -97,6 +97,41 @@
 
 ---
 
+## スタックチャン統合スケッチ（口・耳・目・首の実装順／2026-07-14）
+
+前提: **スタックチャン完成品**（M5Stack 系・サーボ首振り＋スピーカー＋マイク）を入手見込み。WSL2 は USB 直挿しが地雷なので、**LAN 上のデバイスを HTTP で叩く**（research/active-eye-camera-2026-06-16 の結論をそのまま適用）。配置は3拠点: エバ本体（WSL2）／Windows ホスト（Ollama・VOICEVOX・必要なら STT）／スタックチャン（LAN・音の出口と入口・カメラ・首）。
+
+実装順は**口→耳→目→首**。口と耳の大半はハード不要（音の出入口を PC のスピーカー/マイクで代用して先行実装し、到着後に出入口だけスタックチャンへ差し替える）。
+
+### 口（先行実装・2026-07-14 着手）
+
+3層に分けると出口の差し替えだけでスタックチャンに移行できる:
+
+1. **生成のストリーミング**: `LlmClient.chatStream`（差分 AsyncIterable・連結=chat() と同等）。decode 律速（35B-a3b @ Strix Halo ≈57tok/s・DECISIONS §想起提示）なので、これが体感を「全文完了（≈3秒）」→「最初の一文（≈1秒台）」に縮める最大のレバー。
+2. **文単位化**: 言語野出力は grammar 強制の `{"speech":"…"}` なので、**JSON 文字列値の incremental 抽出**（エスケープ処理込み）→ **文分割**（。！？改行・短すぎる断片は結合）で文ストリームにする。正本はあくまで完了後の `parseLanguageOutput`＝ストリーミングは提示のみ（作業記憶・内省が読むのは確定した全文）。`OutputChannel` に optional `sayStream` を足し、turn は「chatStream と sayStream が両方あるときだけ」ストリーミング経路（無ければ現行 say のまま＝degrade 自然）。
+3. **音声シンク**: VOICEVOX（Windows ホスト・audio_query→synthesis）で文ごとに wav 化し**直列再生**（重ねない）。再生の出口は今は PC（WSLg paplay / PowerShell interop）、スタックチャン到着後はデバイスの HTTP エンドポイントへ POST に差し替え。**artifacts は読み上げない**（TurnResult.artifacts の設計どおり音声宛先では出さない）。degrade: 合成/再生が死んでもテキスト表示は先に済んでいる＝会話は死なない。
+
+### 耳
+
+- **STT→user_message**: マイク音声（当面 PC・後にスタックチャン）を faster-whisper 系（Windows ホスト or WSL2 CPU）で文字起こしし、`TurnTrigger.user_message` の `content` に載せる。**生波形は `audio` フィールドに併載**（audio_feed→符号化の横断ベクトル用・器は実装済み）＝文字起こしを正本にしつつ非言語の痕跡も残す既存方針のまま。
+- wake word / VAD はスタックチャンのマイク特性と置き場所に依存するので到着後。それまでは push-to-talk（キー押下で録音）で十分。
+- 声の同一性（「クロの声だ」）は recognition faculty（別 faculty・未実装・上記）へ送る話で、耳の配線には含めない。
+
+### 目
+
+- スタックチャンのカメラ（or 併設 ESP32 カメラ）が `/frame.jpg` を返し、それを `data/frames/` に落とす小さいフェッチャを回すだけで**既存の受動視覚（`readFrames`→image_feed）にそのまま乗る**。`imageFeedSource` を URL 対応にするかフェッチャを cron にするかは到着後に決める。
+- 能動の「見にいく」（webcam actor が首を振って2枚目を撮る）は首とセット。
+
+### 首（効果器の新顔）
+
+- `/look?pan=..&tilt=..` を叩く**首の効果器**（§2.1 の効果器対称に既に位置づけ済み: 口=OutputChannel／手=notes／首=カメラ運動）。webcam actor の run が「向きを決めて撮る」一手として使う。感情連動（affect→首の傾き）は遊びとして後から。
+
+### テンポ（口の次の課題）
+
+音声対話は往復のテンポが命だが、現行は反省クラスタ（内省＋タグ＋affect ≈5-6秒）が `run()` の完了をブロック＝**相手が早く返事すると次ターンが詰まる**。§2.2 の非同期 reflect の続きとして「反省中でも次ターン受付・affect は追いつき次第反映」の順序保証を別途設計する（recall が前ターンの affect/episode に依存する制約があるので、単純な fire-and-forget にはできない）。
+
+---
+
 ## 知覚と記憶ループ（画像・音声をどう覚えるか）
 
 知覚（画像・今後は音声）を、内省・メモ・夢の各ループがどう扱うか。原則: **キャプション（説明文）を正本にしない**・**モダリティに依らず同じ形**。

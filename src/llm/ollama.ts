@@ -1,7 +1,7 @@
 import { Ollama } from "ollama";
 import type { OllamaThinkSetting } from "../config/settings.js";
 import type { ChatMessage, ChatOptions, LlmClient } from "./types.js";
-import { runLimited, withLlmRetry } from "./limit.js";
+import { runLimited, runLimitedStream, withLlmRetry } from "./limit.js";
 
 export type OllamaClientConfig = {
   host: string;
@@ -45,6 +45,40 @@ export class OllamaLlmClient implements LlmClient {
         return response.message.content;
       }),
     );
+  }
+
+  /**
+   * ストリーミング生成。`/api/chat` を stream:true で叩き、各チャンクの
+   * message.content を差分として yield する。全差分の連結 = chat() の返り値と同等。
+   * chat() と同じオプション処理。スロットは runLimitedStream が反復完了まで保持する。
+   * リトライは付けない（差分を1つでも yield した後の再試行は出力が二重になるため。
+   * chat() の一過性リトライは「まだ何も返していない」から成立する）。
+   */
+  async *chatStream(
+    messages: ChatMessage[],
+    options?: ChatOptions,
+  ): AsyncIterable<string> {
+    const config = this.config;
+    const client = this.client;
+    yield* runLimitedStream(async function* () {
+      const stream = await client.chat({
+        model: config.model,
+        messages,
+        stream: true,
+        format: options?.format,
+        think: config.think ?? false,
+        options: {
+          temperature: options?.temperature ?? 0.7,
+          ...(config.numCtx !== undefined && { num_ctx: config.numCtx }),
+          ...(options?.numPredict !== undefined && { num_predict: options.numPredict }),
+        },
+      });
+      for await (const chunk of stream) {
+        const delta = chunk.message?.content ?? "";
+        if (delta) yield delta;
+        if (chunk.done) break;
+      }
+    });
   }
 }
 

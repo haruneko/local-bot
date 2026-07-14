@@ -119,5 +119,6 @@
       "think": false
     }
   },
-  "imageFeedSource": "data/frames"
+  "imageFeedSource": "data/frames",
+  "voice": { "enabled": false, "host": "http://127.0.0.1:50021", "speaker": 1 }
 }
