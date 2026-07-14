@@ -21,3 +21,4 @@
 | code-structure-diagnosis-2026-06-18.md | コード構造の自己診断スナップショット |
 | doc-staleness-audit-2026-06-18.md | docs 陳腐化監査スナップショット |
 | activator-model-candidates-2026-06-18.md | activator 軽量モデル候補調査 |
+| language-role-api-ab-2026-07-14.md | 言語野モデル A/B（35B vs Haiku/Sonnet リプレイ・コスト実測）・未引用 |
