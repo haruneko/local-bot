@@ -25,6 +25,7 @@ npm run test:watch
 npm run build        # tsc
 npm run smoke        # Ollama 疎通確認
 npm run smoke:voice  # VOICEVOX 疎通＋再生確認（ENGINE は常駐させない: /voice スキルで start/stop）
+npm run smoke:stt    # 耳の疎通: VOICEVOX 合成→gemma4:e2b 文字起こし→一致確認（TTS→STT 往復）
 npm run reindex      # data/notes/ を memo_index に再索引（embedModel 変更時は必須・§embed）
 npm run notes:rm -- <相対パス>...   # ノート削除を3点セット（ファイル/memo_index/MOC）で。--prune-orphans / --list-orphans
 npm run forget -- "対象"            # プライバシー用 out-of-band の本気削除（エピソード soft delete・--list で候補確認のみ）
@@ -32,7 +33,7 @@ npm run eval:retrieval -- --model <embed>  # 想起評価（自前 gold で Reca
 npm run backup       # data/ を backups/ に tar 世代バックアップ（frames 除外・KEEP=7 世代・cron 向け）
 ```
 
-CLI 共通オプション: `-v`/`--verbose`（debug=全文ダンプ）, `-q`/`--quiet`（サマリ無し）, `--user <id>`, `--memory-only`（インメモリ記憶・テスト用）, `--voice`（VOICEVOX 読み上げ＝settings.voice.enabled の上書き。発話は文単位ストリーミングで逐次読み上げ・SPEC §7.5）。ログは3段階（`src/util/verbose.ts`）: `quiet`（発話＋state のみ）/ `info`（1ターン十数行の構造化サマリ・stderr）/ `debug`（全 LLM prompt/response・context 全文）。既定は REPL=`quiet`・Slack/heartbeat=`info`。
+CLI 共通オプション: `-v`/`--verbose`（debug=全文ダンプ）, `-q`/`--quiet`（サマリ無し）, `--user <id>`, `--memory-only`（インメモリ記憶・テスト用）, `--voice`（VOICEVOX 読み上げ＝settings.voice.enabled の上書き。発話は文単位ストリーミングで逐次読み上げ・SPEC §7.5）, `--talk`（REPL の音声会話モード＝--voice 含意。空行 Enter で録音開始/停止→gemma4:e2b で文字起こし→user_message。生 wav は trigger.audio に併載。要 pulseaudio-utils）。ログは3段階（`src/util/verbose.ts`）: `quiet`（発話＋state のみ）/ `info`（1ターン十数行の構造化サマリ・stderr）/ `debug`（全 LLM prompt/response・context 全文）。既定は REPL=`quiet`・Slack/heartbeat=`info`。
 REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 
 ## アーキテクチャ
@@ -79,7 +80,7 @@ REPL 内コマンド: `/quit`, `/heartbeat`, `/state <値>`。
 
 | ファイル | 内容 |
 |----------|------|
-| `config/settings.json` | モデル名・Ollama ホスト・記憶件数・トークン予算・`stateConfig`・`roles`・`ollamaMaxConcurrency`（LLM 同時実行上限＝サーバ `OLLAMA_NUM_PARALLEL` と揃える）・`voice`（VOICEVOX: enabled/host=既定 127.0.0.1:50021/speaker） |
+| `config/settings.json` | モデル名・Ollama ホスト・記憶件数・トークン予算・`stateConfig`・`roles`・`ollamaMaxConcurrency`（LLM 同時実行上限＝サーバ `OLLAMA_NUM_PARALLEL` と揃える）・`voice`（VOICEVOX: enabled/host=既定 127.0.0.1:50021/speaker）・`stt`（耳: model=既定 gemma4:e2b・host は ollamaHost 共用） |
 | `config/mcp.json` | MCP サーバ定義・`expressDryRun` |
 | `config/users.yaml` | 話者 ID → 表示名＋任意の `note`（関係性の一文）。note は言語野の「## 相手について」に注入され、誰と話すかで反応が変わる。recall は話者一致エピソードを重み付け（`SPEAKER_MATCH_BOOST`） |
 | `persona/character.md` | キャラクター・口調・一人称 |

@@ -7,6 +7,8 @@ export type CliArgs = {
   logLevel?: LogLevel;
   /** --voice: settings.voice.enabled を上書きして音声出力を有効化 */
   voice?: boolean;
+  /** --talk: 空行 Enter で音声録音→STT→ターン実行。--voice を含意する */
+  talk?: boolean;
 };
 
 export type DreamCliArgs = CliArgs & {
@@ -23,6 +25,10 @@ export function parseArgs(argv: string[]): CliArgs {
   if (argv.includes("--verbose") || argv.includes("-v")) out.logLevel = "debug";
   else if (argv.includes("--quiet") || argv.includes("-q")) out.logLevel = "quiet";
   if (argv.includes("--voice")) out.voice = true;
+  if (argv.includes("--talk")) {
+    out.talk = true;
+    out.voice = true; // --talk は --voice を含意
+  }
   return out;
 }
 

@@ -82,6 +82,12 @@ export type VoiceSettings = {
   speaker: number;
 };
 
+/** 音声入力（STT: Speech-to-Text）の設定 */
+export type SttSettings = {
+  /** 文字起こしに使うモデル名（Ollama 上の multimodal モデル） */
+  model: string;
+};
+
 export type AppSettings = {
   workingMemoryTurns: number;
   contextTokenBudget: number;
@@ -134,6 +140,8 @@ export type AppSettings = {
   imageMaxLongSide?: number;
   /** 音声出力（VOICEVOX）の設定 */
   voice?: VoiceSettings;
+  /** 音声入力（STT）の設定 */
+  stt?: SttSettings;
   /** 明示的 recall actor での距離上限（未設定は 0.45＝背景想起の fullMax と同値）。
    *  背景より厳しくすると「背景には浮かんでるのに明示的に思い出せない」逆転が起きるため、
    *  背景の確信(full)層と揃える。それ以上の関連度は bullet 要約側で落とす */
@@ -286,6 +294,14 @@ export function resolveVoiceSettings(settings: AppSettings): VoiceSettings {
     enabled: settings.voice?.enabled ?? false,
     host: settings.voice?.host ?? "http://127.0.0.1:50021",
     speaker: settings.voice?.speaker ?? 1,
+  };
+}
+
+/** STT 設定を解決する。host は ollamaHost を使う（STT 専用の host は持たない） */
+export function resolveSttSettings(settings: AppSettings): { host: string; model: string } {
+  return {
+    host: settings.ollamaHost,
+    model: settings.stt?.model ?? "gemma4:e2b",
   };
 }
 

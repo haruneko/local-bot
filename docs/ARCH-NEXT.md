@@ -113,7 +113,7 @@
 
 ### 耳
 
-- **STT→user_message**: マイク音声（当面 PC・後にスタックチャン）を faster-whisper 系（Windows ホスト or WSL2 CPU）で文字起こしし、`TurnTrigger.user_message` の `content` に載せる。**生波形は `audio` フィールドに併載**（audio_feed→符号化の横断ベクトル用・器は実装済み）＝文字起こしを正本にしつつ非言語の痕跡も残す既存方針のまま。
+- **STT→user_message**: マイク音声（当面 PC・後にスタックチャン）を **`gemma4:e2b`（Ollama の OpenAI 互換 `/v1/chat/completions`・`input_audio`・16kHz mono wav）**で文字起こしし、`TurnTrigger.user_message` の `content` に載せる。2026-07-14 実測: TTS→STT 往復で完全一致・warm 3秒・コンテナ追加ゼロ（Ollama が keep_alive で自動アンロード）。e4b の audio 経路は壊れているので使わない。whisper.cpp（large-v3-turbo・`~/models/whisper/` に保険で残置）は実マイクで精度が足りない時の代替。**生波形は `audio` フィールドに併載**（audio_feed→符号化の横断ベクトル用・器は実装済み）＝文字起こしを正本にしつつ非言語の痕跡も残す既存方針のまま。
 - wake word / VAD はスタックチャンのマイク特性と置き場所に依存するので到着後。それまでは push-to-talk（キー押下で録音）で十分。
 - 声の同一性（「クロの声だ」）は recognition faculty（別 faculty・未実装・上記）へ送る話で、耳の配線には含めない。
 

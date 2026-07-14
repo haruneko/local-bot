@@ -21,7 +21,8 @@
     "forget": "tsx src/cli/forget.ts",
     "backup": "bash scripts/backup-data.sh",
     "eval:retrieval": "tsx src/cli/eval-retrieval.ts",
-    "smoke:voice": "tsx scripts/smoke-voicevox.mts"
+    "smoke:voice": "tsx scripts/smoke-voicevox.mts",
+    "smoke:stt": "tsx scripts/smoke-stt.mts"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.22.0",
